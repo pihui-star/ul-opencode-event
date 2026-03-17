@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+.sisyphus/evidence/
+*.log
+
+.env
+.env.*

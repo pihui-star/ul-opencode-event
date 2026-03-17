@@ -1,0 +1,166 @@
+# Project Structure Learnings
+
+## 2026-03-17: Initial Setup
+
+### Package Configuration
+- Package name: `@ulthon/ul-opencode-event`
+- Type: ESM module (`"type": "module"`)
+- Exports field configured for ESM compatibility
+
+### Dependencies
+- Production: `nodemailer` - for email notifications
+- Dev: `@opencode-ai/plugin`, `@types/nodemailer`, `typescript`
+
+### Build System
+- Using bun as the build tool and runtime
+- Target: bun
+- TypeScript with strict mode enabled
+
+### Directory Structure
+```
+ul-opencode-event/
+├── src/           # Source code
+├── tests/         # Test files
+├── dist/          # Build output (gitignored)
+├── .sisyphus/     # Project notes and evidence
+└── node_modules/  # Dependencies (gitignored)
+```
+
+### Notes
+- bun not found in system PATH, used npm as fallback for dependency installation
+- Windows environment requires different directory creation commands
+
+## 2026-03-17: Type Definitions Created
+
+### Type System Design
+- Created `src/types.ts` with comprehensive type definitions
+- Uses TypeScript strict mode without any `any` types
+- Supports multi-channel architecture (SMTP, Feishu, DingTalk)
+
+### Key Type Patterns
+1. **Union Types for Channel Config**: `ChannelConfig = SMTPConfig | FeishuConfig | DingtalkConfig`
+2. **Optional Properties**: Used `?` for optional fields like `name`, `secure`, `recipients`
+3. **Nested Object Types**: `auth` in `SMTPConfig`, `templates` in `Channel`
+
+### Type Dependencies
+- Required `bun-types` dev dependency for TypeScript type checking
+- Types are pure definitions, no runtime validation logic
+
+### Verification
+- Type check passes with `npm run typecheck` (tsc --noEmit)
+- All interfaces properly exported for use in other modules
+  
+## 2026-03-17: Documentation Created  
+  
+### README.md Structure  
+- Installation section with npm install command  
+- Configuration documentation with file locations (project-level and global)  
+- Template variables reference with all available variables  
+- Troubleshooting section for common issues 
+  
+## Configuration Example (Task 5)  
+- Configuration uses JSON format with `channels` array  
+- Each channel has: type, enabled, name, config, recipients, events, templates  
+- Template variables use Mustache syntax: {{variableName}}  
+- Events object controls which events trigger notifications 
+  
+## Test Utilities Created  
+- mock-transport.ts: Uses jsonTransport with overridden sendMail for email capture  
+- sample-configs.ts: Multiple test configurations (single, multi-channel, disabled, empty, minimal) 
+  
+## 2026-03-17: Template Engine Implemented  
+  
+### Implementation Approach  
+- Single function: `renderTemplate(template: string, variables: Record<string, string | undefined>): string`  
+- Uses regex `/\{\{(\w+)\}\}/g` to match {{variableName}} patterns  
+- Missing/undefined variables replaced with empty string (using nullish coalescing `??`)  
+- Implementation is 5 lines of actual code, 12 lines total with comments  
+  
+### Test Coverage  
+- 8 tests covering all edge cases  
+- Tests verify: single/multiple vars, missing vars, undefined values, empty template  
+  
+### Key Decisions  
+- No external template library (Handlebars, EJS) - keep it simple  
+- No validation for required variables - fail gracefully with empty strings  
+- `\w+` in regex matches word characters (alphanumeric + underscore) 
+""  
+"## 2026-03-17: Config Loader Implementation"  
+""  
+"### Implementation Approach"  
+"- loadConfig() loads from global (~/.config/opencode/notification.json) and project (.opencode/notification.json or ./notification.json)"  
+"- Merge strategy: channels are merged by name field - project channels override global when names match"  
+"- Filtering: only enabled channels are returned (enabled: false excluded)"  
+"- Validation: only smtp type supported in phase 1"  
+"- Default config returns empty channels when no files exist"  
+
+## 2026-03-17: Email Sender Implementation
+
+### Implementation Approach
+- Factory function: `createEmailSender(channel: Channel): EmailSender | null`
+- Returns null for invalid channels (non-smtp, disabled, no recipients)
+- Uses nodemailer.createTransport() with SMTPConfig
+- Security options set via `transport.set('disableFileAccess', true)` and `transport.set('disableUrlAccess', true)`
+
+### Key Patterns
+1. **Type Guard Pattern**: Returns null instead of throwing for invalid channels
+2. **Silent Failure**: Wrap send in try-catch, log error with timestamp but don't throw
+3. **Closure for Config**: Transport and config captured in closure for send function
+
+### Import Style
+- Use `import * as nodemailer from 'nodemailer'` (not default import)
+- Required for proper TypeScript compatibility
+
+### Test Strategy
+- Mock nodemailer module using `mock.module()` before importing email.ts
+- Capture emails in array for assertion
+- Mock sendMail behavior for failure scenarios
+
+### Security Considerations
+- disableFileAccess: Prevents loading local files into emails
+- disableUrlAccess: Prevents loading remote URLs into emails
+- Both set after transport creation
+
+## 2026-03-17: Event Handler Implementation
+
+### Implementation Approach
+- Factory function: `createEventHandler(config: NotificationConfig): EventHandler`
+- Returns object with `handle(eventType, payload)` method
+- Iterates all channels, filters by `enabled !== false` and `events[eventType] !== false`
+
+### Template Resolution
+- Channel-specific templates take precedence: `channel.templates?.[eventType]`
+- Falls back to default templates defined inline
+- Default templates cover all 3 event types (created, idle, error)
+
+### Channel Type Dispatch
+- Uses switch statement with exhaustive check (`never` type) for type safety
+- SMTP: calls `createEmailSender(channel).send(subject, body)`
+- Feishu/DingTalk: silently skipped (no warning, just continue)
+- Unknown types: console.warn logged
+
+### Test Strategy with Mocking
+- **Critical**: Use `mock.module()` to replace email module BEFORE importing handler
+- Bun's mock.module allows intercepting imports at module load time
+- Track sent emails in array for assertions
+- Mock must handle null returns for invalid channels (disabled, non-smtp, no recipients)
+
+### Key Test Cases
+1. Event triggers all enabled channels
+2. Disabled channel doesn't receive notification
+3. Channel with disabled event type doesn't send
+4. Event data passed to template correctly (verify rendered output)
+5. Multiple channels all receive notification
+6. Unsupported channel type is skipped silently
+7. Default templates are used when channel has no custom templates
+8. Empty channels array handled gracefully
+9. Channel with no recipients handled gracefully
+10. All three event types tested
+11. Partial event config (undefined vs false)
+12. Custom templates override defaults
+
+### Variables for Templates
+From EventPayload:
+- eventType, timestamp, projectName, sessionId (always available)
+- message, duration (for idle events)
+- error (for error events)
