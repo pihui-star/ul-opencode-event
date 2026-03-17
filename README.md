@@ -22,8 +22,8 @@ Then add to your OpenCode configuration:
 
 The plugin looks for configuration in these locations (in order of priority):
 
-1. **Project-level**: `.opencode/notification.json` or `./notification.json`
-2. **Global**: `~/.config/opencode/notification.json`
+1. **Project-level**: `.opencode/ul-opencode-event.json` or `./ul-opencode-event.json`
+2. **Global**: `~/.config/opencode/ul-opencode-event.json`
 
 Project-level configuration overrides global configuration (channels are merged by name).
 
@@ -62,7 +62,7 @@ Project-level configuration overrides global configuration (channels are merged 
 }
 ```
 
-See `examples/notification.json` for a complete example.
+See `examples/ul-opencode-event.json` for a complete example.
 
 ### Channel Configuration
 

@@ -44,7 +44,7 @@ describe('loadConfig', () => {
   });
 
   describe('global config only', () => {
-    test('loads config from ~/.config/opencode/notification.json', () => {
+    test('loads config from ~/.config/opencode/ul-opencode-event.json', () => {
       const globalConfig: NotificationConfig = {
         channels: [
           {
@@ -62,7 +62,7 @@ describe('loadConfig', () => {
         ],
       };
 
-      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'notification.json');
+      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
       
       mockFs.existsSync.mockImplementation((p: string) => {
         return p === globalPath;
@@ -82,7 +82,7 @@ describe('loadConfig', () => {
   });
 
   describe('project config only', () => {
-    test('loads config from .opencode/notification.json', () => {
+    test('loads config from .opencode/ul-opencode-event.json', () => {
       const projectConfig: NotificationConfig = {
         channels: [
           {
@@ -100,7 +100,7 @@ describe('loadConfig', () => {
         ],
       };
 
-      const opencodePath = path.join(process.cwd(), '.opencode', 'notification.json');
+      const opencodePath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
       
       mockFs.existsSync.mockImplementation((p: string) => {
         return p === opencodePath;
@@ -118,7 +118,7 @@ describe('loadConfig', () => {
       expect(config.channels[0].name).toBe('Project Email');
     });
 
-    test('loads config from ./notification.json when .opencode/notification.json does not exist', () => {
+    test('loads config from ./ul-opencode-event.json when .opencode/ul-opencode-event.json does not exist', () => {
       const projectConfig: NotificationConfig = {
         channels: [
           {
@@ -136,8 +136,8 @@ describe('loadConfig', () => {
         ],
       };
 
-      const opencodePath = path.join(process.cwd(), '.opencode', 'notification.json');
-      const localPath = path.join(process.cwd(), 'notification.json');
+      const opencodePath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+      const localPath = path.join(process.cwd(), 'ul-opencode-event.json');
       
       mockFs.existsSync.mockImplementation((p: string) => {
         return p === localPath;
@@ -192,8 +192,8 @@ describe('loadConfig', () => {
         ],
       };
 
-      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'notification.json');
-      const projectPath = path.join(process.cwd(), '.opencode', 'notification.json');
+      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
       
       mockFs.existsSync.mockImplementation((p: string) => {
         return p === globalPath || p === projectPath;
@@ -247,8 +247,8 @@ describe('loadConfig', () => {
         ],
       };
 
-      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'notification.json');
-      const projectPath = path.join(process.cwd(), '.opencode', 'notification.json');
+      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
       
       mockFs.existsSync.mockImplementation((p: string) => {
         return p === globalPath || p === projectPath;
@@ -304,7 +304,7 @@ describe('loadConfig', () => {
         ],
       };
 
-      const projectPath = path.join(process.cwd(), '.opencode', 'notification.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
       
       mockFs.existsSync.mockImplementation((p: string) => {
         return p === projectPath;
@@ -337,7 +337,7 @@ describe('loadConfig', () => {
         ],
       };
 
-      const projectPath = path.join(process.cwd(), '.opencode', 'notification.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
       
       mockFs.existsSync.mockImplementation((p: string) => {
         return p === projectPath;
@@ -370,7 +370,7 @@ describe('loadConfig', () => {
         ],
       };
 
-      const projectPath = path.join(process.cwd(), '.opencode', 'notification.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
       
       mockFs.existsSync.mockImplementation((p: string) => {
         return p === projectPath;
@@ -396,7 +396,7 @@ describe('loadConfig', () => {
         ],
       };
 
-      const projectPath = path.join(process.cwd(), '.opencode', 'notification.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
       
       mockFs.existsSync.mockImplementation((p: string) => {
         return p === projectPath;
@@ -412,7 +412,7 @@ describe('loadConfig', () => {
 
   describe('error handling', () => {
     test('handles malformed JSON gracefully', () => {
-      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'notification.json');
+      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
       
       mockFs.existsSync.mockImplementation((p: string) => {
         return p === globalPath;

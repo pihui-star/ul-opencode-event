@@ -89,23 +89,23 @@ function filterEnabledChannels(channels: Channel[]): Channel[] {
 }
 
 /**
- * Get global config file path: ~/.config/opencode/notification.json
+ * Get global config file path: ~/.config/opencode/ul-opencode-event.json
  */
 function getGlobalConfigPath(): string {
-  return path.join(os.homedir(), '.config', 'opencode', 'notification.json');
+  return path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
 }
 
 /**
  * Get project config file path
- * Priority: .opencode/notification.json > ./notification.json
+ * Priority: .opencode/ul-opencode-event.json > ./ul-opencode-event.json
  */
 function getProjectConfigPath(): string | null {
-  const opencodePath = path.join(process.cwd(), '.opencode', 'notification.json');
+  const opencodePath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
   if (fs.existsSync(opencodePath)) {
     return opencodePath;
   }
   
-  const localPath = path.join(process.cwd(), 'notification.json');
+  const localPath = path.join(process.cwd(), 'ul-opencode-event.json');
   if (fs.existsSync(localPath)) {
     return localPath;
   }
@@ -117,8 +117,8 @@ function getProjectConfigPath(): string | null {
  * Load and merge notification configuration
  * 
  * Config locations (in order of priority):
- * 1. Project-level: .opencode/notification.json or ./notification.json
- * 2. Global: ~/.config/opencode/notification.json
+ * 1. Project-level: .opencode/ul-opencode-event.json or ./ul-opencode-event.json
+ * 2. Global: ~/.config/opencode/ul-opencode-event.json
  * 
  * Merge strategy:
  * - Channels are merged by `name` field
