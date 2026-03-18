@@ -8,6 +8,9 @@ import { loadConfig } from './config.js';
 import { createEventHandler, type EventHandler } from './handler.js';
 import type { EventPayload, EventType } from './types.js';
 
+const LOG_PREFIX = '[ul-opencode-event]';
+const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env.UL_OPENCODE_EVENT_DEBUG === 'true';
+
 /**
  * Convert SDK Event to internal EventPayload
  */
@@ -77,28 +80,31 @@ function formatError(error: unknown): string {
  * Listens for session events and sends notifications via configured channels
  */
 export const NotificationPlugin: Plugin = async (ctx) => {
-  // Load configuration
-  const config = loadConfig();
+  let config;
+  try {
+    config = loadConfig();
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Failed to initialize plugin config`, error);
+    return {};
+  }
   
-  // Skip if no channels configured
   if (config.channels.length === 0) {
+    console.warn(`${LOG_PREFIX} Plugin loaded but no enabled channels found`);
     return {};
   }
 
-  // Create event handler
   const eventHandler: EventHandler = createEventHandler(config);
-  
-  // Store session info for duration calculation
   const sessionMap = new Map<string, Session>();
+  if (DEBUG_ENABLED) {
+    console.info(`${LOG_PREFIX} Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
+  }
 
   return {
     event: async ({ event }) => {
-      // Track session info
       if (event.type === 'session.created') {
         sessionMap.set(event.properties.info.id, event.properties.info);
       }
       
-      // Get session info for payload enrichment
       let sessionInfo: Session | undefined;
       const props = event.properties as Record<string, unknown>;
       if (typeof props.sessionID === 'string') {
@@ -107,16 +113,19 @@ export const NotificationPlugin: Plugin = async (ctx) => {
         sessionInfo = (event.properties as { info: Session }).info;
       }
 
-      // Convert event to payload - use directory as project name since Project type has no name field
       const payload = eventToPayload(event, ctx.directory, sessionInfo);
       
-      // Skip unsupported event types
       if (!payload) {
         return;
       }
-
-      // Handle the event (sends notifications)
-      await eventHandler.handle(payload.eventType, payload);
+      if (DEBUG_ENABLED) {
+        console.info(`${LOG_PREFIX} Handling event ${payload.eventType} for session ${payload.sessionId}`);
+      }
+      try {
+        await eventHandler.handle(payload.eventType, payload);
+      } catch (error) {
+        console.error(`${LOG_PREFIX} Failed to handle event ${payload.eventType}`, error);
+      }
     },
   };
 };

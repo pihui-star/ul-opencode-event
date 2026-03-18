@@ -1,9 +1,9 @@
 /**
  * Multi-channel event handler for notifications
  */
-import type { NotificationConfig, EventPayload, EventType, Channel, TemplateConfig } from './types';
-import { renderTemplate } from './template';
-import { createEmailSender } from './email';
+import type { NotificationConfig, EventPayload, EventType, Channel, TemplateConfig } from './types.js';
+import { renderTemplate } from './template.js';
+import { createEmailSender } from './email.js';
 
 export interface EventHandler {
   handle: (eventType: EventType, payload: EventPayload) => Promise<void>;

@@ -1,65 +1,29 @@
 {
   "_comment": "OpenCode 通知插件配置示例",
-  "_description": "配置多个通知渠道，支持 SMTP 邮件通知",
-  "_templateVariables": {
-    "{{eventType}}": "事件类型 (created, idle, error)",
-    "{{timestamp}}": "时间戳 (ISO 8601 格式)",
-    "{{projectName}}": "项目名称",
-    "{{sessionId}}": "会话ID",
-    "{{message}}": "消息内容 (idle 事件专用)",
-    "{{error}}": "错误信息 (error 事件专用)",
-    "{{duration}}": "任务耗时 (idle 事件专用)"
+  "_description": "配置 SMTP 邮件通知，支持 IPv4/IPv6",
+  "_ipv4_ipv6_docs": {
+    "default": "自动支持 IPv4 和 IPv6，无需配置",
+    "force_ipv4": "设置 localAddress 为 IPv4 地址（如 0.0.0.0）",
+    "force_ipv6": "设置 localAddress 为 IPv6 地址（如 ::）",
+    "ipv6_host": "可以直接使用 IPv6 地址作为 host"
   },
   "channels": [
     {
       "type": "smtp",
       "enabled": true,
-      "name": "公司邮箱",
-      "config": {
-        "host": "smtp.company.com",
-        "port": 465,
-        "secure": true,
-        "auth": {
-          "user": "your-email@company.com",
-          "pass": "your-app-password"
-        }
-      },
-      "recipients": ["admin@company.com", "dev-team@company.com"],
-      "events": {
-        "created": true,
-        "idle": true,
-        "error": true
-      },
-      "templates": {
-        "created": {
-          "subject": "[OpenCode] 任务开始 - {{projectName}}",
-          "body": "任务已开始\n\n项目: {{projectName}}\n时间: {{timestamp}}\n会话ID: {{sessionId}}"
-        },
-        "idle": {
-          "subject": "[OpenCode] 任务完成 - {{projectName}}",
-          "body": "任务已完成\n\n项目: {{projectName}}\n时间: {{timestamp}}\n耗时: {{duration}}\n消息: {{message}}"
-        },
-        "error": {
-          "subject": "[OpenCode] 任务错误 - {{projectName}}",
-          "body": "任务发生错误\n\n项目: {{projectName}}\n时间: {{timestamp}}\n错误: {{error}}"
-        }
-      }
-    },
-    {
-      "type": "smtp",
-      "enabled": true,
-      "name": "个人邮箱",
+      "name": "QQ邮箱 (自动 IPv4/IPv6)",
       "config": {
         "host": "smtp.qq.com",
         "port": 465,
         "secure": true,
         "auth": {
           "user": "your@qq.com",
-          "pass": "your-auth-code"
+          "pass": "your-authorization-code"
         }
       },
-      "recipients": ["personal@example.com"],
+      "recipients": ["receiver@example.com"],
       "events": {
+        "created": false,
         "idle": true,
         "error": true
       }
@@ -67,20 +31,64 @@
     {
       "type": "smtp",
       "enabled": false,
-      "name": "备用邮箱（已禁用）",
+      "name": "强制使用 IPv4",
       "config": {
-        "host": "smtp.backup.com",
-        "port": 587,
-        "secure": false,
+        "host": "smtp.qq.com",
+        "port": 465,
+        "secure": true,
+        "localAddress": "0.0.0.0",
         "auth": {
-          "user": "backup@backup.com",
-          "pass": "backup-password"
+          "user": "your@qq.com",
+          "pass": "your-authorization-code"
         }
       },
-      "recipients": ["backup@backup.com"],
+      "recipients": ["receiver@example.com"],
       "events": {
+        "idle": true,
         "error": true
-      }
+      },
+      "_note": "设置 localAddress 为 0.0.0.0 强制使用 IPv4 连接"
+    },
+    {
+      "type": "smtp",
+      "enabled": false,
+      "name": "强制使用 IPv6",
+      "config": {
+        "host": "smtp.example.com",
+        "port": 465,
+        "secure": true,
+        "localAddress": "::",
+        "auth": {
+          "user": "your@example.com",
+          "pass": "your-password"
+        }
+      },
+      "recipients": ["receiver@example.com"],
+      "events": {
+        "idle": true,
+        "error": true
+      },
+      "_note": "设置 localAddress 为 :: 强制使用 IPv6 连接"
+    },
+    {
+      "type": "smtp",
+      "enabled": false,
+      "name": "IPv6 地址作为主机",
+      "config": {
+        "host": "2001:db8::1",
+        "port": 465,
+        "secure": true,
+        "auth": {
+          "user": "your@example.com",
+          "pass": "your-password"
+        }
+      },
+      "recipients": ["receiver@example.com"],
+      "events": {
+        "idle": true,
+        "error": true
+      },
+      "_note": "直接使用 IPv6 地址作为 host 参数"
     }
   ]
 }

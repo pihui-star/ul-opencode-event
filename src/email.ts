@@ -2,7 +2,7 @@
  * Email sender module for SMTP-based notifications
  */
 import * as nodemailer from 'nodemailer';
-import type { Channel, SMTPConfig } from './types';
+import type { Channel, SMTPConfig } from './types.js';
 
 export interface EmailSender {
   send: (subject: string, body: string) => Promise<void>;
@@ -32,8 +32,8 @@ export function createEmailSender(channel: Channel): EmailSender | null {
   const config = channel.config as SMTPConfig;
   const fromName = channel.name || 'Notification';
 
-  // Create nodemailer transport with SMTP config
-  const transport = nodemailer.createTransport({
+  // Build nodemailer transport options
+  const transportOptions: any = {
     host: config.host,
     port: config.port,
     secure: config.secure,
@@ -41,7 +41,18 @@ export function createEmailSender(channel: Channel): EmailSender | null {
       user: config.auth.user,
       pass: config.auth.pass,
     },
-  });
+  };
+
+  // Add localAddress for IPv4/IPv6 control
+  // - "0.0.0.0" or specific IPv4 to force IPv4
+  // - "::" or specific IPv6 to force IPv6
+  if (config.localAddress) {
+    transportOptions.localAddress = config.localAddress;
+  }
+
+  // Create nodemailer transport
+  // Note: Without localAddress, nodemailer automatically tries both IPv4 and IPv6
+  const transport = nodemailer.createTransport(transportOptions);
 
   // Set security options
   transport.set('disableFileAccess', true);

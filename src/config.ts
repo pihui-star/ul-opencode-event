@@ -1,9 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { NotificationConfig, Channel } from './types';
+import type { NotificationConfig, Channel } from './types.js';
 
 const SUPPORTED_CHANNEL_TYPES = ['smtp'] as const;
+const LOG_PREFIX = '[ul-opencode-event]';
+const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env.UL_OPENCODE_EVENT_DEBUG === 'true';
 
 /**
  * Default configuration returned when no config files exist
@@ -22,8 +24,16 @@ function loadConfigFile(filePath: string): NotificationConfig | null {
     }
     const content = fs.readFileSync(filePath, 'utf-8');
     const config = JSON.parse(content) as NotificationConfig;
+    if (!Array.isArray(config.channels)) {
+      console.error(`${LOG_PREFIX} Invalid config format in ${filePath}: "channels" must be an array`);
+      return null;
+    }
+    if (DEBUG_ENABLED) {
+      console.info(`${LOG_PREFIX} Loaded config: ${filePath} (${config.channels.length} channels)`);
+    }
     return config;
-  } catch {
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Failed to parse config file: ${filePath}`, error);
     return null;
   }
 }
@@ -147,6 +157,11 @@ export function loadConfig(): NotificationConfig {
   
   // If no configs exist, return default
   if (!globalConfig && !projectConfig) {
+    if (DEBUG_ENABLED) {
+      console.info(
+        `${LOG_PREFIX} No config found. Checked: ${globalConfigPath}, ${path.join(process.cwd(), '.opencode', 'ul-opencode-event.json')}, ${path.join(process.cwd(), 'ul-opencode-event.json')}`
+      );
+    }
     return DEFAULT_CONFIG;
   }
   

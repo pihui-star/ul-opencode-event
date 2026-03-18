@@ -41,6 +41,13 @@ export interface SMTPConfig {
   host: string;
   port: number;
   secure?: boolean;
+  /**
+   * Local interface to bind for outgoing connections
+   * - Use IPv4 address (e.g., "0.0.0.0", "192.168.1.1") to force IPv4
+   * - Use IPv6 address (e.g., "::", "::1", "2001:db8::1") to force IPv6
+   * - If not specified, both IPv4 and IPv6 are tried automatically
+   */
+  localAddress?: string;
   auth: {
     user: string;
     pass: string;
