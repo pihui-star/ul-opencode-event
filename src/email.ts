@@ -5,6 +5,7 @@ import * as nodemailer from 'nodemailer';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import type { Channel, SMTPConfig } from './types.js';
+const LOOKUP_TIMEOUT_MS = 1200;
 
 export interface EmailSender {
   send: (subject: string, body: string) => Promise<void>;
@@ -25,13 +26,29 @@ async function resolveHostViaLookup(host: string): Promise<string | null> {
     return host;
   }
 
+  const withTimeout = <T>(task: Promise<T>, timeoutMs: number): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`lookup timeout after ${timeoutMs}ms`)), timeoutMs);
+      task.then(
+        value => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        error => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+  };
+
   try {
-    const addr = await lookup(host, { family: 4 });
+    const addr = await withTimeout(lookup(host, { family: 4 }), LOOKUP_TIMEOUT_MS);
     return addr.address;
   } catch {}
 
   try {
-    const addr = await lookup(host, { family: 6 });
+    const addr = await withTimeout(lookup(host, { family: 6 }), LOOKUP_TIMEOUT_MS);
     return addr.address;
   } catch {}
 
@@ -99,6 +116,15 @@ export function createEmailSender(channel: Channel): EmailSender | null {
         html: body,
         text: body,
       };
+
+      const preResolvedHost = await resolveHostViaLookup(config.host);
+      if (preResolvedHost && preResolvedHost !== config.host) {
+        try {
+          const preResolvedTransport = createTransport(preResolvedHost);
+          await preResolvedTransport.sendMail(mailOptions);
+          return;
+        } catch {}
+      }
 
       try {
         const transport = createTransport();

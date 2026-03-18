@@ -16,6 +16,7 @@ import { isIP } from 'node:net';
 import type { Channel, SMTPConfig, NotificationConfig } from './types.js';
 
 const CLI_PREFIX = '[ul-opencode-event-cli]';
+const LOOKUP_TIMEOUT_MS = 1200;
 
 interface TestOptions {
   channelName?: string;
@@ -161,13 +162,29 @@ async function resolveHostViaLookup(host: string): Promise<string | null> {
     return host;
   }
 
+  const withTimeout = <T>(task: Promise<T>, timeoutMs: number): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`lookup timeout after ${timeoutMs}ms`)), timeoutMs);
+      task.then(
+        value => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        error => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+  };
+
   try {
-    const addr = await lookup(host, { family: 4 });
+    const addr = await withTimeout(lookup(host, { family: 4 }), LOOKUP_TIMEOUT_MS);
     return addr.address;
   } catch {}
 
   try {
-    const addr = await lookup(host, { family: 6 });
+    const addr = await withTimeout(lookup(host, { family: 6 }), LOOKUP_TIMEOUT_MS);
     return addr.address;
   } catch {}
 
@@ -179,6 +196,31 @@ async function resolveHostViaLookup(host: string): Promise<string | null> {
  */
 async function testConnection(channel: Channel): Promise<{ success: boolean; error?: string; info?: string }> {
   const config = channel.config as SMTPConfig;
+  const preResolvedHost = await resolveHostViaLookup(config.host);
+  if (preResolvedHost && preResolvedHost !== config.host) {
+    try {
+      const preResolvedTransporter = createTransporter(channel, preResolvedHost);
+      await preResolvedTransporter.verify();
+      return {
+        success: true,
+        info: `DNS pre-resolved: ${config.host} -> ${preResolvedHost}`,
+      };
+    } catch (preResolveError) {
+      const preResolveMessage = preResolveError instanceof Error ? preResolveError.message : String(preResolveError);
+      try {
+        const transporter = createTransporter(channel);
+        await transporter.verify();
+        return {
+          success: true,
+          info: `DNS pre-resolve verify failed (${preResolveMessage}), hostname verify succeeded`,
+        };
+      } catch (hostError) {
+        const hostMessage = hostError instanceof Error ? hostError.message : String(hostError);
+        return { success: false, error: `${preResolveMessage}; hostname verify failed: ${hostMessage}` };
+      }
+    }
+  }
+
   try {
     const transporter = createTransporter(channel);
     await transporter.verify();
@@ -239,6 +281,33 @@ If you received this email, your notification channel is configured correctly.`,
         <p style="color: green;">If you received this email, your notification channel is configured correctly.</p>
       `,
   };
+
+  const preResolvedHost = await resolveHostViaLookup(config.host);
+  if (preResolvedHost && preResolvedHost !== config.host) {
+    try {
+      const preResolvedTransporter = createTransporter(channel, preResolvedHost);
+      const result = await preResolvedTransporter.sendMail(mailOptions);
+      return {
+        success: true,
+        messageId: result.messageId,
+        info: `DNS pre-resolved: ${config.host} -> ${preResolvedHost}`,
+      };
+    } catch (preResolveError) {
+      const preResolveMessage = preResolveError instanceof Error ? preResolveError.message : String(preResolveError);
+      try {
+        const transporter = createTransporter(channel);
+        const result = await transporter.sendMail(mailOptions);
+        return {
+          success: true,
+          messageId: result.messageId,
+          info: `DNS pre-resolve send failed (${preResolveMessage}), hostname send succeeded`,
+        };
+      } catch (hostError) {
+        const hostMessage = hostError instanceof Error ? hostError.message : String(hostError);
+        return { success: false, error: `${preResolveMessage}; hostname send failed: ${hostMessage}` };
+      }
+    }
+  }
 
   try {
     const transporter = createTransporter(channel);
