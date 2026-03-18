@@ -11,6 +11,8 @@ import * as nodemailer from 'nodemailer';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import type { Channel, SMTPConfig, NotificationConfig } from './types.js';
 
 const CLI_PREFIX = '[ul-opencode-event-cli]';
@@ -114,11 +116,12 @@ function validateChannel(channel: Channel): { valid: boolean; errors: string[] }
  * Create SMTP transporter
  * Supports IPv4/IPv6 via localAddress option
  */
-function createTransporter(channel: Channel): nodemailer.Transporter {
+function createTransporter(channel: Channel, hostOverride?: string): nodemailer.Transporter {
   const config = channel.config as SMTPConfig;
+  const host = hostOverride || config.host;
 
   const transportOptions: any = {
-    host: config.host,
+    host,
     port: config.port,
     secure: config.secure ?? (config.port === 465),
     auth: {
@@ -134,45 +137,96 @@ function createTransporter(channel: Channel): nodemailer.Transporter {
     transportOptions.localAddress = config.localAddress;
   }
 
+  if (hostOverride && hostOverride !== config.host) {
+    transportOptions.tls = {
+      servername: config.host,
+    };
+  }
+
   return nodemailer.createTransport(transportOptions);
+}
+
+function shouldRetryWithLookup(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('querya etimeout') ||
+    normalized.includes('queryaaaa etimeout') ||
+    normalized.includes('enotfound') ||
+    normalized.includes('eai_again')
+  );
+}
+
+async function resolveHostViaLookup(host: string): Promise<string | null> {
+  if (isIP(host) !== 0) {
+    return host;
+  }
+
+  try {
+    const addr = await lookup(host, { family: 4 });
+    return addr.address;
+  } catch {}
+
+  try {
+    const addr = await lookup(host, { family: 6 });
+    return addr.address;
+  } catch {}
+
+  return null;
 }
 
 /**
  * Test SMTP connection
  */
-async function testConnection(channel: Channel): Promise<{ success: boolean; error?: string }> {
+async function testConnection(channel: Channel): Promise<{ success: boolean; error?: string; info?: string }> {
+  const config = channel.config as SMTPConfig;
   try {
     const transporter = createTransporter(channel);
     await transporter.verify();
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
+    if (!shouldRetryWithLookup(message)) {
+      return { success: false, error: message };
+    }
+
+    const resolvedHost = await resolveHostViaLookup(config.host);
+    if (!resolvedHost) {
+      return { success: false, error: `${message}; lookup() fallback failed for ${config.host}` };
+    }
+
+    try {
+      const fallbackTransporter = createTransporter(channel, resolvedHost);
+      await fallbackTransporter.verify();
+      return {
+        success: true,
+        info: `DNS fallback used: ${config.host} -> ${resolvedHost}`,
+      };
+    } catch (fallbackError) {
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      return { success: false, error: `${message}; fallback verify failed: ${fallbackMessage}` };
+    }
   }
 }
 
 /**
  * Send test email
  */
-async function sendTestEmail(channel: Channel): Promise<{ success: boolean; error?: string; messageId?: string }> {
-  try {
-    const config = channel.config as SMTPConfig;
-    const transporter = createTransporter(channel);
-    const fromName = channel.name || 'OpenCode Notification Test';
-    const timestamp = new Date().toISOString();
-
-    const result = await transporter.sendMail({
-      from: `"${fromName}" <${config.auth.user}>`,
-      to: channel.recipients!.join(', '),
-      subject: `[Test] OpenCode Notification Channel Test - ${timestamp}`,
-      text: `This is a test email from OpenCode notification plugin.
+async function sendTestEmail(channel: Channel): Promise<{ success: boolean; error?: string; messageId?: string; info?: string }> {
+  const config = channel.config as SMTPConfig;
+  const fromName = channel.name || 'OpenCode Notification Test';
+  const timestamp = new Date().toISOString();
+  const mailOptions = {
+    from: `"${fromName}" <${config.auth.user}>`,
+    to: channel.recipients!.join(', '),
+    subject: `[Test] OpenCode Notification Channel Test - ${timestamp}`,
+    text: `This is a test email from OpenCode notification plugin.
 
 Channel: ${channel.name || 'unnamed'}
 Type: ${channel.type}
 Time: ${timestamp}
 
 If you received this email, your notification channel is configured correctly.`,
-      html: `
+    html: `
         <h2>OpenCode Notification Channel Test</h2>
         <p>This is a test email from OpenCode notification plugin.</p>
         <hr>
@@ -184,12 +238,35 @@ If you received this email, your notification channel is configured correctly.`,
         <hr>
         <p style="color: green;">If you received this email, your notification channel is configured correctly.</p>
       `,
-    });
+  };
 
+  try {
+    const transporter = createTransporter(channel);
+    const result = await transporter.sendMail(mailOptions);
     return { success: true, messageId: result.messageId };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
+    if (!shouldRetryWithLookup(message)) {
+      return { success: false, error: message };
+    }
+
+    const resolvedHost = await resolveHostViaLookup(config.host);
+    if (!resolvedHost) {
+      return { success: false, error: `${message}; lookup() fallback failed for ${config.host}` };
+    }
+
+    try {
+      const fallbackTransporter = createTransporter(channel, resolvedHost);
+      const result = await fallbackTransporter.sendMail(mailOptions);
+      return {
+        success: true,
+        messageId: result.messageId,
+        info: `DNS fallback used: ${config.host} -> ${resolvedHost}`,
+      };
+    } catch (fallbackError) {
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      return { success: false, error: `${message}; fallback send failed: ${fallbackMessage}` };
+    }
   }
 }
 
@@ -221,6 +298,9 @@ async function testChannel(channel: Channel, options: TestOptions): Promise<bool
     return false;
   }
   console.log(`  [OK] Connection successful`);
+  if (connectionResult.info) {
+    console.log(`  [INFO] ${connectionResult.info}`);
+  }
 
   // Step 3: Send test email (if not skipped)
   if (options.noSend) {
@@ -236,6 +316,9 @@ async function testChannel(channel: Channel, options: TestOptions): Promise<bool
     return false;
   }
   console.log(`  [OK] Test email sent successfully`);
+  if (sendResult.info) {
+    console.log(`  [INFO] ${sendResult.info}`);
+  }
   console.log(`  Message ID: ${sendResult.messageId}`);
 
   console.log(`\n  [SUCCESS] Channel "${channelName}" passed all tests`);
