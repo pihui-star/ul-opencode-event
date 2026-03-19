@@ -56,6 +56,34 @@ async function resolveHostViaLookup(host: string): Promise<string | null> {
 }
 
 /**
+ * Creates nodemailer transport options
+ */
+function buildTransportOptions(config: SMTPConfig, hostOverride?: string): object {
+  const host = hostOverride || config.host;
+  const transportOptions: any = {
+    host,
+    port: config.port,
+    secure: config.secure,
+    auth: {
+      user: config.auth.user,
+      pass: config.auth.pass,
+    },
+  };
+
+  if (config.localAddress) {
+    transportOptions.localAddress = config.localAddress;
+  }
+
+  if (hostOverride && hostOverride !== config.host) {
+    transportOptions.tls = {
+      servername: config.host,
+    };
+  }
+
+  return transportOptions;
+}
+
+/**
  * Creates an email sender for the given SMTP channel
  * @param channel - The channel configuration (must be SMTP type)
  * @returns EmailSender instance or null if channel is invalid/disabled
@@ -79,33 +107,10 @@ export function createEmailSender(channel: Channel): EmailSender | null {
   const config = channel.config as SMTPConfig;
   const fromName = channel.name || 'Notification';
 
-  const createTransport = (hostOverride?: string): nodemailer.Transporter => {
-    const host = hostOverride || config.host;
-    const transportOptions: any = {
-      host,
-      port: config.port,
-      secure: config.secure,
-      auth: {
-        user: config.auth.user,
-        pass: config.auth.pass,
-      },
-    };
-
-    if (config.localAddress) {
-      transportOptions.localAddress = config.localAddress;
-    }
-
-    if (hostOverride && hostOverride !== config.host) {
-      transportOptions.tls = {
-        servername: config.host,
-      };
-    }
-
-    const transport = nodemailer.createTransport(transportOptions);
-    transport.set('disableFileAccess', true);
-    transport.set('disableUrlAccess', true);
-    return transport;
-  };
+  // Create and cache the primary transporter (connection reuse)
+  const primaryTransport = nodemailer.createTransport(buildTransportOptions(config));
+  primaryTransport.set('disableFileAccess', true);
+  primaryTransport.set('disableUrlAccess', true);
 
   return {
     async send(subject: string, body: string): Promise<void> {
@@ -117,25 +122,36 @@ export function createEmailSender(channel: Channel): EmailSender | null {
         text: body,
       };
 
+      // Try pre-resolved host first if DNS resolution succeeded
       const preResolvedHost = await resolveHostViaLookup(config.host);
       if (preResolvedHost && preResolvedHost !== config.host) {
         try {
-          const preResolvedTransport = createTransport(preResolvedHost);
+          // Create temporary transport for resolved IP (can't reuse for different host)
+          const preResolvedTransport = nodemailer.createTransport(
+            buildTransportOptions(config, preResolvedHost)
+          );
+          preResolvedTransport.set('disableFileAccess', true);
+          preResolvedTransport.set('disableUrlAccess', true);
           await preResolvedTransport.sendMail(mailOptions);
           return;
         } catch {}
       }
 
       try {
-        const transport = createTransport();
-        await transport.sendMail(mailOptions);
+        // Use cached primary transporter (connection reuse)
+        await primaryTransport.sendMail(mailOptions);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (shouldRetryWithLookup(message)) {
           const resolvedHost = await resolveHostViaLookup(config.host);
           if (resolvedHost) {
             try {
-              const fallbackTransport = createTransport(resolvedHost);
+              // Create temporary transport for fallback (different host)
+              const fallbackTransport = nodemailer.createTransport(
+                buildTransportOptions(config, resolvedHost)
+              );
+              fallbackTransport.set('disableFileAccess', true);
+              fallbackTransport.set('disableUrlAccess', true);
               await fallbackTransport.sendMail(mailOptions);
               return;
             } catch {}
