@@ -1,6 +1,6 @@
 /**
- * Notification Plugin Entry Point
- * Sends email notifications when session events occur
+ * * Notification Plugin Entry Point
+ * * Sends email notifications when session events occur
  */
 import type { Plugin } from '@opencode-ai/plugin';
 import type { Event, Session } from '@opencode-ai/sdk';
@@ -99,40 +99,23 @@ export const NotificationPlugin: Plugin = async (ctx) => {
     console.info(`${LOG_PREFIX} Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
   }
 
-export const NotificationPlugin: Plugin = async (ctx) => {
-  let config: NotificationConfig;
-  try {
-    config = loadConfig();
-  } catch (error) {
-    console.error(`${LOG_PREFIX} Failed to initialize plugin config`, error);
-    return {};
-  }
-  
-  if (config.channels.length === 0) {
-    console.warn(`${LOG_PREFIX} Plugin loaded but no enabled channels found`);
-    return {};
-  }
-
-  const eventHandler: EventHandler = createEventHandler(config);
-  const sessionMap = new Map<string, Session>();
-  if (DEBUG_ENABLED) {
-    console.info(`${LOG_PREFIX} Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
-  }
-
   // Register cleanup handlers for graceful shutdown
-  const cleanupHandlers = ['exit', 'SIGINT', 'SIGTERM'];
-  
-  for (const signal of cleanupHandlers) {
-    process.on(signal, cleanup);
+  const cleanup = async () => {
+    await eventHandler.close();
+    if (DEBUG_ENABLED) {
+      console.info(`${LOG_PREFIX} Closed all SMTP connections`);
+    }
+  };
+
+  // Handle process exit (sync handler, cannot be async)
+  process.on('exit', () => {
+    // Note: async cleanup won't work in 'exit' handler, but we try anyway
+    eventHandler.close().catch(() => {});
   });
-        process.on('exit', async () => {
-          await eventHandler.close();
-          if (DEBUG_ENABLED) {
-            console.info(`${LOG_PREFIX} Closed all SMTP connections`);
-          }
-        });
-      }
-    });
+
+  // Handle termination signals (async cleanup possible)
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
 
   return {
     event: async ({ event }) => {
@@ -147,24 +130,22 @@ export const NotificationPlugin: Plugin = async (ctx) => {
       } else if (event.type === 'session.created') {
         sessionInfo = (event.properties as { info: Session }).info;
       }
+
+      const payload = eventToPayload(event, ctx.directory, sessionInfo);
+      
+      if (!payload) {
+        return;
+      }
+      if (DEBUG_ENABLED) {
+        console.info(`${LOG_PREFIX} Handling event ${payload.eventType} for session ${payload.sessionId}`);
+      }
+      try {
+        await eventHandler.handle(payload.eventType, payload);
+      } catch (error) {
+        console.error(`${LOG_PREFIX} Failed to handle event ${payload.eventType}`, error);
+      }
     },
   };
-
-  const payload = eventToPayload(event, ctx.directory, sessionInfo);
-
-    if (!payload) {
-      return;
-    }
-    if (DEBUGEnabled) {
-      console.info(`${LOG_PREFIX} Handling event ${payload.eventType} for session ${payload.sessionId}`);
-    }
-    try {
-      await eventHandler.handle(payload.eventType, payload);
-    } catch (error) {
-      console.error(`${LOG_PREFIX} Failed to handle event ${payload.eventType}`, error);
-    }
-  },
-};
 };
 
 export default NotificationPlugin;
