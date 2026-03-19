@@ -9,6 +9,7 @@ const LOOKUP_TIMEOUT_MS = 1200;
 
 export interface EmailSender {
   send: (subject: string, body: string) => Promise<void>;
+  close: () => Promise<void>;
 }
 
 function shouldRetryWithLookup(message: string): boolean {
@@ -125,16 +126,19 @@ export function createEmailSender(channel: Channel): EmailSender | null {
       // Try pre-resolved host first if DNS resolution succeeded
       const preResolvedHost = await resolveHostViaLookup(config.host);
       if (preResolvedHost && preResolvedHost !== config.host) {
+        let preResolvedTransport: nodemailer.Transporter | null = null;
         try {
           // Create temporary transport for resolved IP (can't reuse for different host)
-          const preResolvedTransport = nodemailer.createTransport(
+          preResolvedTransport = nodemailer.createTransport(
             buildTransportOptions(config, preResolvedHost)
           );
           preResolvedTransport.set('disableFileAccess', true);
           preResolvedTransport.set('disableUrlAccess', true);
           await preResolvedTransport.sendMail(mailOptions);
           return;
-        } catch {}
+        } catch {} finally {
+          preResolvedTransport?.close();
+        }
       }
 
       try {
@@ -145,16 +149,19 @@ export function createEmailSender(channel: Channel): EmailSender | null {
         if (shouldRetryWithLookup(message)) {
           const resolvedHost = await resolveHostViaLookup(config.host);
           if (resolvedHost) {
+            let fallbackTransport: nodemailer.Transporter | null = null;
             try {
               // Create temporary transport for fallback (different host)
-              const fallbackTransport = nodemailer.createTransport(
+              fallbackTransport = nodemailer.createTransport(
                 buildTransportOptions(config, resolvedHost)
               );
               fallbackTransport.set('disableFileAccess', true);
               fallbackTransport.set('disableUrlAccess', true);
               await fallbackTransport.sendMail(mailOptions);
               return;
-            } catch {}
+            } catch {} finally {
+              fallbackTransport?.close();
+            }
           }
         }
 
@@ -162,6 +169,10 @@ export function createEmailSender(channel: Channel): EmailSender | null {
         const timestamp = new Date().toISOString();
         console.error(`[${timestamp}] [${fromName}] Failed to send email:`, error);
       }
+    },
+
+    async close(): Promise<void> {
+      primaryTransport.close();
     },
   };
 }

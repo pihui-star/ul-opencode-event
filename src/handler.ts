@@ -3,10 +3,11 @@
  */
 import type { NotificationConfig, EventPayload, EventType, Channel, TemplateConfig } from './types.js';
 import { renderTemplate } from './template.js';
-import { createEmailSender } from './email.js';
+import { createEmailSender, type EmailSender } from './email.js';
 
 export interface EventHandler {
   handle: (eventType: EventType, payload: EventPayload) => Promise<void>;
+  close: () => Promise<void>;
 }
 
 // Default templates when channel doesn't have custom templates
@@ -27,16 +28,29 @@ const defaultTemplates: Record<EventType, TemplateConfig> = {
 
 /**
  * Creates an event handler that dispatches notifications to all enabled channels
+ * Senders are cached at initialization for connection reuse)
  */
 export function createEventHandler(config: NotificationConfig): EventHandler {
+  // Create and cache all senders at initialization (connection reuse)
+  const senders: Map<string, EmailSender> = new Map();
+  // map channel index to sender key for same order
+  const channelIndexMap: Map<number, string> = new Map();
+
+  for (let i = 0; i < config.channels.length; i++) {
+    const channel = config.channels[i];
+    const sender = createChannelSender(channel);
+    if (sender) {
+      const key = channel.name || `channel-${i}`;
+      senders.set(key, sender);
+      channelIndexMap.set(i, key);
+    }
+  }
+
   return {
     handle: async (eventType: EventType, payload: EventPayload): Promise<void> => {
-      // Process each channel
-      for (const channel of config.channels) {
-        // Skip disabled channels
-        if (channel.enabled === false) {
-          continue;
-        }
+      // Process each channel using cached senders
+      for (let i = 0; i < config.channels.length; i++) {
+        const channel = config.channels[i];
 
         // Check if this event type is enabled for the channel
         const eventEnabled = channel.events[eventType];
@@ -46,8 +60,8 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
 
         // Get template (channel-specific or default)
         const template = channel.templates?.[eventType] ?? defaultTemplates[eventType];
-        
-        // Prepare template variables from payload
+
+        // prepare template variables from payload
         const variables = {
           eventType: payload.eventType,
           timestamp: payload.timestamp,
@@ -58,37 +72,45 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
           duration: payload.duration,
         };
 
-        // Render templates
+        // render templates
         const subject = template.subject ? renderTemplate(template.subject, variables) : '';
         const body = template.body ? renderTemplate(template.body, variables) : '';
 
-        // Dispatch based on channel type
-        await dispatchToChannel(channel, subject, body);
+        // dispatch using cached sender
+        const key = channel.name || `channel-${i}`;
+        const sender = senders.get(key);
+        if (sender) {
+          await sender.send(subject, body);
+        }
       }
+    },
+
+    close: async (): Promise<void> => {
+      // close all cached senders (cleanup SMTP connections)
+      const closePromises = Array.from(senders.values()).map(sender => sender.close());
+      await Promise.all(closePromises);
+      senders.clear();
+      channelIndexMap.clear();
     },
   };
 }
 
 /**
- * Dispatch notification to the appropriate channel sender
+ * create a sender for the given channel type
  */
-async function dispatchToChannel(channel: Channel, subject: string, body: string): Promise<void> {
+function createChannelSender(channel: Channel): EmailSender | null {
   switch (channel.type) {
-    case 'smtp': {
-      const sender = createEmailSender(channel);
-      if (sender) {
-        await sender.send(subject, body);
-      }
-      break;
-    }
+    case 'smtp':
+      return createEmailSender(channel);
     case 'feishu':
     case 'dingtalk':
-      // Skip unsupported channel types silently
-      break;
+      // skip unsupported channel types silently
+      return null;
     default: {
-      // Log warning for unknown channel types
+      // log warning for unknown channel types
       const _exhaustiveCheck: never = channel.type;
-      console.warn(`[EventHandler] Unsupported channel type: ${_exhaustiveCheck}`);
+      console.warn(`[EventHandler] unsupported channel type: ${_exhaustiveCheck}`);
+      return null;
     }
   }
 }
