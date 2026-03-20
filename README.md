@@ -1,6 +1,28 @@
 # @ulthon/ul-opencode-event
 
-OpenCode notification plugin that sends email notifications when session events occur.
+**Never miss an OpenCode notification, even when you're away from your desk.**
+
+OpenCode multi-channel notification plugin that keeps you informed wherever you are. Perfect for remote development - get notified when tasks complete or errors occur, even if you're not at your terminal.
+
+## Why ul-opencode-event?
+
+- 🌍 **Remote Development Friendly** - Desktop notifications don't work when you're away. Our plugin sends notifications to your email (and more channels coming soon), so you'll always know when your AI coding agent finishes a task.
+- 📬 **Multi-Channel Support** - Currently supports SMTP email, with more notification channels planned (webhook, Telegram, Slack, etc.)
+- ⚡ **Real-time Alerts** - Get notified immediately when sessions complete (`idle`) or encounter errors (`error`)
+- 🔧 **Easy Configuration** - Simple JSON config with channel-level customization
+
+## Roadmap
+
+| Channel | Status | Description |
+|---------|--------|-------------|
+| ✅ SMTP (Email) | Available | Email notifications via any SMTP server |
+| 🔜 Webhook | Planned | HTTP webhook for custom integrations |
+| 🔜 Telegram | Planned | Telegram bot notifications |
+| 🔜 Slack | Planned | Slack incoming webhooks |
+| 🔜 DingTalk | Planned | 钉钉机器人 |
+| 🔜 WeChat Work | Planned | 企业微信 |
+
+**Have a channel request?** Open an issue on our [Gitee repo](https://gitee.com/augushong/ul-opencode-event)!
 
 ## Quick Start
 
