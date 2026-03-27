@@ -12,7 +12,7 @@ const sentEmails: SentEmail[] = [];
 
 // Mock the email module
 mock.module('../src/email', () => ({
-  createEmailSender: (channel: Channel) => {
+  createEmailSender: async (channel: Channel) => {
     // Return null for disabled channels
     if (channel.enabled === false) {
       return null;

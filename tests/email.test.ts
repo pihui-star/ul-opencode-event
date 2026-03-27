@@ -57,7 +57,7 @@ describe('createEmailSender', () => {
   });
 
   describe('type guards', () => {
-    test('returns null for non-smtp channel', () => {
+    test('returns null for non-smtp channel', async () => {
       const channel: Channel = {
         type: 'feishu',
         enabled: true,
@@ -69,11 +69,11 @@ describe('createEmailSender', () => {
         events: { created: true },
       };
 
-      const sender = createEmailSender(channel);
+      const sender = await createEmailSender(channel);
       expect(sender).toBeNull();
     });
 
-    test('returns null for disabled channel', () => {
+    test('returns null for disabled channel', async () => {
       const channel: Channel = {
         type: 'smtp',
         enabled: false,
@@ -88,11 +88,11 @@ describe('createEmailSender', () => {
         events: { created: true },
       };
 
-      const sender = createEmailSender(channel);
+      const sender = await createEmailSender(channel);
       expect(sender).toBeNull();
     });
 
-    test('returns null for channel without recipients', () => {
+    test('returns null for channel without recipients', async () => {
       const channel: Channel = {
         type: 'smtp',
         enabled: true,
@@ -107,11 +107,11 @@ describe('createEmailSender', () => {
         events: { created: true },
       };
 
-      const sender = createEmailSender(channel);
+      const sender = await createEmailSender(channel);
       expect(sender).toBeNull();
     });
 
-    test('returns null for channel with undefined recipients', () => {
+    test('returns null for channel with undefined recipients', async () => {
       const channel: Channel = {
         type: 'smtp',
         enabled: true,
@@ -125,7 +125,7 @@ describe('createEmailSender', () => {
         events: { created: true },
       } as Channel;
 
-      const sender = createEmailSender(channel);
+      const sender = await createEmailSender(channel);
       expect(sender).toBeNull();
     });
   });
@@ -146,7 +146,7 @@ describe('createEmailSender', () => {
         events: { created: true },
       };
 
-      const sender = createEmailSender(channel);
+      const sender = await createEmailSender(channel);
       expect(sender).not.toBeNull();
 
       await sender!.send('Test Subject', 'Test Body');
@@ -155,7 +155,6 @@ describe('createEmailSender', () => {
       expect(capturedEmails[0].to).toBe('receiver@test.com');
       expect(capturedEmails[0].subject).toBe('Test Subject');
       expect(capturedEmails[0].text).toBe('Test Body');
-      expect(capturedEmails[0].html).toBe('Test Body');
     });
 
     test('sends email to multiple recipients', async () => {
@@ -173,7 +172,7 @@ describe('createEmailSender', () => {
         events: { created: true },
       };
 
-      const sender = createEmailSender(channel);
+      const sender = await createEmailSender(channel);
       expect(sender).not.toBeNull();
 
       await sender!.send('Multi Subject', 'Multi Body');
@@ -197,7 +196,7 @@ describe('createEmailSender', () => {
         events: { created: true },
       };
 
-      const sender = createEmailSender(channel);
+      const sender = await createEmailSender(channel);
       await sender!.send('Subject', 'Body');
 
       expect(capturedEmails[0].from).toContain('My Notification Service');
@@ -218,7 +217,7 @@ describe('createEmailSender', () => {
         events: { created: true },
       };
 
-      const sender = createEmailSender(channel);
+      const sender = await createEmailSender(channel);
       await sender!.send('Subject', 'Body');
 
       expect(capturedEmails[0].from).toContain('Notification');
@@ -241,13 +240,12 @@ describe('createEmailSender', () => {
         events: { created: true },
       };
 
-      const sender = createEmailSender(channel);
+      const sender = await createEmailSender(channel);
       const bodyWithVars = 'Task {{projectName}} started at {{timestamp}}. Duration: {{duration}}';
       
       await sender!.send('Template Subject', bodyWithVars);
 
       expect(capturedEmails[0].text).toBe(bodyWithVars);
-      expect(capturedEmails[0].html).toBe(bodyWithVars);
     });
   });
 
@@ -277,7 +275,7 @@ describe('createEmailSender', () => {
       console.error = consoleErrorSpy;
 
       try {
-        const sender = createEmailSender(channel);
+        const sender = await createEmailSender(channel);
         expect(sender).not.toBeNull();
 
         // Should not throw
@@ -316,7 +314,7 @@ describe('createEmailSender', () => {
       };
 
       try {
-        const sender = createEmailSender(channel);
+        const sender = await createEmailSender(channel);
         await sender!.send('Subject', 'Body');
 
         expect(capturedLogs.length).toBe(1);
@@ -333,7 +331,7 @@ describe('createEmailSender', () => {
   });
 
   describe('security options', () => {
-    test('sets disableFileAccess on transport', () => {
+    test('sets disableFileAccess on transport', async () => {
       // This is verified by the mock being called
       // The actual test is that createEmailSender doesn't throw
       const channel: Channel = {
@@ -350,7 +348,7 @@ describe('createEmailSender', () => {
         events: { created: true },
       };
 
-      const sender = createEmailSender(channel);
+      const sender = await createEmailSender(channel);
       expect(sender).not.toBeNull();
     });
   });

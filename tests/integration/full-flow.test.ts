@@ -24,7 +24,7 @@ let mockSendBehavior: (() => Promise<void>) | null = null;
 // Mock the email module BEFORE importing handler
 // This avoids the nodemailer caching issue
 mock.module('../../src/email', () => ({
-  createEmailSender: (channel: Channel): EmailSender | null => {
+  createEmailSender: async (channel: Channel): Promise<EmailSender | null> => {
     // Type guard: return null for non-smtp channels
     if (channel.type !== 'smtp') {
       return null;
@@ -502,7 +502,7 @@ describe('EmailSender Integration', () => {
 
   test('createEmailSender should work with valid channel', async () => {
     const channel = createMockChannel({ name: 'Direct Email Test' });
-    const sender = createEmailSender(channel);
+    const sender = await createEmailSender(channel);
 
     expect(sender).not.toBeNull();
     await sender!.send('Direct Subject', 'Direct Body');
@@ -512,20 +512,20 @@ describe('EmailSender Integration', () => {
     expect(capturedEmails[0].text).toBe('Direct Body');
   });
 
-  test('createEmailSender should return null for disabled channel', () => {
+  test('createEmailSender should return null for disabled channel', async () => {
     const channel = createMockChannel({ enabled: false });
-    const sender = createEmailSender(channel);
+    const sender = await createEmailSender(channel);
     expect(sender).toBeNull();
   });
 
-  test('createEmailSender should return null for non-smtp channel', () => {
+  test('createEmailSender should return null for non-smtp channel', async () => {
     const channel: Channel = {
       type: 'feishu',
       enabled: true,
       config: { webhook: 'https://example.com/webhook' },
       events: { idle: true },
     };
-    const sender = createEmailSender(channel);
+    const sender = await createEmailSender(channel);
     expect(sender).toBeNull();
   });
 });

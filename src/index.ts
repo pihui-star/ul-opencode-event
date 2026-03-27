@@ -1,6 +1,6 @@
 /**
- * * Notification Plugin Entry Point
- * * Sends email notifications when session events occur
+ * Notification Plugin Entry Point
+ * Sends email notifications when session events occur
  */
 import type { Plugin } from '@opencode-ai/plugin';
 import type { Event, Session } from '@opencode-ai/sdk';
@@ -98,24 +98,6 @@ export const NotificationPlugin: Plugin = async (ctx) => {
   if (DEBUG_ENABLED) {
     console.info(`${LOG_PREFIX} Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
   }
-
-  // Register cleanup handlers for graceful shutdown
-  const cleanup = async () => {
-    await eventHandler.close();
-    if (DEBUG_ENABLED) {
-      console.info(`${LOG_PREFIX} Closed all SMTP connections`);
-    }
-  };
-
-  // Handle process exit (sync handler, cannot be async)
-  process.on('exit', () => {
-    // Note: async cleanup won't work in 'exit' handler, but we try anyway
-    eventHandler.close().catch(() => {});
-  });
-
-  // Handle termination signals (async cleanup possible)
-  process.on('SIGINT', cleanup);
-  process.on('SIGTERM', cleanup);
 
   return {
     event: async ({ event }) => {

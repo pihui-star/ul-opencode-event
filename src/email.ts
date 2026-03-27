@@ -1,68 +1,68 @@
 /**
  * Email sender module for SMTP-based notifications
+ *
+ * nodemailer is loaded lazily to avoid top-level import issues
+ * that can conflict with oh-my-opencode's bundled nodemailer.
  */
-import * as nodemailer from 'nodemailer';
-import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
+import * as dns from 'dns';
+import * as net from 'net';
 import type { Channel, SMTPConfig } from './types.js';
-const LOOKUP_TIMEOUT_MS = 1200;
+
+const LOG_PREFIX = '[ul-opencode-event]';
+const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env.UL_OPENCODE_EVENT_DEBUG === 'true';
+
+// Lazy-loaded nodemailer cache
+let nodemailerModule: typeof import('nodemailer') | null = null;
+
+async function getNodemailer() {
+  if (!nodemailerModule) {
+    nodemailerModule = await import('nodemailer');
+  }
+  return nodemailerModule;
+}
 
 export interface EmailSender {
   send: (subject: string, body: string) => Promise<void>;
   close: () => Promise<void>;
 }
 
-function shouldRetryWithLookup(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes('querya etimeout') ||
-    normalized.includes('queryaaaa etimeout') ||
-    normalized.includes('enotfound') ||
-    normalized.includes('eai_again')
-  );
-}
-
+/**
+ * Resolve hostname via DNS lookup, returning the first resolved address.
+ * Returns null if resolution fails.
+ */
 async function resolveHostViaLookup(host: string): Promise<string | null> {
-  if (isIP(host) !== 0) {
-    return host;
+  try {
+    const result = await dns.promises.lookup(host);
+    return result.address;
+  } catch {
+    return null;
   }
-
-  const withTimeout = <T>(task: Promise<T>, timeoutMs: number): Promise<T> => {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`lookup timeout after ${timeoutMs}ms`)), timeoutMs);
-      task.then(
-        value => {
-          clearTimeout(timer);
-          resolve(value);
-        },
-        error => {
-          clearTimeout(timer);
-          reject(error);
-        }
-      );
-    });
-  };
-
-  try {
-    const addr = await withTimeout(lookup(host, { family: 4 }), LOOKUP_TIMEOUT_MS);
-    return addr.address;
-  } catch {}
-
-  try {
-    const addr = await withTimeout(lookup(host, { family: 6 }), LOOKUP_TIMEOUT_MS);
-    return addr.address;
-  } catch {}
-
-  return null;
 }
 
 /**
- * Creates nodemailer transport options
+ * Check if an error message suggests DNS resolution failure,
+ * indicating we should retry with a pre-resolved IP address.
  */
-function buildTransportOptions(config: SMTPConfig, hostOverride?: string): object {
-  const host = hostOverride || config.host;
-  const transportOptions: any = {
-    host,
+function shouldRetryWithLookup(errorMessage: string): boolean {
+  const retryPatterns = [
+    'getaddrinfo',
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'lookup',
+    'dns',
+  ];
+  return retryPatterns.some((pattern) => errorMessage.toLowerCase().includes(pattern));
+}
+
+/**
+ * Build nodemailer transport options, optionally using a pre-resolved host.
+ */
+function buildTransportOptions(
+  config: SMTPConfig,
+  resolvedHost?: string
+): Record<string, unknown> {
+  const options: Record<string, unknown> = {
+    host: resolvedHost || config.host,
     port: config.port,
     secure: config.secure,
     auth: {
@@ -72,94 +72,84 @@ function buildTransportOptions(config: SMTPConfig, hostOverride?: string): objec
   };
 
   if (config.localAddress) {
-    transportOptions.localAddress = config.localAddress;
+    options.localAddress = config.localAddress;
   }
 
-  if (hostOverride && hostOverride !== config.host) {
-    transportOptions.tls = {
+  if (resolvedHost && resolvedHost !== config.host) {
+    options.tls = {
       servername: config.host,
     };
   }
 
-  return transportOptions;
+  return options;
 }
 
 /**
- * Creates an email sender for the given SMTP channel
- * @param channel - The channel configuration (must be SMTP type)
- * @returns EmailSender instance or null if channel is invalid/disabled
+ * Create an email sender for the given SMTP channel.
+ * nodemailer is imported dynamically to avoid blocking the plugin loading.
  */
-export function createEmailSender(channel: Channel): EmailSender | null {
-  // Type guard: return null for non-smtp channels
+export async function createEmailSender(channel: Channel): Promise<EmailSender | null> {
   if (channel.type !== 'smtp') {
     return null;
   }
 
-  // Return null for disabled channels
   if (channel.enabled === false) {
     return null;
   }
 
-  // Return null if no recipients configured
   if (!channel.recipients || channel.recipients.length === 0) {
     return null;
   }
 
   const config = channel.config as SMTPConfig;
   const fromName = channel.name || 'Notification';
+  const fromAddress = config.auth.user;
 
-  // Create and cache the primary transporter (connection reuse)
-  const primaryTransport = nodemailer.createTransport(buildTransportOptions(config));
-  primaryTransport.set('disableFileAccess', true);
-  primaryTransport.set('disableUrlAccess', true);
+  // Load nodemailer lazily
+  const nodemailer = await getNodemailer();
+
+  // Create primary transporter
+  const transporter = nodemailer.createTransport(buildTransportOptions(config));
+  transporter.set('disableFileAccess', true);
+  transporter.set('disableUrlAccess', true);
 
   return {
-    async send(subject: string, body: string): Promise<void> {
+    send: async (subject: string, body: string): Promise<void> => {
       const mailOptions = {
-        from: `"${fromName}" <${config.auth.user}>`,
+        from: `"${fromName}" <${fromAddress}>`,
         to: channel.recipients!.join(', '),
         subject,
-        html: body,
         text: body,
       };
 
-      // Try pre-resolved host first if DNS resolution succeeded
-      const preResolvedHost = await resolveHostViaLookup(config.host);
-      if (preResolvedHost && preResolvedHost !== config.host) {
-        let preResolvedTransport: nodemailer.Transporter | null = null;
-        try {
-          // Create temporary transport for resolved IP (can't reuse for different host)
-          preResolvedTransport = nodemailer.createTransport(
-            buildTransportOptions(config, preResolvedHost)
-          );
-          preResolvedTransport.set('disableFileAccess', true);
-          preResolvedTransport.set('disableUrlAccess', true);
-          await preResolvedTransport.sendMail(mailOptions);
-          return;
-        } catch {} finally {
-          preResolvedTransport?.close();
-        }
-      }
-
+      // Try primary transport first (connection reuse)
       try {
-        // Use cached primary transporter (connection reuse)
-        await primaryTransport.sendMail(mailOptions);
+        await transporter.sendMail(mailOptions);
+        if (DEBUG_ENABLED) {
+          console.info(`${LOG_PREFIX} [${fromName}] Email sent successfully`);
+        }
+        return;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (shouldRetryWithLookup(message)) {
+          // DNS failure - retry with pre-resolved IP
           const resolvedHost = await resolveHostViaLookup(config.host);
-          if (resolvedHost) {
-            let fallbackTransport: nodemailer.Transporter | null = null;
+          if (resolvedHost && !net.isIP(config.host)) {
+            let fallbackTransport: import('nodemailer').Transporter | null = null;
             try {
-              // Create temporary transport for fallback (different host)
               fallbackTransport = nodemailer.createTransport(
                 buildTransportOptions(config, resolvedHost)
               );
               fallbackTransport.set('disableFileAccess', true);
               fallbackTransport.set('disableUrlAccess', true);
               await fallbackTransport.sendMail(mailOptions);
+              if (DEBUG_ENABLED) {
+                console.info(`${LOG_PREFIX} [${fromName}] Email sent via fallback (resolved: ${resolvedHost})`);
+              }
               return;
-            } catch {} finally {
+            } catch {
+              // Fallback also failed, fall through to silent error logging
+            } finally {
               fallbackTransport?.close();
             }
           }
@@ -171,8 +161,8 @@ export function createEmailSender(channel: Channel): EmailSender | null {
       }
     },
 
-    async close(): Promise<void> {
-      primaryTransport.close();
+    close: async (): Promise<void> => {
+      transporter.close();
     },
   };
 }
