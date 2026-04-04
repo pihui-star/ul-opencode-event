@@ -34,7 +34,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         eventType: 'idle' as EventType,
         sessionId: event.properties.sessionID,
         message: 'Task completed successfully',
-        duration: sessionInfo ? formatDuration(sessionInfo.time.updated - sessionInfo.time.created) : undefined,
+        duration: sessionInfo ? formatDuration(Date.now() - sessionInfo.time.created) : undefined,
       };
     }
     case 'session.error': {
