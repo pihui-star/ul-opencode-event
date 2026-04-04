@@ -177,7 +177,13 @@ export function loadConfig(): NotificationConfig {
   // Filter enabled channels
   const enabledChannels = filterEnabledChannels(mergedChannels);
   
+  // Merge top-level fields (language, timezone) — project config takes priority
+  const mergedLanguage = projectConfig?.language ?? globalConfig?.language;
+  const mergedTimezone = projectConfig?.timezone ?? globalConfig?.timezone;
+
   return {
     channels: enabledChannels,
+    ...(mergedLanguage !== undefined && { language: mergedLanguage }),
+    ...(mergedTimezone !== undefined && { timezone: mergedTimezone }),
   };
 }

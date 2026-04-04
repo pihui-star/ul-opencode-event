@@ -459,7 +459,15 @@ function loadConfigForTesting(): NotificationConfig {
     mergedChannels.push(projectChannel);
   }
 
-  return { channels: mergedChannels };
+  // Merge top-level fields (language, timezone) — project config takes priority
+  const mergedLanguage = projectConfig?.language ?? globalConfig?.language;
+  const mergedTimezone = projectConfig?.timezone ?? globalConfig?.timezone;
+
+  return {
+    channels: mergedChannels,
+    ...(mergedLanguage !== undefined && { language: mergedLanguage }),
+    ...(mergedTimezone !== undefined && { timezone: mergedTimezone }),
+  };
 }
 
 /**
