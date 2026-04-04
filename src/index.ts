@@ -14,9 +14,9 @@ const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env
 /**
  * Convert SDK Event to internal EventPayload
  */
-function eventToPayload(event: Event, projectName: string, sessionInfo?: Session): EventPayload | null {
+function eventToPayload(event: Event, projectName: string, sessionInfo?: Session, timezone?: string): EventPayload | null {
   const basePayload = {
-    timestamp: new Date().toISOString(),
+    timestamp: formatTimestamp(new Date().toISOString(), timezone),
     projectName,
     sessionId: '',
   };
@@ -47,8 +47,86 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         error: errorObj ? formatError(errorObj) : 'Unknown error',
       };
     }
-    default:
+
+    default: {
+      // 处理 SDK Event 联合类型中未声明、但运行时可能收到的事件
+      const rawType = event.type as string;
+      const rawProps = event.properties as Record<string, unknown>;
+
+      // question.asked -- AI 向用户提问（主要目标，默认开启）
+      if (rawType === 'question.asked') {
+        const questions = rawProps.questions as Array<Record<string, unknown>> | undefined;
+        const firstQ = questions?.[0];
+        return {
+          ...basePayload,
+          eventType: 'question' as EventType,
+          sessionId: (rawProps.sessionID as string) || '',
+          title: firstQ?.header ? String(firstQ.header) : undefined,
+          questionText: firstQ?.question ? String(firstQ.question) : undefined,
+          options: firstQ?.options ? JSON.stringify(firstQ.options) : undefined,
+        };
+      }
+
+      // permission.updated -- 权限确认请求（默认开启）
+      if (rawType === 'permission.updated') {
+        const perm = rawProps as { sessionID?: string; title?: string; type?: string };
+        return {
+          ...basePayload,
+          eventType: 'permission' as EventType,
+          sessionId: perm.sessionID || '',
+          title: perm.title,
+          permissionType: perm.type,
+        };
+      }
+
+      // session.status -- 会话状态变化（默认关闭）
+      if (rawType === 'session.status') {
+        const statusEvent = rawProps as { sessionID?: string; status?: { type?: string } };
+        return {
+          ...basePayload,
+          eventType: 'status' as EventType,
+          sessionId: statusEvent.sessionID || '',
+          statusType: statusEvent.status?.type,
+        };
+      }
+
+      // command.executed -- shell 命令执行完毕（默认关闭）
+      if (rawType === 'command.executed') {
+        const cmd = rawProps as { name?: string; arguments?: string; sessionID?: string };
+        return {
+          ...basePayload,
+          eventType: 'command' as EventType,
+          sessionId: cmd.sessionID || '',
+          commandName: cmd.name,
+          arguments: cmd.arguments,
+        };
+      }
+
+      // file.edited -- 文件被编辑（默认关闭）
+      if (rawType === 'file.edited') {
+        const fileEvt = rawProps as { file?: string };
+        return {
+          ...basePayload,
+          eventType: 'fileEdited' as EventType,
+          filePath: fileEvt.file,
+        };
+      }
+
+      // todo.updated -- Todo 列表更新（默认关闭）
+      if (rawType === 'todo.updated') {
+        const todoEvt = rawProps as { todos?: Array<{ content: string; status: string }> | undefined; sessionID?: string };
+        const summary = todoEvt.todos
+          ?.map(t => `[${t.status}] ${t.content}`).join('\n');
+        return {
+          ...basePayload,
+          eventType: 'todo' as EventType,
+          sessionId: todoEvt.sessionID || '',
+          todoSummary: summary,
+        };
+      }
+
       return null;
+    }
   }
 }
 
@@ -61,6 +139,33 @@ function formatDuration(ms: number): string {
   const minutes = Math.floor(ms / 60000);
   const seconds = Math.round((ms % 60000) / 1000);
   return `${minutes}m ${seconds}s`;
+}
+
+/**
+ * Format timestamp with optional timezone conversion.
+ * When timezone is not configured, returns original ISO string (backward compatible).
+ * When timezone is configured, returns localized time string using Intl.DateTimeFormat.
+ * Invalid timezone strings gracefully fall back to UTC.
+ */
+function formatTimestamp(isoString: string, timezone?: string): string {
+  if (!timezone) {
+    return isoString;
+  }
+  try {
+    const date = new Date(isoString);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date);
+  } catch {
+    return isoString;
+  }
 }
 
 /**
@@ -113,7 +218,7 @@ export const NotificationPlugin: Plugin = async (ctx) => {
         sessionInfo = (event.properties as { info: Session }).info;
       }
 
-      const payload = eventToPayload(event, ctx.directory, sessionInfo);
+      const payload = eventToPayload(event, ctx.directory, sessionInfo, config.timezone);
       
       if (!payload) {
         return;

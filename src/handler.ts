@@ -28,6 +28,30 @@ const defaultTemplates: Record<EventType, TemplateConfig> = {
     subject: '[OpenCode] Task Error - {{projectName}}',
     body: 'Error at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nError: {{error}}',
   },
+  question: {
+    subject: '[OpenCode] Question - {{projectName}}',
+    body: 'OpenCode has a question at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nQuestion: {{title}}\n{{questionText}}',
+  },
+  permission: {
+    subject: '[OpenCode] Permission Required - {{projectName}}',
+    body: 'Permission needed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\n{{title}} ({{permissionType}})',
+  },
+  status: {
+    subject: '[OpenCode] Status Change - {{projectName}}',
+    body: 'Session status changed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nStatus: {{statusType}}',
+  },
+  command: {
+    subject: '[OpenCode] Command Executed - {{projectName}}',
+    body: 'Command executed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nCommand: {{commandName}} {{arguments}}',
+  },
+  fileEdited: {
+    subject: '[OpenCode] File Edited - {{projectName}}',
+    body: 'File edited at {{timestamp}}\nProject: {{projectName}}\nFile: {{filePath}}',
+  },
+  todo: {
+    subject: '[OpenCode] Todos Updated - {{projectName}}',
+    body: 'Todos updated at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\n{{todoSummary}}',
+  },
 };
 
 /**
@@ -84,6 +108,16 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
           message: payload.message,
           error: payload.error,
           duration: payload.duration,
+          // 新增字段
+          title: payload.title,
+          questionText: payload.questionText,
+          options: payload.options,
+          permissionType: payload.permissionType,
+          statusType: payload.statusType,
+          commandName: payload.commandName,
+          arguments: payload.arguments,
+          filePath: payload.filePath,
+          todoSummary: payload.todoSummary,
         };
 
         // Render templates
