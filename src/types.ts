@@ -8,6 +8,7 @@
  */
 export interface NotificationConfig {
   channels: Channel[];
+  timezone?: string;        // IANA 时区标识符，如 "Asia/Shanghai"
 }
 
 /**
@@ -76,6 +77,12 @@ export interface EventConfig {
   created?: boolean;
   idle?: boolean;
   error?: boolean;
+  question?: boolean;      // 默认开启 - AI提问
+  permission?: boolean;    // 默认开启 - 权限确认
+  status?: boolean;        // 默认关闭 - 状态变化
+  command?: boolean;       // 默认关闭 - 命令执行
+  fileEdited?: boolean;    // 默认关闭 - 文件修改
+  todo?: boolean;          // 默认关闭 - Todo更新
 }
 
 /**
@@ -85,6 +92,12 @@ export interface ChannelTemplates {
   created?: TemplateConfig;
   idle?: TemplateConfig;
   error?: TemplateConfig;
+  question?: TemplateConfig;
+  permission?: TemplateConfig;
+  status?: TemplateConfig;
+  command?: TemplateConfig;
+  fileEdited?: TemplateConfig;
+  todo?: TemplateConfig;
 }
 
 /**
@@ -106,9 +119,18 @@ export interface EventPayload {
   message?: string;
   error?: string;
   duration?: string;
+  title?: string;           // question/permission 的标题
+  questionText?: string;    // question 的完整问题文本
+  options?: string;         // question 的选项摘要(JSON)
+  permissionType?: string;  // permission 的类型(bash/edit等)
+  statusType?: string;      // status 的类型(idle/busy/retry)
+  commandName?: string;     // 执行的命令名
+  arguments?: string;       // 命令参数
+  filePath?: string;        // 被编辑的文件路径
+  todoSummary?: string;     // todo列表摘要
 }
 
 /**
  * Supported event types
  */
-export type EventType = 'created' | 'idle' | 'error';
+export type EventType = 'created' | 'idle' | 'error' | 'question' | 'permission' | 'status' | 'command' | 'fileEdited' | 'todo';
