@@ -354,4 +354,86 @@ describe('createEventHandler', () => {
     expect(sentEmails[0].subject).toBe('Custom: test-project Started');
     expect(sentEmails[0].body).toBe('Custom body for test-project');
   });
+
+  // --- Multi-language template tests ---
+
+  test('Chinese locale produces Chinese default templates', async () => {
+    const config: NotificationConfig = {
+      language: 'zh',
+      channels: [
+        createMockChannel({ name: 'Chinese Channel' }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+
+    // Test idle event - should use Chinese template
+    await handler.handle('idle', createPayload('idle', { message: '完成', duration: '5m' }));
+    expect(sentEmails.length).toBe(1);
+    expect(sentEmails[0].subject).toContain('任务已完成');
+    expect(sentEmails[0].body).toContain('耗时');
+
+    sentEmails.length = 0;
+
+    // Test error event - should use Chinese template
+    await handler.handle('error', createPayload('error', { error: '连接超时' }));
+    expect(sentEmails.length).toBe(1);
+    expect(sentEmails[0].subject).toContain('任务出错');
+    expect(sentEmails[0].body).toContain('错误信息');
+  });
+
+  test('English locale (default) produces English default templates', async () => {
+    // Explicitly set English
+    const config: NotificationConfig = {
+      language: 'en',
+      channels: [
+        createMockChannel({ name: 'English Channel' }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+
+    await handler.handle('idle', createPayload('idle', { message: 'Done', duration: '5m' }));
+    expect(sentEmails.length).toBe(1);
+    expect(sentEmails[0].subject).toContain('Task Completed');
+    expect(sentEmails[0].body).toContain('Duration');
+  });
+
+  test('undefined language falls back to English', async () => {
+    // No language field specified - should default to English
+    const config: NotificationConfig = {
+      channels: [
+        createMockChannel({ name: 'No Language Channel' }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+
+    await handler.handle('created', createPayload('created'));
+    expect(sentEmails.length).toBe(1);
+    expect(sentEmails[0].subject).toContain('Task Started');
+  });
+
+  test('custom templates override locale defaults', async () => {
+    const config: NotificationConfig = {
+      language: 'zh',
+      channels: [
+        createMockChannel({
+          name: 'Override Channel',
+          templates: {
+            idle: {
+              subject: '[自定义] {{projectName}} 完成',
+              body: '自定义内容: {{message}}',
+            },
+          },
+        }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+    await handler.handle('idle', createPayload('idle', { message: '测试' }));
+
+    expect(sentEmails[0].subject).toBe('[自定义] test-project 完成');
+    expect(sentEmails[0].body).toBe('自定义内容: 测试');
+  });
 });

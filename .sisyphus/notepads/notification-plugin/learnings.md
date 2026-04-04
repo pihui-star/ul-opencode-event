@@ -265,4 +265,56 @@ import { createEmailSender } from '../../src/email'; // Gets mocked version
 "- Template rendering: PASS (variables replaced correctly)"  
 "- Event handling: PASS (all event types work)"  
 "- Build: PASS (40 modules bundled successfully)"  
-"- Type check: PASS (no type errors)" 
+"- Type check: PASS (no type errors)
+
+## 2026-04-04: Task 5 - 测试全覆盖与集成验证
+
+### 新增测试统计
+- 原有测试: 8 个（覆盖 created/idle/error 事件）
+- 新增测试: 26 个（覆盖 7 种新事件 + formatTimestamp + 边界 + 集成）
+- 总计测试: 34 个，全部通过
+
+### 测试分组明细
+1. **formatTimestamp 测试组** (6 tests): Shanghai/UTC/America/New_York 时区转换、无时区向后兼容、无效时区降级
+2. **question.asked 事件** (3 tests): 正向(提取 title/questionText)、空 questions 数组、多 question 取第一个
+3. **permission.updated 事件** (3 tests): 正向(bash 类型)、无 type 字段、edit 类型
+4. **session.status 事件** (3 tests): busy 状态、status 对象缺失、retry 状态
+5. **command.executed 事件** (3 tests): name+arguments、仅 name 无 arguments、空字符串 arguments
+6. **file.edited 事件** (3 tests): filePath 提取、file 字段缺失、嵌套路径
+7. **todo.updated 事件** (3 tests): todoSummary 格式、空数组、单条目
+8. **扩展事件默认关闭** (1 test): 显式 false 不发送通知
+9. **跨功能集成** (2 tests): timezone+多事件一致性、顺序触发无干扰
+
+### 关键技术发现
+
+#### formatTimestamp 实现细节
+- 内部函数，未导出，通过集成测试间接验证
+- 使用 `Intl.DateTimeFormat('en-CA', { timeZone, hour12: false })` 格式化
+- **输出格式**: `YYYY-MM-DD, HH:mm:ss` (注意是**逗号+空格**分隔日期和时间，不是 'T')
+- 无 timezone 参数 → 返回原始 ISO 字符串（含 'T' 分隔符）
+- 无效 timezone → try-catch 降级返回 ISO 字符串，不崩溃
+
+#### config mock 必须透传 timezone
+- 原始 config mock 只返回 `{ channels }`
+- `eventToPayload()` 第 4 个参数从 `config.timezone` 获取
+- 必须扩展 mock 返回 `{ channels, timezone }` 才能测试时区功能
+
+#### `resolves.not.toThrow()` 在 bun:test 中的陷阱
+- `hooks.event!()` 返回 `Promise<void>` → resolve 为 `undefined`
+- `expect(Promise<void>).resolves.not.toThrow()` 在 bun 中对 undefined 值会报 "Thrown value: undefined"
+- **正确写法**: 直接 `await hooks.event!({ event })` 不包 expect，或用 try-catch
+
+#### 默认模板不含 {{options}} 字段
+- question 模板 body: `'...Question: {{title}}\n{{questionText}}'`
+- options 虽然 payload 中有 JSON.stringify 值，但模板未使用该变量
+- 断言时不应该检查 options 相关内容
+
+#### not.toContain('T') 的误报风险
+- 模板文本中包含字母 T（如 "Task", "Started" 等）
+- 用 `not.toContain('T')` 验证非 ISO 格式不可靠
+- **正确做法**: 用正则匹配目标格式（如 `, \d{2}:\d{2}:\d{2}`）来证明时区转换生效
+
+#### handler 的事件过滤逻辑
+- `channel.events[eventType] === false` 才跳过
+- `undefined`（未配置）不会跳过 → 会处理并发送通知
+- 所以"默认关闭"需要显式设置 `false` 来测试" 

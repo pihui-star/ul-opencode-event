@@ -6,6 +6,7 @@ import type { Plugin } from '@opencode-ai/plugin';
 import type { Event, Session } from '@opencode-ai/sdk';
 import { loadConfig } from './config.js';
 import { createEventHandler, type EventHandler } from './handler.js';
+import { getDefaultTimezone } from './locales.js';
 import type { EventPayload, EventType } from './types.js';
 
 const LOG_PREFIX = '[ul-opencode-event]';
@@ -218,7 +219,8 @@ export const NotificationPlugin: Plugin = async (ctx) => {
         sessionInfo = (event.properties as { info: Session }).info;
       }
 
-      const payload = eventToPayload(event, ctx.directory, sessionInfo, config.timezone);
+      const resolvedTimezone = config.timezone ?? getDefaultTimezone(config.language);
+      const payload = eventToPayload(event, ctx.directory, sessionInfo, resolvedTimezone);
       
       if (!payload) {
         return;

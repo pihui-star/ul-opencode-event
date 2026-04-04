@@ -4,11 +4,17 @@
  */
 
 /**
+ * Supported locale languages for default notification templates
+ */
+export type LocaleType = 'zh' | 'en';
+
+/**
  * Main configuration interface for the notification plugin
  */
 export interface NotificationConfig {
   channels: Channel[];
   timezone?: string;        // IANA 时区标识符，如 "Asia/Shanghai"
+  language?: LocaleType;    // 默认提示模板语言 (默认 'en')
 }
 
 /**

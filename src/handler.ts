@@ -6,6 +6,7 @@
  */
 import type { NotificationConfig, EventPayload, EventType, TemplateConfig } from './types.js';
 import { renderTemplate } from './template.js';
+import { getDefaultTemplates } from './locales.js';
 
 import type { EmailSender } from './email.js';
 
@@ -13,46 +14,6 @@ export interface EventHandler {
   handle: (eventType: EventType, payload: EventPayload) => Promise<void>;
   close: () => Promise<void>;
 }
-
-// Default templates when channel doesn't have custom templates
-const defaultTemplates: Record<EventType, TemplateConfig> = {
-  created: {
-    subject: '[OpenCode] Task Started - {{projectName}}',
-    body: 'Task started at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}',
-  },
-  idle: {
-    subject: '[OpenCode] Task Completed - {{projectName}}',
-    body: 'Task completed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nMessage: {{message}}\nDuration: {{duration}}',
-  },
-  error: {
-    subject: '[OpenCode] Task Error - {{projectName}}',
-    body: 'Error at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nError: {{error}}',
-  },
-  question: {
-    subject: '[OpenCode] Question - {{projectName}}',
-    body: 'OpenCode has a question at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nQuestion: {{title}}\n{{questionText}}',
-  },
-  permission: {
-    subject: '[OpenCode] Permission Required - {{projectName}}',
-    body: 'Permission needed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\n{{title}} ({{permissionType}})',
-  },
-  status: {
-    subject: '[OpenCode] Status Change - {{projectName}}',
-    body: 'Session status changed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nStatus: {{statusType}}',
-  },
-  command: {
-    subject: '[OpenCode] Command Executed - {{projectName}}',
-    body: 'Command executed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nCommand: {{commandName}} {{arguments}}',
-  },
-  fileEdited: {
-    subject: '[OpenCode] File Edited - {{projectName}}',
-    body: 'File edited at {{timestamp}}\nProject: {{projectName}}\nFile: {{filePath}}',
-  },
-  todo: {
-    subject: '[OpenCode] Todos Updated - {{projectName}}',
-    body: 'Todos updated at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\n{{todoSummary}}',
-  },
-};
 
 /**
  * Creates an event handler that dispatches notifications to all enabled channels.
@@ -62,6 +23,9 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
   // Lazy sender cache - created on first use
   const senders: Map<string, EmailSender> = new Map();
   let sendersInitialized = false;
+
+  // Resolve locale-aware default templates at creation time
+  const defaultTemplates = getDefaultTemplates(config.language);
 
   return {
     handle: async (eventType: EventType, payload: EventPayload): Promise<void> => {
