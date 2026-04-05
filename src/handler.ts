@@ -10,6 +10,22 @@ import { getDefaultTemplates } from './locales.js';
 
 import type { EmailSender } from './email.js';
 
+/**
+ * 事件默认开关配置
+ * 未在配置文件中显式指定的事件，按此默认值决定是否发送通知
+ */
+const EVENT_DEFAULTS: Record<EventType, boolean> = {
+  created: true,
+  idle: true,
+  error: true,
+  question: true,
+  permission: true,
+  status: false,
+  command: false,
+  fileEdited: false,
+  todo: false,
+};
+
 export interface EventHandler {
   handle: (eventType: EventType, payload: EventPayload) => Promise<void>;
   close: () => Promise<void>;
@@ -55,8 +71,10 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
         const channel = config.channels[i];
 
         // Check if this event type is enabled for the channel
-        const eventEnabled = channel.events[eventType];
-        if (eventEnabled === false) {
+        // 显式配置优先，未配置时使用默认值
+        const eventConfig = channel.events[eventType];
+        const eventEnabled = eventConfig ?? EVENT_DEFAULTS[eventType];
+        if (!eventEnabled) {
           continue;
         }
 

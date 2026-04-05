@@ -80,15 +80,15 @@ export interface DingtalkConfig {
  * Event subscription configuration
  */
 export interface EventConfig {
-  created?: boolean;
-  idle?: boolean;
-  error?: boolean;
-  question?: boolean;      // 默认开启 - AI提问
-  permission?: boolean;    // 默认开启 - 权限确认
-  status?: boolean;        // 默认关闭 - 状态变化
-  command?: boolean;       // 默认关闭 - 命令执行
-  fileEdited?: boolean;    // 默认关闭 - 文件修改
-  todo?: boolean;          // 默认关闭 - Todo更新
+  created?: boolean;       // 默认开启 - 新会话创建
+  idle?: boolean;         // 默认开启 - 会话完成
+  error?: boolean;        // 默认开启 - 会话出错
+  question?: boolean;     // 默认开启 - AI提问
+  permission?: boolean;   // 默认开启 - 权限确认
+  status?: boolean;       // 默认关闭 - 状态变化
+  command?: boolean;      // 默认关闭 - 命令执行
+  fileEdited?: boolean;   // 默认关闭 - 文件修改
+  todo?: boolean;         // 默认关闭 - Todo更新
 }
 
 /**
