@@ -89,7 +89,7 @@ export interface DingtalkConfig {
   /** @mention configuration for DingTalk messages */
   at?: {
     /** Mobile numbers to @mention */
-    atMobiles?: string;
+    atMobiles?: string[];
     /** Whether to @mention all members */
     atAll?: boolean;
   };

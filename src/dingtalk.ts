@@ -103,7 +103,7 @@ export function createDingTalkFormatter(config: DingtalkConfig): ChannelFormatte
       const processedLines: string[] = [];
 
       for (const line of lines) {
-        const trimmed = line;
+        const trimmed = line.trim();
 
         // Check for key: value pattern -> **key**: value
         const kvMatch = trimmed.match(KEY_VALUE_PATTERN);
@@ -152,23 +152,6 @@ export function createDingTalkFormatter(config: DingtalkConfig): ChannelFormatte
 
 const FETCH_TIMEOUT_MS = 10_000;
 
-/**
- * Build the webhook URL with optional signing parameters.
- *
- * If a secret is configured, appends timestamp + sign query parameters.
- * Handles URLs that may already have query parameters.
- */
-function buildSignedUrl(webhook: string, secret?: string): string {
-  if (!secret) {
-    return webhook;
-  }
-
-  const timestamp = String(Date.now());
-  // generateSign is async but we need sync URL construction here -
-  // we'll handle signing in send() instead where we can await
-  // For now, just mark that signing is needed
-  return webhook;
-}
 
 /**
  * Create a DingTalk webhook sender for the given channel configuration.
