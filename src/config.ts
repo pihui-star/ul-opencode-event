@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { NotificationConfig, Channel } from './types.js';
+import type { NotificationConfig, Channel, SessionType } from './types.js';
+import { DEFAULT_SESSION_TYPES } from './types.js';
 
 const SUPPORTED_CHANNEL_TYPES = ['smtp'] as const;
 const LOG_PREFIX = '[ul-opencode-event]';
@@ -50,6 +51,47 @@ function validateChannelTypes(channels: Channel[]): void {
       );
     }
   }
+}
+
+/**
+ * Validate and normalize includeSessionTypes config value.
+ * Returns valid SessionType array with illegal values filtered out.
+ */
+function validateIncludeSessionTypes(types?: unknown): SessionType[] {
+  const VALID_TYPES: SessionType[] = ['main', 'subagent', 'unknown'];
+
+  // null/undefined → default
+  if (types === null || types === undefined) {
+    return [...DEFAULT_SESSION_TYPES];
+  }
+
+  // non-array → warn + default
+  if (!Array.isArray(types)) {
+    console.warn(`${LOG_PREFIX} includeSessionTypes must be an array, got ${typeof types}. Using default.`);
+    return [...DEFAULT_SESSION_TYPES];
+  }
+
+  // empty array → default
+  if (types.length === 0) {
+    return [...DEFAULT_SESSION_TYPES];
+  }
+
+  // filter + validate each item
+  const result: SessionType[] = [];
+  for (const item of types) {
+    if (typeof item === 'string' && VALID_TYPES.includes(item as SessionType)) {
+      result.push(item as SessionType);
+    } else {
+      console.warn(`${LOG_PREFIX} Invalid session type "${item}" in includeSessionTypes. Valid values: ${VALID_TYPES.join(', ')}`);
+    }
+  }
+
+  // all invalid → default
+  if (result.length === 0) {
+    return [...DEFAULT_SESSION_TYPES];
+  }
+
+  return result;
 }
 
 /**
@@ -177,15 +219,26 @@ export function loadConfig(): NotificationConfig {
   // Filter enabled channels
   const enabledChannels = filterEnabledChannels(mergedChannels);
   
-  // Merge top-level fields (language, timezone, includeSubagentEvents) — project config takes priority
+  // Merge top-level fields (language, timezone) — project config takes priority
   const mergedLanguage = projectConfig?.language ?? globalConfig?.language;
   const mergedTimezone = projectConfig?.timezone ?? globalConfig?.timezone;
-  const mergedIncludeSubagentEvents = projectConfig?.includeSubagentEvents ?? globalConfig?.includeSubagentEvents;
+
+  // Merge includeSessionTypes — project overrides global
+  const rawIncludeSessionTypes = projectConfig?.includeSessionTypes ?? globalConfig?.includeSessionTypes;
+
+  // Deprecation warning for old field
+  for (const rawConfig of [globalConfig, projectConfig] as Array<typeof globalConfig>) {
+    if (rawConfig && 'includeSubagentEvents' in rawConfig) {
+      console.warn(
+        `${LOG_PREFIX} "includeSubagentEvents" is deprecated. Use "includeSessionTypes" instead (e.g., ["main", "subagent"]).`
+      );
+    }
+  }
 
   return {
     channels: enabledChannels,
     ...(mergedLanguage !== undefined && { language: mergedLanguage }),
     ...(mergedTimezone !== undefined && { timezone: mergedTimezone }),
-    ...(mergedIncludeSubagentEvents !== undefined && { includeSubagentEvents: mergedIncludeSubagentEvents }),
+    includeSessionTypes: validateIncludeSessionTypes(rawIncludeSessionTypes),
   };
 }

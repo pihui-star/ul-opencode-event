@@ -429,8 +429,8 @@ describe('loadConfig', () => {
     });
   });
 
-  describe('includeSubagentEvents merge', () => {
-    test('global includeSubagentEvents preserved when project does not set it', () => {
+  describe('includeSessionTypes merge', () => {
+    test('global includeSessionTypes preserved when project does not set it', () => {
       const globalConfig: NotificationConfig = {
         channels: [
           {
@@ -446,7 +446,7 @@ describe('loadConfig', () => {
             events: { created: true },
           },
         ],
-        includeSubagentEvents: true,
+        includeSessionTypes: ['main'],
       };
 
       const projectConfig: NotificationConfig = {
@@ -464,7 +464,7 @@ describe('loadConfig', () => {
             events: { idle: true },
           },
         ],
-        // includeSubagentEvents intentionally omitted
+        // includeSessionTypes intentionally omitted
       };
 
       const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
@@ -482,10 +482,10 @@ describe('loadConfig', () => {
       const config = loadConfig();
 
       // Global value should be preserved
-      expect(config.includeSubagentEvents).toBe(true);
+      expect(config.includeSessionTypes).toEqual(['main']);
     });
 
-    test('project includeSubagentEvents overrides global value', () => {
+    test('project includeSessionTypes overrides global value', () => {
       const globalConfig: NotificationConfig = {
         channels: [
           {
@@ -501,7 +501,7 @@ describe('loadConfig', () => {
             events: { created: true },
           },
         ],
-        includeSubagentEvents: false,
+        includeSessionTypes: ['main'],
       };
 
       const projectConfig: NotificationConfig = {
@@ -519,7 +519,7 @@ describe('loadConfig', () => {
             events: { idle: true },
           },
         ],
-        includeSubagentEvents: true, // Project overrides global
+        includeSessionTypes: ['main', 'subagent'], // Project overrides global
       };
 
       const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
@@ -537,10 +537,10 @@ describe('loadConfig', () => {
       const config = loadConfig();
 
       // Project value should override global
-      expect(config.includeSubagentEvents).toBe(true);
+      expect(config.includeSessionTypes).toEqual(['main', 'subagent']);
     });
 
-    test('includeSubagentEvents not present in result when neither global nor project sets it', () => {
+    test('includeSessionTypes defaults to ["main"] when neither global nor project sets it', () => {
       const globalConfig: NotificationConfig = {
         channels: [
           {
@@ -556,7 +556,7 @@ describe('loadConfig', () => {
             events: { created: true },
           },
         ],
-        // No includeSubagentEvents
+        // No includeSessionTypes
       };
 
       const projectConfig: NotificationConfig = {
@@ -574,7 +574,7 @@ describe('loadConfig', () => {
             events: { idle: true },
           },
         ],
-        // No includeSubagentEvents
+        // No includeSessionTypes
       };
 
       const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
@@ -591,8 +591,245 @@ describe('loadConfig', () => {
 
       const config = loadConfig();
 
-      // Should NOT pollute result with undefined/absent field
-      expect(config).not.toHaveProperty('includeSubagentEvents');
+      // Should always output valid array, defaulting to ['main']
+      expect(config.includeSessionTypes).toEqual(['main']);
+    });
+  });
+
+  describe('validateIncludeSessionTypes (via loadConfig)', () => {
+    test('filters invalid values and warns', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        const rawConfig = {
+          channels: [],
+          includeSessionTypes: ['main', 'foobar'],
+        };
+
+        const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+        mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+        mockFs.readFileSync.mockImplementation((p: string) => {
+          if (p === projectPath) return JSON.stringify(rawConfig);
+          throw new Error('File not found');
+        });
+
+        const result = loadConfig();
+
+        expect(result.includeSessionTypes).toEqual(['main']);
+        expect(warnSpy).toHaveBeenCalled();
+        const warnMsg = warnSpy.mock.calls[0][0] as string;
+        expect(warnMsg).toContain('Invalid session type');
+        expect(warnMsg).toContain('foobar');
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+
+    test('empty array returns default', () => {
+      const config: NotificationConfig = {
+        channels: [],
+        includeSessionTypes: [],
+      };
+
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === projectPath) return JSON.stringify(config);
+        throw new Error('File not found');
+      });
+
+      const result = loadConfig();
+
+      expect(result.includeSessionTypes).toEqual(['main']);
+    });
+
+    test('undefined returns default', () => {
+      const config: NotificationConfig = {
+        channels: [],
+        // includeSessionTypes omitted
+      };
+
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === projectPath) return JSON.stringify(config);
+        throw new Error('File not found');
+      });
+
+      const result = loadConfig();
+
+      expect(result.includeSessionTypes).toEqual(['main']);
+    });
+
+    test('all valid types pass through', () => {
+      const config: NotificationConfig = {
+        channels: [],
+        includeSessionTypes: ['main', 'subagent', 'unknown'],
+      };
+
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === projectPath) return JSON.stringify(config);
+        throw new Error('File not found');
+      });
+
+      const result = loadConfig();
+
+      expect(result.includeSessionTypes).toEqual(['main', 'subagent', 'unknown']);
+    });
+
+    test('non-array value returns default with warning', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        // Use a raw object to bypass TypeScript type checking for invalid value
+        const rawConfig = {
+          channels: [],
+          includeSessionTypes: 'invalid-string',
+        };
+
+        const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+        mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+        mockFs.readFileSync.mockImplementation((p: string) => {
+          if (p === projectPath) return JSON.stringify(rawConfig);
+          throw new Error('File not found');
+        });
+
+        const result = loadConfig();
+
+        expect(result.includeSessionTypes).toEqual(['main']);
+        expect(warnSpy).toHaveBeenCalled();
+        const warnMsg = warnSpy.mock.calls[0][0] as string;
+        expect(warnMsg).toContain('must be an array');
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+
+    test('all invalid values returns default', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        const config: NotificationConfig = {
+          channels: [],
+          includeSessionTypes: ['foo', 'bar'] as unknown as ('main' | 'subagent' | 'unknown')[],
+        };
+
+        const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+        mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+        mockFs.readFileSync.mockImplementation((p: string) => {
+          if (p === projectPath) return JSON.stringify(config);
+          throw new Error('File not found');
+        });
+
+        const result = loadConfig();
+
+        expect(result.includeSessionTypes).toEqual(['main']);
+        // Should have warned for each invalid item
+        expect(warnSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+  });
+
+  describe('includeSubagentEvents deprecation warning', () => {
+    test('warns when old field present in global config', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        const globalConfig = {
+          channels: [],
+          includeSubagentEvents: true,
+        };
+
+        const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
+        mockFs.existsSync.mockImplementation((p: string) => p === globalPath);
+        mockFs.readFileSync.mockImplementation((p: string) => {
+          if (p === globalPath) return JSON.stringify(globalConfig);
+          throw new Error('File not found');
+        });
+
+        loadConfig();
+
+        expect(warnSpy).toHaveBeenCalled();
+        const warnMsg = warnSpy.mock.calls[0][0] as string;
+        expect(warnMsg).toContain('deprecated');
+        expect(warnMsg).toContain('includeSubagentEvents');
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+
+    test('warns when old field present in project config', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        const projectConfig = {
+          channels: [],
+          includeSubagentEvents: false,
+        };
+
+        const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+        mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+        mockFs.readFileSync.mockImplementation((p: string) => {
+          if (p === projectPath) return JSON.stringify(projectConfig);
+          throw new Error('File not found');
+        });
+
+        loadConfig();
+
+        expect(warnSpy).toHaveBeenCalled();
+        const warnMsg = warnSpy.mock.calls[0][0] as string;
+        expect(warnMsg).toContain('deprecated');
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+
+    test('new field takes priority when both present', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        const config = {
+          channels: [],
+          includeSubagentEvents: true,
+          includeSessionTypes: ['main'],
+        };
+
+        const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+        mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+        mockFs.readFileSync.mockImplementation((p: string) => {
+          if (p === projectPath) return JSON.stringify(config);
+          throw new Error('File not found');
+        });
+
+        const result = loadConfig();
+
+        // Result uses includeSessionTypes value
+        expect(result.includeSessionTypes).toEqual(['main']);
+        // Deprecation warning still fired
+        expect(warnSpy).toHaveBeenCalled();
+        const deprecationWarnings = warnSpy.mock.calls.filter(
+          (call: unknown[]) => (call[0] as string).includes('deprecated')
+        );
+        expect(deprecationWarnings.length).toBeGreaterThan(0);
+      } finally {
+        console.warn = origWarn;
+      }
     });
   });
 });

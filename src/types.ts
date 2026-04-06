@@ -9,13 +9,24 @@
 export type LocaleType = 'zh' | 'en';
 
 /**
+ * Session type classification for event source identification
+ * - main: Primary user session (default)
+ * - subagent: Child session spawned by explore/librarian agents
+ * - unknown: Session type could not be determined
+ */
+export type SessionType = 'main' | 'subagent' | 'unknown';
+
+/** Default session types to include in notifications (backward compatible) */
+export const DEFAULT_SESSION_TYPES: SessionType[] = ['main'];
+
+/**
  * Main configuration interface for the notification plugin
  */
 export interface NotificationConfig {
   channels: Channel[];
   timezone?: string;        // IANA 时区标识符，如 "Asia/Shanghai"
   language?: LocaleType;           // 默认提示模板语言 (默认 'en')
-  includeSubagentEvents?: boolean; // 是否包含子代理事件 (默认 false)
+  includeSessionTypes?: SessionType[]; // 包含的会话类型 (默认 ['main'])
 }
 
 /**
@@ -135,7 +146,7 @@ export interface EventPayload {
   arguments?: string;       // 命令参数
   filePath?: string;        // 被编辑的文件路径
   todoSummary?: string;     // todo列表摘要
-  isSubagent?: boolean;     // 是否为子代理事件
+  sessionType: SessionType;       // 会话类型分类 (main/subagent/unknown)
   parentSessionId?: string; // 父会话ID（子代理事件时提供）
 }
 

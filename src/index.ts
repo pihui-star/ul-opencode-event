@@ -7,10 +7,23 @@ import type { Event, Session } from '@opencode-ai/sdk';
 import { loadConfig } from './config.js';
 import { createEventHandler, type EventHandler } from './handler.js';
 import { getDefaultTimezone } from './locales.js';
-import type { EventPayload, EventType } from './types.js';
+import type { EventPayload, EventType, SessionType } from './types.js';
+import { DEFAULT_SESSION_TYPES } from './types.js';
 
 const LOG_PREFIX = '[ul-opencode-event]';
 const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env.UL_OPENCODE_EVENT_DEBUG === 'true';
+
+/**
+ * Resolve session type from SDK Session info.
+ * - undefined/missing sessionInfo → 'unknown' (race condition or file.edited)
+ * - has parentID → 'subagent' (child of main session)
+ * - no parentID → 'main' (primary user session)
+ */
+function resolveSessionType(sessionInfo?: Session): SessionType {
+  if (!sessionInfo) return 'unknown';
+  if (sessionInfo.parentID !== undefined && sessionInfo.parentID !== '') return 'subagent';
+  return 'main';
+}
 
 /**
  * Convert SDK Event to internal EventPayload
@@ -28,7 +41,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         ...basePayload,
         eventType: 'created' as EventType,
         sessionId: event.properties.info.id,
-        isSubagent: event.properties.info.parentID !== undefined && event.properties.info.parentID !== '',
+        sessionType: resolveSessionType(event.properties.info),
         parentSessionId: event.properties.info.parentID ?? undefined,
       };
     case 'session.idle': {
@@ -38,7 +51,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         sessionId: event.properties.sessionID,
         message: 'Task completed successfully',
         duration: sessionInfo ? formatDuration(Date.now() - sessionInfo.time.created) : undefined,
-        isSubagent: sessionInfo?.parentID !== undefined && sessionInfo?.parentID !== '',
+        sessionType: resolveSessionType(sessionInfo),
         parentSessionId: sessionInfo?.parentID ?? undefined,
       };
     }
@@ -50,7 +63,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         eventType: 'error' as EventType,
         sessionId: sessionId ?? '',
         error: errorObj ? formatError(errorObj) : 'Unknown error',
-        isSubagent: sessionInfo?.parentID !== undefined && sessionInfo?.parentID !== '',
+        sessionType: resolveSessionType(sessionInfo),
         parentSessionId: sessionInfo?.parentID ?? undefined,
       };
     }
@@ -71,7 +84,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           title: firstQ?.header ? String(firstQ.header) : undefined,
           questionText: firstQ?.question ? String(firstQ.question) : undefined,
           options: firstQ?.options ? JSON.stringify(firstQ.options) : undefined,
-          isSubagent: sessionInfo?.parentID !== undefined && sessionInfo?.parentID !== '',
+          sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
       }
@@ -85,7 +98,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           sessionId: perm.sessionID || '',
           title: perm.title,
           permissionType: perm.type,
-          isSubagent: sessionInfo?.parentID !== undefined && sessionInfo?.parentID !== '',
+          sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
       }
@@ -98,7 +111,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           eventType: 'status' as EventType,
           sessionId: statusEvent.sessionID || '',
           statusType: statusEvent.status?.type,
-          isSubagent: sessionInfo?.parentID !== undefined && sessionInfo?.parentID !== '',
+          sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
       }
@@ -112,7 +125,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           sessionId: cmd.sessionID || '',
           commandName: cmd.name,
           arguments: cmd.arguments,
-          isSubagent: sessionInfo?.parentID !== undefined && sessionInfo?.parentID !== '',
+          sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
       }
@@ -124,7 +137,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           ...basePayload,
           eventType: 'fileEdited' as EventType,
           filePath: fileEvt.file,
-          isSubagent: sessionInfo?.parentID !== undefined && sessionInfo?.parentID !== '',
+          sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
       }
@@ -139,7 +152,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           eventType: 'todo' as EventType,
           sessionId: todoEvt.sessionID || '',
           todoSummary: summary,
-          isSubagent: sessionInfo?.parentID !== undefined && sessionInfo?.parentID !== '',
+          sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
       }
@@ -244,13 +257,18 @@ export const NotificationPlugin: Plugin = async (ctx) => {
         return;
       }
 
-      // Filter sub-agent events by default (includeSubagentEvents defaults to false)
-      const shouldFilterSubagents = config.includeSubagentEvents !== true;
-      if (payload.isSubagent && shouldFilterSubagents) {
+      // Filter by session type whitelist (default: only 'main' sessions)
+      const allowedTypes = config.includeSessionTypes ?? DEFAULT_SESSION_TYPES;
+      if (!allowedTypes.includes(payload.sessionType)) {
         if (DEBUG_ENABLED) {
-          console.info(`${LOG_PREFIX} Skipping sub-agent event ${payload.eventType} for session ${payload.parentSessionId}`);
+          console.info(`${LOG_PREFIX} Skipping ${payload.sessionType} event ${payload.eventType} for session ${payload.sessionId}`);
         }
         return;
+      }
+
+      // Debug: warn when sessionMap miss produces 'unknown' (possible race condition)
+      if (DEBUG_ENABLED && payload.sessionType === 'unknown' && typeof (event.properties as Record<string, unknown>).sessionID === 'string') {
+        console.warn(`${LOG_PREFIX} sessionMap miss for sessionID=${(event.properties as Record<string, unknown>).sessionID}, treating as 'unknown'. Race condition?`);
       }
 
       if (DEBUG_ENABLED) {
