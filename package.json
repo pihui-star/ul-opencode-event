@@ -1,6 +1,6 @@
 {
   "name": "@ulthon/ul-opencode-event",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "OpenCode notification plugin - sends email when session events occur",
   "author": "augushong",
   "license": "MIT",
