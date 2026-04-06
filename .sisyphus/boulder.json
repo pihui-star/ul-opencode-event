@@ -1,91 +1,35 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\session-type-refactor.md",
-  "started_at": "2026-04-06T05:13:34.005Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\session-title-in-templates.md",
+  "started_at": "2026-04-06T09:52:54.623Z",
   "session_ids": [
-    "ses_29f06a3f0ffec1PMphJ2qHREtf",
-    "ses_29edc73baffe0SK1S6glMioPb1",
-    "ses_29ec7f655ffe8ePwbKbBHd6ste",
-    "ses_29ec29756ffeflAngGRqHNdpI1",
-    "ses_29ebe1378ffeOMsndr0EL3gjfT",
-    "ses_29ebdb46affeFcPV9ILkgdrWCT",
-    "ses_29ebd5783ffeTEpIU4i2azAIpV",
-    "ses_29eb7ac14ffetgaheQkz55gYL2",
-    "ses_29eb881a8ffeXn2gRD4lWq82Jf",
-    "ses_29eaff343ffeoqSwEL0exr89Wk",
-    "ses_29ea7d5faffeHPbYEpOBU6sk81",
-    "ses_29ea77181ffenRNEH6LjeTbycy",
-    "ses_29ea41e97ffewgCizqRNntTkPp",
-    "ses_29ea3dfe1ffeZYUM4mI9zybVDU",
-    "ses_29ea29c57ffefQJJ6NDv9dAWOM",
-    "ses_29ea37c58ffeJKZ0IB0se9ewK9",
-    "ses_29ea826c9ffeRXfEI7lqS7SoQA",
-    "ses_29e192550ffejoIeZkKdCqzPJD",
-    "ses_29e0ce090ffe8bMTCCJIWNvW4h",
-    "ses_29e043c0bffe9VL3cXYfPEfRQk",
-    "ses_29e03e257ffeOkVFaoVTNvu6QD",
-    "ses_29e037c49ffeAm9PIwPzdo115f",
-    "ses_29dfbf360ffe4C30waGvsMF9Md",
-    "ses_29dfc6f47ffeI6DjbUmofoza7S",
-    "ses_29deee8c5ffeZKiWeGTSkSQix3",
-    "ses_29def41a5ffegqY972w5tCeK3d",
-    "ses_29dee970cffeaIjROrUjRuc0J3",
-    "ses_29de8db06ffe35ivDO01bLHKTM"
+    "ses_29de0a984ffernCJpotDptITho",
+    "ses_29dc8bd04ffeAM6QzJ6ZYtWiyk",
+    "ses_29dc4abf3ffeF0Q2WjSmck5Fnn",
+    "ses_29db02930ffejTDdthJ1x2ZIYO",
+    "ses_29daffaacffeDUGuulrIwPYWRo",
+    "ses_29daf7f04ffeGkgNA4sSYpTjfr",
+    "ses_29dafc2f9ffeXk2nPkpK2PYGsu"
   ],
-  "plan_name": "session-type-refactor",
+  "plan_name": "session-title-in-templates",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "类型定义重构 (types.ts)",
-      "session_id": "ses_29e129fffffeh97TcGLmrEj9Pt",
+      "task_title": "**EventPayload 类型定义新增 sessionTitle 字段**",
+      "session_id": "ses_29dc8bd04ffeAM6QzJ6ZYtWiyk",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-06T08:37:25.365Z"
-    },
-    "todo:2": {
-      "task_key": "todo:2",
-      "task_label": "2",
-      "task_title": "eventToPayload 三态判定 + 过滤逻辑 (index.ts)",
-      "session_id": "ses_29e0ce090ffe8bMTCCJIWNvW4h",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-06T08:48:46.379Z"
-    },
-    "todo:3": {
-      "task_key": "todo:3",
-      "task_label": "3",
-      "task_title": "handler 模板变量传递 (handler.ts)",
-      "session_id": "ses_29e043c0bffe9VL3cXYfPEfRQk",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-06T08:50:56.251Z"
-    },
-    "todo:6": {
-      "task_key": "todo:6",
-      "task_label": "6",
-      "task_title": "子代理过滤测试重写 (tests/index.test.ts)",
-      "session_id": "ses_29dfc6f47ffeI6DjbUmofoza7S",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-06T09:09:33.658Z"
+      "updated_at": "2026-04-06T09:56:32.817Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
-      "task_title": "**Plan Compliance Audit** -- `oracle`",
-      "session_id": "ses_29def41a5ffegqY972w5tCeK3d",
-      "agent": "oracle",
-      "updated_at": "2026-04-06T09:15:57.128Z"
-    },
-    "final-wave:f4": {
-      "task_key": "final-wave:f4",
-      "task_label": "F4",
-      "task_title": "**Scope Fidelity Check** -- `deep`",
-      "session_id": "ses_29de8db06ffe35ivDO01bLHKTM",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_29dafc2f9ffeXk2nPkpK2PYGsu",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-06T09:23:08.147Z"
+      "category": "unspecified-high",
+      "updated_at": "2026-04-06T10:27:44.430Z"
     }
   }
 }
