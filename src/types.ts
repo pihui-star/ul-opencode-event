@@ -14,7 +14,8 @@ export type LocaleType = 'zh' | 'en';
 export interface NotificationConfig {
   channels: Channel[];
   timezone?: string;        // IANA 时区标识符，如 "Asia/Shanghai"
-  language?: LocaleType;    // 默认提示模板语言 (默认 'en')
+  language?: LocaleType;           // 默认提示模板语言 (默认 'en')
+  includeSubagentEvents?: boolean; // 是否包含子代理事件 (默认 false)
 }
 
 /**
@@ -134,6 +135,8 @@ export interface EventPayload {
   arguments?: string;       // 命令参数
   filePath?: string;        // 被编辑的文件路径
   todoSummary?: string;     // todo列表摘要
+  isSubagent?: boolean;     // 是否为子代理事件
+  parentSessionId?: string; // 父会话ID（子代理事件时提供）
 }
 
 /**

@@ -428,4 +428,171 @@ describe('loadConfig', () => {
       expect(config).toEqual({ channels: [] });
     });
   });
+
+  describe('includeSubagentEvents merge', () => {
+    test('global includeSubagentEvents preserved when project does not set it', () => {
+      const globalConfig: NotificationConfig = {
+        channels: [
+          {
+            type: 'smtp',
+            enabled: true,
+            name: 'Global Email',
+            config: {
+              host: 'smtp.global.com',
+              port: 465,
+              auth: { user: 'global@test.com', pass: 'pass' },
+            },
+            recipients: ['admin@global.com'],
+            events: { created: true },
+          },
+        ],
+        includeSubagentEvents: true,
+      };
+
+      const projectConfig: NotificationConfig = {
+        channels: [
+          {
+            type: 'smtp',
+            enabled: true,
+            name: 'Project Email',
+            config: {
+              host: 'smtp.project.com',
+              port: 587,
+              auth: { user: 'project@test.com', pass: 'pass' },
+            },
+            recipients: ['dev@project.com'],
+            events: { idle: true },
+          },
+        ],
+        // includeSubagentEvents intentionally omitted
+      };
+
+      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+
+      mockFs.existsSync.mockImplementation((p: string) => {
+        return p === globalPath || p === projectPath;
+      });
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === globalPath) return JSON.stringify(globalConfig);
+        if (p === projectPath) return JSON.stringify(projectConfig);
+        throw new Error('File not found');
+      });
+
+      const config = loadConfig();
+
+      // Global value should be preserved
+      expect(config.includeSubagentEvents).toBe(true);
+    });
+
+    test('project includeSubagentEvents overrides global value', () => {
+      const globalConfig: NotificationConfig = {
+        channels: [
+          {
+            type: 'smtp',
+            enabled: true,
+            name: 'Global Email',
+            config: {
+              host: 'smtp.global.com',
+              port: 465,
+              auth: { user: 'global@test.com', pass: 'pass' },
+            },
+            recipients: ['admin@global.com'],
+            events: { created: true },
+          },
+        ],
+        includeSubagentEvents: false,
+      };
+
+      const projectConfig: NotificationConfig = {
+        channels: [
+          {
+            type: 'smtp',
+            enabled: true,
+            name: 'Project Email',
+            config: {
+              host: 'smtp.project.com',
+              port: 587,
+              auth: { user: 'project@test.com', pass: 'pass' },
+            },
+            recipients: ['dev@project.com'],
+            events: { idle: true },
+          },
+        ],
+        includeSubagentEvents: true, // Project overrides global
+      };
+
+      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+
+      mockFs.existsSync.mockImplementation((p: string) => {
+        return p === globalPath || p === projectPath;
+      });
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === globalPath) return JSON.stringify(globalConfig);
+        if (p === projectPath) return JSON.stringify(projectConfig);
+        throw new Error('File not found');
+      });
+
+      const config = loadConfig();
+
+      // Project value should override global
+      expect(config.includeSubagentEvents).toBe(true);
+    });
+
+    test('includeSubagentEvents not present in result when neither global nor project sets it', () => {
+      const globalConfig: NotificationConfig = {
+        channels: [
+          {
+            type: 'smtp',
+            enabled: true,
+            name: 'Global Email',
+            config: {
+              host: 'smtp.global.com',
+              port: 465,
+              auth: { user: 'global@test.com', pass: 'pass' },
+            },
+            recipients: ['admin@global.com'],
+            events: { created: true },
+          },
+        ],
+        // No includeSubagentEvents
+      };
+
+      const projectConfig: NotificationConfig = {
+        channels: [
+          {
+            type: 'smtp',
+            enabled: true,
+            name: 'Project Email',
+            config: {
+              host: 'smtp.project.com',
+              port: 587,
+              auth: { user: 'project@test.com', pass: 'pass' },
+            },
+            recipients: ['dev@project.com'],
+            events: { idle: true },
+          },
+        ],
+        // No includeSubagentEvents
+      };
+
+      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+
+      mockFs.existsSync.mockImplementation((p: string) => {
+        return p === globalPath || p === projectPath;
+      });
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === globalPath) return JSON.stringify(globalConfig);
+        if (p === projectPath) return JSON.stringify(projectConfig);
+        throw new Error('File not found');
+      });
+
+      const config = loadConfig();
+
+      // Should NOT pollute result with undefined/absent field
+      expect(config).not.toHaveProperty('includeSubagentEvents');
+    });
+  });
 });

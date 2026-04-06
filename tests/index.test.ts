@@ -39,7 +39,7 @@ mock.module('../src/email', () => ({
 }));
 
 // Mock the config module to provide test configuration
-let configMock: { channels: Channel[]; timezone?: string } | null = null;
+let configMock: { channels: Channel[]; timezone?: string; includeSubagentEvents?: boolean } | null = null;
 
 mock.module('../src/config', () => ({
   loadConfig: () => {
@@ -47,6 +47,7 @@ mock.module('../src/config', () => ({
       return {
         channels: configMock.channels,
         timezone: configMock.timezone,
+        includeSubagentEvents: configMock.includeSubagentEvents,
       };
     }
     return { channels: [] };
@@ -1262,6 +1263,312 @@ describe('NotificationPlugin', () => {
       expect(sentEmails[0].body).toContain('[in_progress] Only one task');
       // Single item should not contain newline separator issues
       expect(sentEmails[0].body).not.toContain('\n\n');
+    });
+  });
+
+  // ============================================================
+  // sub-agent event filtering 测试组
+  // ============================================================
+  describe('sub-agent filtering', () => {
+    test('main session events notify normally when includeSubagentEvents not set', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Main Session Test' })],
+        // includeSubagentEvents intentionally omitted
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/main-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Main session: no parentID
+      const sessionInfo = {
+        id: 'session-main-001',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Main Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+        // No parentID - this is a main session
+      };
+
+      const event = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: event as any });
+
+      expect(sentEmails.length).toBe(1);
+    });
+
+    test('sub-agent events are filtered by default (no includeSubagentEvents)', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'SubAgent Default Test' })],
+        // includeSubagentEvents intentionally omitted -> defaults to false -> filtered
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/sub-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Sub-agent session: has parentID
+      const sessionInfo = {
+        id: 'session-sub-001',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Sub-Agent Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+        parentID: 'ses_parent_001', // This makes it a sub-agent session
+      };
+
+      const event = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: event as any });
+
+      // Should be filtered out by default
+      expect(sentEmails.length).toBe(0);
+    });
+
+    test('includeSubagentEvents: true allows sub-agent notifications', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'SubAgent Enabled Test' })],
+        includeSubagentEvents: true,
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/sub-enabled-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'session-sub-002',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Sub-Agent Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+        parentID: 'ses_parent_002',
+      };
+
+      const event = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: event as any });
+
+      // Should send email because includeSubagentEvents is true
+      expect(sentEmails.length).toBe(1);
+    });
+
+    test('includeSubagentEvents: false explicitly filters sub-agent notifications', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'SubAgent Disabled Test' })],
+        includeSubagentEvents: false,
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/sub-disabled-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'session-sub-003',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Sub-Agent Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+        parentID: 'ses_parent_003',
+      };
+
+      const event = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: event as any });
+
+      // Explicitly disabled, should be filtered
+      expect(sentEmails.length).toBe(0);
+    });
+
+    test('idle events for sub-agents are filtered by default', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Idle SubAgent Test' })],
+        // includeSubagentEvents not set -> default filter
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/idle-sub-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Step 1: Create sub-agent session
+      const sessionInfo = {
+        id: 'session-idle-sub',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Sub-Agent Idle Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+        parentID: 'ses_parent_idle',
+      };
+
+      const createdEvent = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: createdEvent as any });
+
+      // Step 2: Trigger idle for that sub-agent session
+      sentEmails.length = 0;
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'session-idle-sub' });
+      await hooks.event!({ event: idleEvent as any });
+
+      // Both created and idle should be filtered for sub-agent
+      expect(sentEmails.length).toBe(0);
+    });
+
+    test('error events for sub-agents are filtered by default', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Error SubAgent Test' })],
+        // includeSubagentEvents not set -> default filter
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/error-sub-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // First register the sub-agent session so it can be looked up
+      const sessionInfo = {
+        id: 'session-error-sub',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Sub-Agent Error Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+        parentID: 'ses_parent_error',
+      };
+      const createdEvent = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: createdEvent as any });
+
+      // Clear and trigger error
+      sentEmails.length = 0;
+      const errorEvent = createMockEvent('session.error', {
+        sessionID: 'session-error-sub',
+        error: { message: 'Sub-agent error occurred' },
+      });
+      await hooks.event!({ event: errorEvent as any });
+
+      // Error for sub-agent should be filtered
+      expect(sentEmails.length).toBe(0);
+    });
+
+    test('question events for sub-agents are filtered by default', async () => {
+      configMock = {
+        channels: [createMockChannel({
+          name: 'Question SubAgent Test',
+          events: { question: true },
+        })],
+        // includeSubagentEvents not set -> default filter
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/question-sub-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Register the sub-agent session first
+      const sessionInfo = {
+        id: 'session-question-sub',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Sub-Agent Question Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+        parentID: 'ses_parent_question',
+      };
+      const createdEvent = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: createdEvent as any });
+
+      // Clear and trigger question
+      sentEmails.length = 0;
+      const questionEvent = createMockEvent('question.asked', {
+        sessionID: 'session-question-sub',
+        questions: [{ header: 'Sub Question', question: 'What to do?', options: [] }],
+      });
+      await hooks.event!({ event: questionEvent as any });
+
+      // Question for sub-agent should be filtered
+      expect(sentEmails.length).toBe(0);
+    });
+
+    test('multiple channels all filter sub-agent events by default', async () => {
+      configMock = {
+        channels: [
+          createMockChannel({ name: 'Primary SA' }),
+          createMockChannel({ name: 'Secondary SA' }),
+        ],
+        // includeSubagentEvents not set -> all channels default to filter
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/multi-sa-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'session-multi-sa',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Multi-Channel Sub-Agent',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+        parentID: 'ses_parent_multi',
+      };
+
+      const event = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: event as any });
+
+      // All channels should filter the sub-agent event
+      expect(sentEmails.length).toBe(0);
     });
   });
 });
