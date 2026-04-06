@@ -1,7 +1,7 @@
 {
   "name": "@ulthon/ul-opencode-event",
   "version": "0.1.15",
-  "description": "OpenCode notification plugin - sends email when session events occur",
+  "description": "OpenCode notification plugin - sends notifications via email or DingTalk when session events occur",
   "author": "augushong",
   "license": "MIT",
   "type": "module",
@@ -30,6 +30,7 @@
     "notification",
     "email",
     "smtp",
+    "dingtalk",
     "cli"
   ],
   "files": [
