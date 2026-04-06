@@ -100,6 +100,8 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
           arguments: payload.arguments,
           filePath: payload.filePath,
           todoSummary: payload.todoSummary,
+          isSubagent: payload.isSubagent?.toString(),
+          parentSessionId: payload.parentSessionId,
         };
 
         // Render templates
