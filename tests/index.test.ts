@@ -160,6 +160,7 @@ describe('NotificationPlugin', () => {
     expect(sentEmails[0].subject).toContain('[OpenCode]');
     expect(sentEmails[0].subject).toContain('Started');
     expect(sentEmails[0].body).toContain('/my-project');
+    expect(sentEmails[0].body).toContain('Test Session');
   });
 
   test('session.idle event triggers full notification flow', async () => {
@@ -202,6 +203,7 @@ describe('NotificationPlugin', () => {
     expect(sentEmails[0].channelName).toBe('Idle Test');
     expect(sentEmails[0].subject).toContain('Completed');
     expect(sentEmails[0].body).toContain('Task completed successfully');
+    expect(sentEmails[0].body).toContain('Test Session');
   });
 
   test('session.error event triggers full notification flow', async () => {
@@ -502,6 +504,21 @@ describe('NotificationPlugin', () => {
 
       const hooks = await NotificationPlugin(ctx);
 
+      // Create a session first so sessionInfo (with title) is available
+      const sessionInfo = {
+        id: 'q-session-1',
+        projectID: 'test-project',
+        directory: '/question-project',
+        title: 'Test Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+      };
+      const createdEvent = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: createdEvent as any });
+
+      // Clear sent emails from session.created
+      sentEmails.length = 0;
+
       const event = createMockEvent('question.asked', {
         sessionID: 'q-session-1',
         questions: [
@@ -518,6 +535,7 @@ describe('NotificationPlugin', () => {
       expect(sentEmails[0].subject).toContain('Question');
       expect(sentEmails[0].body).toContain('Framework Choice');
       expect(sentEmails[0].body).toContain('Which framework do you prefer?');
+      expect(sentEmails[0].body).toContain('Test Session');
     });
 
     test('handles empty questions array gracefully', async () => {

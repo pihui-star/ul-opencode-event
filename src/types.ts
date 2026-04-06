@@ -137,6 +137,7 @@ export interface EventPayload {
   message?: string;
   error?: string;
   duration?: string;
+  /** question/permission 事件的标题（非会话级别标题，会话标题见 sessionTitle） */
   title?: string;           // question/permission 的标题
   questionText?: string;    // question 的完整问题文本
   options?: string;         // question 的选项摘要(JSON)
@@ -148,6 +149,8 @@ export interface EventPayload {
   todoSummary?: string;     // todo列表摘要
   sessionType: SessionType;       // 会话类型分类 (main/subagent/unknown)
   parentSessionId?: string; // 父会话ID（子代理事件时提供）
+  /** 会话标题（来自 SDK Session.title） */
+  sessionTitle?: string;
 }
 
 /**

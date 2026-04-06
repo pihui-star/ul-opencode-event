@@ -33,6 +33,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
     timestamp: formatTimestamp(new Date().toISOString(), timezone),
     projectName,
     sessionId: '',
+    sessionTitle: undefined,
   };
 
   switch (event.type) {
@@ -41,6 +42,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         ...basePayload,
         eventType: 'created' as EventType,
         sessionId: event.properties.info.id,
+        sessionTitle: event.properties.info.title,
         sessionType: resolveSessionType(event.properties.info),
         parentSessionId: event.properties.info.parentID ?? undefined,
       };
@@ -51,6 +53,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         sessionId: event.properties.sessionID,
         message: 'Task completed successfully',
         duration: sessionInfo ? formatDuration(Date.now() - sessionInfo.time.created) : undefined,
+        sessionTitle: sessionInfo?.title,
         sessionType: resolveSessionType(sessionInfo),
         parentSessionId: sessionInfo?.parentID ?? undefined,
       };
@@ -63,6 +66,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         eventType: 'error' as EventType,
         sessionId: sessionId ?? '',
         error: errorObj ? formatError(errorObj) : 'Unknown error',
+        sessionTitle: sessionInfo?.title,
         sessionType: resolveSessionType(sessionInfo),
         parentSessionId: sessionInfo?.parentID ?? undefined,
       };
@@ -84,6 +88,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           title: firstQ?.header ? String(firstQ.header) : undefined,
           questionText: firstQ?.question ? String(firstQ.question) : undefined,
           options: firstQ?.options ? JSON.stringify(firstQ.options) : undefined,
+          sessionTitle: sessionInfo?.title,
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
@@ -98,6 +103,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           sessionId: perm.sessionID || '',
           title: perm.title,
           permissionType: perm.type,
+          sessionTitle: sessionInfo?.title,
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
@@ -111,6 +117,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           eventType: 'status' as EventType,
           sessionId: statusEvent.sessionID || '',
           statusType: statusEvent.status?.type,
+          sessionTitle: sessionInfo?.title,
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
@@ -125,6 +132,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           sessionId: cmd.sessionID || '',
           commandName: cmd.name,
           arguments: cmd.arguments,
+          sessionTitle: sessionInfo?.title,
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
@@ -152,6 +160,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           eventType: 'todo' as EventType,
           sessionId: todoEvt.sessionID || '',
           todoSummary: summary,
+          sessionTitle: sessionInfo?.title,
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };

@@ -31,37 +31,37 @@ const localeTemplates: Record<LocaleType, Record<EventType, TemplateConfig>> = {
     created: {
       subject: '[OpenCode] Task Started - {{projectName}}',
       body:
-        'Task started at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
+        'Task started at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionTitle}} ({{sessionId}})\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
     },
     idle: {
       subject: '[OpenCode] Task Completed - {{projectName}}',
       body:
-        'Task completed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nMessage: {{message}}\nDuration: {{duration}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
+        'Task completed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionTitle}} ({{sessionId}})\nMessage: {{message}}\nDuration: {{duration}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
     },
     error: {
       subject: '[OpenCode] Task Error - {{projectName}}',
       body:
-        'Error at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nError: {{error}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
+        'Error at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionTitle}} ({{sessionId}})\nError: {{error}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
     },
     question: {
       subject: '[OpenCode] Question - {{projectName}}',
       body:
-        'OpenCode has a question at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nQuestion: {{title}}\n{{questionText}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
+        'OpenCode has a question at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionTitle}} ({{sessionId}})\nQuestion: {{title}}\n{{questionText}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
     },
     permission: {
       subject: '[OpenCode] Permission Required - {{projectName}}',
       body:
-        'Permission needed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\n{{title}} ({{permissionType}})\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
+        'Permission needed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionTitle}} ({{sessionId}})\n{{title}} ({{permissionType}})\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
     },
     status: {
       subject: '[OpenCode] Status Change - {{projectName}}',
       body:
-        'Session status changed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nStatus: {{statusType}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
+        'Session status changed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionTitle}} ({{sessionId}})\nStatus: {{statusType}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
     },
     command: {
       subject: '[OpenCode] Command Executed - {{projectName}}',
       body:
-        'Command executed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\nCommand: {{commandName}} {{arguments}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
+        'Command executed at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionTitle}} ({{sessionId}})\nCommand: {{commandName}} {{arguments}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
     },
     fileEdited: {
       subject: '[OpenCode] File Edited - {{projectName}}',
@@ -71,7 +71,7 @@ const localeTemplates: Record<LocaleType, Record<EventType, TemplateConfig>> = {
     todo: {
       subject: '[OpenCode] Todos Updated - {{projectName}}',
       body:
-        'Todos updated at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionId}}\n{{todoSummary}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
+        'Todos updated at {{timestamp}}\nProject: {{projectName}}\nSession: {{sessionTitle}} ({{sessionId}})\n{{todoSummary}}\nAgent Type: {{sessionType}}\nParent Session: {{parentSessionId}}',
     },
   },
 
@@ -79,37 +79,37 @@ const localeTemplates: Record<LocaleType, Record<EventType, TemplateConfig>> = {
     created: {
       subject: '[OpenCode] 任务已启动 - {{projectName}}',
       body:
-        '任务启动时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionId}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
+        '任务启动时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionTitle}} ({{sessionId}})\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
     },
     idle: {
       subject: '[OpenCode] 任务已完成 - {{projectName}}',
       body:
-        '任务完成时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionId}}\n消息: {{message}}\n耗时: {{duration}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
+        '任务完成时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionTitle}} ({{sessionId}})\n消息: {{message}}\n耗时: {{duration}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
     },
     error: {
       subject: '[OpenCode] 任务出错 - {{projectName}}',
       body:
-        '错误发生时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionId}}\n错误信息: {{error}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
+        '错误发生时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionTitle}} ({{sessionId}})\n错误信息: {{error}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
     },
     question: {
       subject: '[OpenCode] AI 提问 - {{projectName}}',
       body:
-        'OpenCode 在 {{timestamp}} 向您提问\n项目: {{projectName}}\n会话: {{sessionId}}\n问题: {{title}}\n{{questionText}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
+        'OpenCode 在 {{timestamp}} 向您提问\n项目: {{projectName}}\n会话: {{sessionTitle}} ({{sessionId}})\n问题: {{title}}\n{{questionText}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
     },
     permission: {
       subject: '[OpenCode] 需要权限确认 - {{projectName}}',
       body:
-        '{{timestamp}} 需要权限确认\n项目: {{projectName}}\n会话: {{sessionId}}\n{{title}} ({{permissionType}})\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
+        '{{timestamp}} 需要权限确认\n项目: {{projectName}}\n会话: {{sessionTitle}} ({{sessionId}})\n{{title}} ({{permissionType}})\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
     },
     status: {
       subject: '[OpenCode] 状态变更 - {{projectName}}',
       body:
-        '会话状态变更时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionId}}\n状态: {{statusType}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
+        '会话状态变更时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionTitle}} ({{sessionId}})\n状态: {{statusType}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
     },
     command: {
       subject: '[OpenCode] 命令已执行 - {{projectName}}',
       body:
-        '命令执行时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionId}}\n命令: {{commandName}} {{arguments}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
+        '命令执行时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionTitle}} ({{sessionId}})\n命令: {{commandName}} {{arguments}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
     },
     fileEdited: {
       subject: '[OpenCode] 文件已编辑 - {{projectName}}',
@@ -119,7 +119,7 @@ const localeTemplates: Record<LocaleType, Record<EventType, TemplateConfig>> = {
     todo: {
       subject: '[OpenCode] Todo 已更新 - {{projectName}}',
       body:
-        'Todo 更新时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionId}}\n{{todoSummary}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
+        'Todo 更新时间: {{timestamp}}\n项目: {{projectName}}\n会话: {{sessionTitle}} ({{sessionId}})\n{{todoSummary}}\n代理类型: {{sessionType}}\n父会话: {{parentSessionId}}',
     },
   },
 };

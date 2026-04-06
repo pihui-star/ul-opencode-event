@@ -87,6 +87,7 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
           timestamp: payload.timestamp,
           projectName: payload.projectName,
           sessionId: payload.sessionId,
+          sessionTitle: payload.sessionTitle,
           message: payload.message,
           error: payload.error,
           duration: payload.duration,
