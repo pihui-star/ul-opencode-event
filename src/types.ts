@@ -86,6 +86,13 @@ export interface FeishuConfig {
 export interface DingtalkConfig {
   webhook: string;
   secret?: string;
+  /** @mention configuration for DingTalk messages */
+  at?: {
+    /** Mobile numbers to @mention */
+    atMobiles?: string;
+    /** Whether to @mention all members */
+    atAll?: boolean;
+  };
 }
 
 /**
@@ -157,3 +164,34 @@ export interface EventPayload {
  * Supported event types
  */
 export type EventType = 'created' | 'idle' | 'error' | 'question' | 'permission' | 'status' | 'command' | 'fileEdited' | 'todo';
+
+/**
+ * Generic channel sender interface - abstracts sending logic for any channel
+ */
+export interface ChannelSender {
+  send(message: unknown): Promise<void>;
+  close(): Promise<void>;
+}
+
+/**
+ * Formatted message body - channel-native message structure defined by each formatter
+ */
+export interface FormattedMessage {
+  [key: string]: unknown;
+}
+
+/**
+ * Channel formatter interface - converts generic subject/body into channel-specific format
+ */
+export interface ChannelFormatter {
+  format(subject: string, body: string, payload: EventPayload): FormattedMessage;
+}
+
+/**
+ * @deprecated Use ChannelSender instead. Kept for backward compatibility.
+ * Legacy email sender interface with subject/body parameters.
+ */
+export interface EmailSender {
+  send(subject: string, body: string): Promise<void>;
+  close(): Promise<void>;
+}

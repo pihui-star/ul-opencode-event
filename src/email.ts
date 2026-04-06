@@ -11,7 +11,7 @@
  */
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import type { Channel, SMTPConfig } from './types.js';
+import type { Channel, ChannelSender, SMTPConfig } from './types.js';
 
 const LOG_PREFIX = '[ul-opencode-event]';
 const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env.UL_OPENCODE_EVENT_DEBUG === 'true';
@@ -141,7 +141,7 @@ function createTransporter(
  * Proactively resolves DNS at creation time to handle proxy/TUN environments
  * where DNS may be hijacked (e.g., 198.18.x.x fake IPs from Clash).
  */
-export async function createEmailSender(channel: Channel): Promise<EmailSender | null> {
+export async function createEmailSender(channel: Channel): Promise<ChannelSender | null> {
   if (channel.type !== 'smtp') {
     return null;
   }
@@ -169,7 +169,17 @@ export async function createEmailSender(channel: Channel): Promise<EmailSender |
   const transporter = createTransporter(nodemailer, config, preResolvedHost || undefined);
 
   return {
-    send: async (subject: string, body: string): Promise<void> => {
+    send: async (message: unknown): Promise<void> => {
+      // Type narrowing: detect ChannelSender format ({ subject, text })
+      // or legacy EmailSender format via duck-typing
+      const msg = message as { subject?: string; text?: string } | undefined;
+      if (!msg || typeof msg.subject !== 'string' || typeof msg.text !== 'string') {
+        return;
+      }
+
+      const subject = msg.subject;
+      const body = msg.text;
+
       const mailOptions = {
         from: `"${fromName}" <${fromAddress}>`,
         to: channel.recipients!.join(', '),
