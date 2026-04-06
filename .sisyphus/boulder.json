@@ -1,50 +1,72 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\subagent-filter.md",
-  "started_at": "2026-04-06T03:08:28.546Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\session-type-refactor.md",
+  "started_at": "2026-04-06T05:13:34.005Z",
   "session_ids": [
-    "ses_29f6370f9ffeJbPE2FZefDg7rX",
-    "ses_29f3bcf70ffefn7mzms8vt7sZI",
-    "ses_29f39296fffeKylripVlTtCKoS",
-    "ses_29f33da56fferTLB6BwjAlgx4Y",
-    "ses_29f3345b2ffeo5mHZqFOrJtp5g",
-    "ses_29f2d3baeffepyKA1rrrhqFwYz",
-    "ses_29f2ca95bffemj6bBVrKkS3sOB",
-    "ses_29f2b4c32ffezyZF16P7vfy25R",
-    "ses_29f2c1f3fffeQ04iVpStteL3tF",
-    "ses_29f22fc47ffemPADXmqh0KWcKo",
-    "ses_29f20a402ffeH0IrfZmxb6vgAx",
-    "ses_29f216b21ffeJHFzZ1rduyMXH3",
-    "ses_29f21b72bffesQ3SyYLRdC1Ctt"
+    "ses_29f06a3f0ffec1PMphJ2qHREtf",
+    "ses_29edc73baffe0SK1S6glMioPb1",
+    "ses_29ec7f655ffe8ePwbKbBHd6ste",
+    "ses_29ec29756ffeflAngGRqHNdpI1",
+    "ses_29ebe1378ffeOMsndr0EL3gjfT",
+    "ses_29ebdb46affeFcPV9ILkgdrWCT",
+    "ses_29ebd5783ffeTEpIU4i2azAIpV",
+    "ses_29eb7ac14ffetgaheQkz55gYL2",
+    "ses_29eb881a8ffeXn2gRD4lWq82Jf",
+    "ses_29eaff343ffeoqSwEL0exr89Wk",
+    "ses_29ea7d5faffeHPbYEpOBU6sk81",
+    "ses_29ea77181ffenRNEH6LjeTbycy",
+    "ses_29ea41e97ffewgCizqRNntTkPp",
+    "ses_29ea3dfe1ffeZYUM4mI9zybVDU",
+    "ses_29ea29c57ffefQJJ6NDv9dAWOM",
+    "ses_29ea37c58ffeJKZ0IB0se9ewK9",
+    "ses_29ea826c9ffeRXfEI7lqS7SoQA"
   ],
-  "plan_name": "subagent-filter",
+  "plan_name": "session-type-refactor",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "类型定义 -- 新增 includeSubagentEvents 配置和 payload 字段",
-      "session_id": "ses_29f3bcf70ffefn7mzms8vt7sZI",
+      "task_title": "类型定义重构 (types.ts)",
+      "session_id": "ses_29ec7f655ffe8ePwbKbBHd6ste",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-06T03:10:19.342Z"
+      "updated_at": "2026-04-06T05:19:32.709Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "eventToPayload 三态判定 + 过滤逻辑 (index.ts)",
+      "session_id": "ses_29ec29756ffeflAngGRqHNdpI1",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-06T05:25:12.466Z"
     },
     "todo:3": {
       "task_key": "todo:3",
       "task_label": "3",
-      "task_title": "配置合并 -- loadConfig() 中合并 includeSubagentEvents 字段",
-      "session_id": "ses_29f33da56fferTLB6BwjAlgx4Y",
+      "task_title": "handler 模板变量传递 (handler.ts)",
+      "session_id": "ses_29ebe1378ffeOMsndr0EL3gjfT",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-06T03:18:56.843Z"
+      "updated_at": "2026-04-06T05:27:37.584Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "子代理过滤测试重写 (tests/index.test.ts)",
+      "session_id": "ses_29eaff343ffeoqSwEL0exr89Wk",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-06T05:48:24.132Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** -- `oracle`",
-      "session_id": "ses_29f21b72bffesQ3SyYLRdC1Ctt",
+      "session_id": "ses_29ea77181ffenRNEH6LjeTbycy",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-04-06T03:41:52.194Z"
+      "updated_at": "2026-04-06T05:53:42.425Z"
     }
   }
 }
