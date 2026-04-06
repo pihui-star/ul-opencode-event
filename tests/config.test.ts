@@ -380,7 +380,7 @@ describe('loadConfig', () => {
         throw new Error('File not found');
       });
 
-      expect(() => loadConfig()).toThrow('Unsupported channel type: "feishu". Supported types: smtp');
+      expect(() => loadConfig()).toThrow('Unsupported channel type: "feishu". Supported types: smtp, dingtalk');
     });
 
     test('throws error for invalid channel type', () => {
@@ -406,7 +406,183 @@ describe('loadConfig', () => {
         throw new Error('File not found');
       });
 
-      expect(() => loadConfig()).toThrow('Unsupported channel type: "invalid". Supported types: smtp');
+      expect(() => loadConfig()).toThrow('Unsupported channel type: "invalid". Supported types: smtp, dingtalk');
+    });
+  });
+
+  describe('dingtalk channel', () => {
+    test('valid dingtalk config with webhook passes loadConfig without error', () => {
+      const config = {
+        channels: [
+          {
+            type: 'dingtalk',
+            enabled: true,
+            name: 'DingTalk Bot',
+            config: {
+              webhook: 'https://oapi.dingtalk.com/robot/send?access_token=test-token',
+            },
+            events: { created: true, idle: true, error: true },
+          },
+        ],
+      };
+
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+
+      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === projectPath) return JSON.stringify(config);
+        throw new Error('File not found');
+      });
+
+      const result = loadConfig();
+
+      expect(result.channels).toHaveLength(1);
+      expect(result.channels[0].type).toBe('dingtalk');
+      expect(result.channels[0].name).toBe('DingTalk Bot');
+      expect(result.channels[0].config).toEqual({
+        webhook: 'https://oapi.dingtalk.com/robot/send?access_token=test-token',
+      });
+    });
+
+    test('type "dingtalk" is accepted as supported channel type (no "Unsupported" error)', () => {
+      const config = {
+        channels: [
+          {
+            type: 'dingtalk',
+            enabled: true,
+            name: 'DT Channel',
+            config: { webhook: 'https://oapi.dingtalk.com/robot/send?token=abc' },
+            events: { idle: true },
+          },
+        ],
+      };
+
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+
+      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === projectPath) return JSON.stringify(config);
+        throw new Error('File not found');
+      });
+
+      // Should NOT throw - dingtalk is a supported type
+      expect(() => loadConfig()).not.toThrow();
+    });
+
+    test('type "feishu" still throws "Unsupported channel type" error', () => {
+      const config = {
+        channels: [
+          {
+            type: 'feishu',
+            enabled: true,
+            name: 'Feishu Bot',
+            config: { webhook: 'https://open.feishu.cn/webhook' },
+            events: { created: true },
+          },
+        ],
+      };
+
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+
+      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === projectPath) return JSON.stringify(config);
+        throw new Error('File not found');
+      });
+
+      expect(() => loadConfig()).toThrow(/Unsupported channel type: "feishu"/);
+    });
+
+    test('global + project dingtalk config merges by name (project overrides)', () => {
+      const globalConfig = {
+        channels: [
+          {
+            type: 'dingtalk',
+            enabled: true,
+            name: 'Team DingTalk',
+            config: {
+              webhook: 'https://oapi.dingtalk.com/robot/send?access_token=global-token',
+            },
+            events: { created: true },
+          },
+        ],
+      };
+
+      const projectConfig = {
+        channels: [
+          {
+            type: 'dingtalk',
+            enabled: true,
+            name: 'Team DingTalk',
+            config: {
+              webhook: 'https://oapi.dingtalk.com/robot/send?access_token=project-token',
+            },
+            events: { idle: true, error: true },
+          },
+        ],
+      };
+
+      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+
+      mockFs.existsSync.mockImplementation((p: string) => p === globalPath || p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === globalPath) return JSON.stringify(globalConfig);
+        if (p === projectPath) return JSON.stringify(projectConfig);
+        throw new Error('File not found');
+      });
+
+      const result = loadConfig();
+
+      // Same name → project overrides global
+      expect(result.channels).toHaveLength(1);
+      expect(result.channels[0].name).toBe('Team DingTalk');
+      expect(result.channels[0].config.webhook).toBe(
+        'https://oapi.dingtalk.com/robot/send?access_token=project-token'
+      );
+      expect(result.channels[0].events).toEqual({ idle: true, error: true });
+    });
+
+    test('global + project dingtalk config with different names appends both', () => {
+      const globalConfig = {
+        channels: [
+          {
+            type: 'dingtalk',
+            enabled: true,
+            name: 'Global DT',
+            config: { webhook: 'https://oapi.dingtalk.com/robot/send?token=g' },
+            events: { created: true },
+          },
+        ],
+      };
+
+      const projectConfig = {
+        channels: [
+          {
+            type: 'dingtalk',
+            enabled: true,
+            name: 'Project DT',
+            config: { webhook: 'https://oapi.dingtalk.com/robot/send?token=p' },
+            events: { error: true },
+          },
+        ],
+      };
+
+      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+
+      mockFs.existsSync.mockImplementation((p: string) => p === globalPath || p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === globalPath) return JSON.stringify(globalConfig);
+        if (p === projectPath) return JSON.stringify(projectConfig);
+        throw new Error('File not found');
+      });
+
+      const result = loadConfig();
+
+      // Different names → both kept
+      expect(result.channels).toHaveLength(2);
+      expect(result.channels.map(c => c.name)).toEqual(['Global DT', 'Project DT']);
     });
   });
 

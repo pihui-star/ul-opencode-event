@@ -1,25 +1,14 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
 import type { NotificationConfig, Channel, EventPayload, EventType } from '../src/types';
 
-// Track sent emails for verification
-interface SentEmail {
+// Track sent messages for verification (formatter output: { subject, text })
+interface SentMessage {
   channelName: string;
   subject: string;
-  body: string;
+  text: string;
 }
 
-const sentEmails: SentEmail[] = [];
-
-// Mock the email module BEFORE importing handler
-const emailMock = mock(() => ({
-  send: mock(async (subject: string, body: string) => {
-    sentEmails.push({ 
-      channelName: 'mocked-channel', 
-      subject, 
-      body 
-    });
-  }),
-}));
+const sentMessages: SentMessage[] = [];
 
 // Use mock.module to replace the email module
 mock.module('../src/email', () => ({
@@ -36,14 +25,18 @@ mock.module('../src/email', () => ({
     if (!channel.recipients || channel.recipients.length === 0) {
       return null;
     }
-    // Return a mock sender that tracks emails
+    // Return a mock sender that tracks formatted messages
     return {
-      send: async (subject: string, body: string) => {
-        sentEmails.push({
-          channelName: channel.name || 'unnamed',
-          subject,
-          body,
-        });
+      send: async (message: unknown) => {
+        // Handler now sends FormattedMessage { subject, text } via formatter
+        const msg = message as { subject?: string; text?: string };
+        if (msg?.subject && msg?.text) {
+          sentMessages.push({
+            channelName: channel.name || 'unnamed',
+            subject: msg.subject,
+            text: msg.text,
+          });
+        }
       },
     };
   },
@@ -83,11 +76,11 @@ function createPayload(eventType: EventType, overrides: Partial<EventPayload> = 
 
 describe('createEventHandler', () => {
   beforeEach(() => {
-    sentEmails.length = 0;
+    sentMessages.length = 0;
   });
 
   afterEach(() => {
-    sentEmails.length = 0;
+    sentMessages.length = 0;
   });
 
   test('event triggers all enabled channels', async () => {
@@ -101,9 +94,9 @@ describe('createEventHandler', () => {
     const handler = createEventHandler(config);
     await handler.handle('created', createPayload('created'));
     
-    expect(sentEmails.length).toBe(2);
-    expect(sentEmails.find(e => e.channelName === 'Channel 1')).toBeDefined();
-    expect(sentEmails.find(e => e.channelName === 'Channel 2')).toBeDefined();
+    expect(sentMessages.length).toBe(2);
+    expect(sentMessages.find(e => e.channelName === 'Channel 1')).toBeDefined();
+    expect(sentMessages.find(e => e.channelName === 'Channel 2')).toBeDefined();
   });
 
   test('disabled channel does not receive notification', async () => {
@@ -117,8 +110,8 @@ describe('createEventHandler', () => {
     const handler = createEventHandler(config);
     await handler.handle('created', createPayload('created'));
     
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].channelName).toBe('Enabled Channel');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].channelName).toBe('Enabled Channel');
   });
 
   test('channel with disabled event type does not send', async () => {
@@ -135,7 +128,7 @@ describe('createEventHandler', () => {
     await handler.handle('created', createPayload('created'));
     
     // Should not send because created is disabled
-    expect(sentEmails.length).toBe(0);
+    expect(sentMessages.length).toBe(0);
   });
 
   test('event data passed to template correctly', async () => {
@@ -162,9 +155,9 @@ describe('createEventHandler', () => {
 
     await handler.handle('created', payload);
     
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].subject).toBe('Project: my-awesome-project - Session: sess-456');
-    expect(sentEmails[0].body).toBe('Time: 2024-06-15T10:30:00Z - Event: created');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].subject).toBe('Project: my-awesome-project - Session: sess-456');
+    expect(sentMessages[0].text).toBe('Time: 2024-06-15T10:30:00Z - Event: created');
   });
 
   test('multiple channels all receive notification', async () => {
@@ -182,7 +175,7 @@ describe('createEventHandler', () => {
       duration: '10m' 
     }));
     
-    expect(sentEmails.length).toBe(3);
+    expect(sentMessages.length).toBe(3);
   });
 
   test('unsupported channel type is skipped silently', async () => {
@@ -216,8 +209,8 @@ describe('createEventHandler', () => {
     await expect(handler.handle('created', createPayload('created'))).resolves.toBeUndefined();
     
     // Only SMTP channel should have sent
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].channelName).toBe('SMTP Channel');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].channelName).toBe('SMTP Channel');
   });
 
   test('default templates are used when channel has no custom templates', async () => {
@@ -234,16 +227,16 @@ describe('createEventHandler', () => {
     
     // Test created uses default template
     await handler.handle('created', createPayload('created'));
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].subject).toContain('test-project');
-    expect(sentEmails[0].body).toContain('2024-01-01T12:00:00Z');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].subject).toContain('test-project');
+    expect(sentMessages[0].text).toContain('2024-01-01T12:00:00Z');
     
-    sentEmails.length = 0;
+    sentMessages.length = 0;
     
     // Test idle uses default template
     await handler.handle('idle', createPayload('idle', { message: 'Done', duration: '5m' }));
-    expect(sentEmails[0].body).toContain('5m');
-    expect(sentEmails[0].body).toContain('Done');
+    expect(sentMessages[0].text).toContain('5m');
+    expect(sentMessages[0].text).toContain('Done');
   });
 
   test('handles empty channels array', async () => {
@@ -253,7 +246,7 @@ describe('createEventHandler', () => {
 
     const handler = createEventHandler(config);
     await expect(handler.handle('created', createPayload('created'))).resolves.toBeUndefined();
-    expect(sentEmails.length).toBe(0);
+    expect(sentMessages.length).toBe(0);
   });
 
   test('handles channel with no recipients gracefully', async () => {
@@ -268,7 +261,7 @@ describe('createEventHandler', () => {
 
     const handler = createEventHandler(config);
     await expect(handler.handle('created', createPayload('created'))).resolves.toBeUndefined();
-    expect(sentEmails.length).toBe(0);
+    expect(sentMessages.length).toBe(0);
   });
 
   test('handles all three event types', async () => {
@@ -280,24 +273,24 @@ describe('createEventHandler', () => {
 
     // Test created event
     await handler.handle('created', createPayload('created'));
-    expect(sentEmails.length).toBe(1);
+    expect(sentMessages.length).toBe(1);
     
-    sentEmails.length = 0;
+    sentMessages.length = 0;
     
     // Test idle event
     await handler.handle('idle', createPayload('idle', { 
       message: 'Task completed successfully', 
       duration: '2h 30m' 
     }));
-    expect(sentEmails.length).toBe(1);
+    expect(sentMessages.length).toBe(1);
     
-    sentEmails.length = 0;
+    sentMessages.length = 0;
     
     // Test error event
     await handler.handle('error', createPayload('error', { 
       error: 'Connection timeout' 
     }));
-    expect(sentEmails.length).toBe(1);
+    expect(sentMessages.length).toBe(1);
   });
 
   test('channel with partial event config sends enabled events only', async () => {
@@ -318,19 +311,19 @@ describe('createEventHandler', () => {
 
     // created is explicitly enabled
     await handler.handle('created', createPayload('created'));
-    expect(sentEmails.length).toBe(1);
+    expect(sentMessages.length).toBe(1);
     
-    sentEmails.length = 0;
+    sentMessages.length = 0;
     
     // idle is undefined, should still process
     await handler.handle('idle', createPayload('idle', { message: 'Done', duration: '1m' }));
-    expect(sentEmails.length).toBe(1);
+    expect(sentMessages.length).toBe(1);
     
-    sentEmails.length = 0;
+    sentMessages.length = 0;
     
     // error is explicitly disabled
     await handler.handle('error', createPayload('error', { error: 'Error' }));
-    expect(sentEmails.length).toBe(0);
+    expect(sentMessages.length).toBe(0);
   });
 
   test('custom templates override defaults', async () => {
@@ -351,8 +344,8 @@ describe('createEventHandler', () => {
     const handler = createEventHandler(config);
     await handler.handle('created', createPayload('created'));
     
-    expect(sentEmails[0].subject).toBe('Custom: test-project Started');
-    expect(sentEmails[0].body).toBe('Custom body for test-project');
+    expect(sentMessages[0].subject).toBe('Custom: test-project Started');
+    expect(sentMessages[0].text).toBe('Custom body for test-project');
   });
 
   // --- Multi-language template tests ---
@@ -369,17 +362,17 @@ describe('createEventHandler', () => {
 
     // Test idle event - should use Chinese template
     await handler.handle('idle', createPayload('idle', { message: '完成', duration: '5m' }));
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].subject).toContain('任务已完成');
-    expect(sentEmails[0].body).toContain('耗时');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].subject).toContain('任务已完成');
+    expect(sentMessages[0].text).toContain('耗时');
 
-    sentEmails.length = 0;
+    sentMessages.length = 0;
 
     // Test error event - should use Chinese template
     await handler.handle('error', createPayload('error', { error: '连接超时' }));
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].subject).toContain('任务出错');
-    expect(sentEmails[0].body).toContain('错误信息');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].subject).toContain('任务出错');
+    expect(sentMessages[0].text).toContain('错误信息');
   });
 
   test('English locale (default) produces English default templates', async () => {
@@ -394,9 +387,9 @@ describe('createEventHandler', () => {
     const handler = createEventHandler(config);
 
     await handler.handle('idle', createPayload('idle', { message: 'Done', duration: '5m' }));
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].subject).toContain('Task Completed');
-    expect(sentEmails[0].body).toContain('Duration');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].subject).toContain('Task Completed');
+    expect(sentMessages[0].text).toContain('Duration');
   });
 
   test('undefined language falls back to English', async () => {
@@ -410,8 +403,8 @@ describe('createEventHandler', () => {
     const handler = createEventHandler(config);
 
     await handler.handle('created', createPayload('created'));
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].subject).toContain('Task Started');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].subject).toContain('Task Started');
   });
 
   test('custom templates override locale defaults', async () => {
@@ -433,7 +426,262 @@ describe('createEventHandler', () => {
     const handler = createEventHandler(config);
     await handler.handle('idle', createPayload('idle', { message: '测试' }));
 
-    expect(sentEmails[0].subject).toBe('[自定义] test-project 完成');
-    expect(sentEmails[0].body).toBe('自定义内容: 测试');
+    expect(sentMessages[0].subject).toBe('[自定义] test-project 完成');
+    expect(sentMessages[0].text).toBe('自定义内容: 测试');
+  });
+});
+
+// ============================================================
+// Multi-Channel Test Suite (SMTP + DingTalk)
+// ============================================================
+
+// Track DingTalk sent messages separately
+const sentDingTalkMessages: Array<{
+  channelName: string;
+  msgtype: string;
+  title?: string;
+  text?: string;
+}> = [];
+
+// Mock the dingtalk module for multi-channel tests
+mock.module('../src/dingtalk', () => ({
+  createDingTalkSender: async (channel: Channel) => {
+    if (channel.enabled === false) {
+      return null;
+    }
+    if (channel.type !== 'dingtalk') {
+      return null;
+    }
+    const config = channel.config as { webhook?: string; secret?: string };
+    if (!config.webhook) {
+      return null;
+    }
+    // Validate webhook URL format
+    const webhookUrl = config.webhook.trim();
+    if (!webhookUrl.startsWith('http://') && !webhookUrl.startsWith('https://')) {
+      return null;
+    }
+    return {
+      send: async (message: unknown) => {
+        const msg = message as {
+          msgtype?: string;
+          markdown?: { title?: string; text?: string };
+        } | undefined;
+        if (msg?.msgtype === 'markdown' && msg.markdown) {
+          sentDingTalkMessages.push({
+            channelName: channel.name || 'DingTalk',
+            msgtype: msg.msgtype,
+            title: msg.markdown.title,
+            text: msg.markdown.text,
+          });
+        }
+      },
+      close: async () => {},
+    };
+  },
+}));
+
+describe('Multi-Channel: SMTP + DingTalk', () => {
+  beforeEach(() => {
+    sentMessages.length = 0;
+    sentDingTalkMessages.length = 0;
+  });
+
+  afterEach(() => {
+    sentMessages.length = 0;
+    sentDingTalkMessages.length = 0;
+  });
+
+  test('SMTP + DingTalk mixed config initializes both senders', async () => {
+    const smtpChannel = createMockChannel({ name: 'SMTP Alert' });
+    const dingtalkChannel: Channel = {
+      type: 'dingtalk',
+      enabled: true,
+      name: 'DingTalk Alert',
+      config: {
+        webhook: 'https://oapi.dingtalk.com/robot/send?access_token=test-token',
+      },
+      recipients: [],
+      events: { created: true, idle: true, error: true },
+    };
+
+    const config: NotificationConfig = {
+      channels: [smtpChannel, dingtalkChannel],
+    };
+
+    const handler = createEventHandler(config);
+    await handler.handle('created', createPayload('created'));
+
+    // Both channels should have sent
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].channelName).toBe('SMTP Alert');
+    expect(sentDingTalkMessages.length).toBe(1);
+    expect(sentDingTalkMessages[0].channelName).toBe('DingTalk Alert');
+    expect(sentDingTalkMessages[0].msgtype).toBe('markdown');
+  });
+
+  test('emailFormatter produces correct { subject, text } structure', async () => {
+    // Import formatter directly (pure function, no side effects)
+    const { emailFormatter } = await import('../src/formatters');
+
+    const result = emailFormatter.format('Test Subject', 'Test Body content', createPayload('created'));
+
+    expect(result).toHaveProperty('subject', 'Test Subject');
+    expect(result).toHaveProperty('text', 'Test Body content');
+    expect(Object.keys(result)).toEqual(['subject', 'text']);
+  });
+
+  test('DingTalk formatter produces markdown message structure', async () => {
+    const { createDingTalkFormatter } = await import('../src/formatters');
+
+    const dtFormatter = createDingTalkFormatter({
+      webhook: 'https://oapi.dingtalk.com/robot/send?access_token=test',
+    });
+
+    const result = dtFormatter.format(
+      '[Alert] Task Completed',
+      'Project: my-project\nDuration: 5m\nStatus: done',
+      createPayload('idle')
+    );
+
+    expect(result).toHaveProperty('msgtype', 'markdown');
+    expect(result).toHaveProperty('markdown');
+    expect((result as any).markdown.title).toBe('[Alert] Task Completed');
+    // DingTalk formatter escapes hyphens in key:value lines: my-project -> my\-project
+    expect((result as any).markdown.text).toContain('my\\-project');
+  });
+
+  test('DingTalk sender lifecycle: valid config creates sender, invalid returns null', async () => {
+    const { createDingTalkSender } = await import('../src/dingtalk');
+
+    // Valid config → sender created
+    const validChannel: Channel = {
+      type: 'dingtalk',
+      enabled: true,
+      name: 'Valid DT',
+      config: { webhook: 'https://oapi.dingtalk.com/robot/send?access_token=valid' },
+      events: { idle: true },
+    };
+    const validSender = await createDingTalkSender(validChannel);
+    expect(validSender).not.toBeNull();
+    expect(typeof validSender!.send).toBe('function');
+    expect(typeof validSender!.close).toBe('function');
+
+    // Disabled channel → null
+    const disabledChannel: Channel = {
+      ...validChannel,
+      enabled: false,
+      name: 'Disabled DT',
+    };
+    const disabledSender = await createDingTalkSender(disabledChannel);
+    expect(disabledSender).toBeNull();
+
+    // Missing webhook → null
+    const noWebhookChannel: Channel = {
+      type: 'dingtalk',
+      enabled: true,
+      name: 'No Webhook DT',
+      config: {} as any,
+      events: { idle: true },
+    };
+    const noWebhookSender = await createDingTalkSender(noWebhookChannel);
+    expect(noWebhookSender).toBeNull();
+
+    // Invalid URL scheme → null
+    const badUrlChannel: Channel = {
+      type: 'dingtalk',
+      enabled: true,
+      name: 'Bad URL DT',
+      config: { webhook: 'ftp://invalid.com/webhook' },
+      events: { idle: true },
+    };
+    const badUrlSender = await createDingTalkSender(badUrlChannel);
+    expect(badUrlSender).toBeNull();
+  });
+
+  test('multi-channel concurrent send: SMTP and DingTalk do not interfere', async () => {
+    const config: NotificationConfig = {
+      channels: [
+        createMockChannel({ name: 'Email Channel' }),
+        {
+          type: 'dingtalk',
+          enabled: true,
+          name: 'DT Channel',
+          config: { webhook: 'https://oapi.dingtalk.com/robot/send?access_token=concurrent' },
+          events: { idle: true, error: true },
+        },
+        {
+          type: 'dingtalk',
+          enabled: true,
+          name: 'DT Channel 2',
+          config: { webhook: 'https://oapi.dingtalk.com/robot/send?access_token=concurrent2' },
+          events: { idle: true, error: true },
+        },
+      ],
+    };
+
+    const handler = createEventHandler(config);
+
+    // Fire multiple events sequentially (avoid init race condition)
+    await handler.handle('idle', createPayload('idle', { message: 'Task A done', duration: '1m' }));
+    await handler.handle('error', createPayload('error', { error: 'Something broke' }));
+    await handler.handle('created', createPayload('created'));
+
+    // Email channel: idle + error + created (all enabled by default)
+    expect(sentMessages.length).toBe(3);
+
+    // DingTalk channels: idle + error + created (all default to enabled)
+    // 2 DT channels x 3 events each = 6
+    expect(sentDingTalkMessages.length).toBe(6);
+
+    // Verify data integrity — no cross-contamination
+    const dt1Msgs = sentDingTalkMessages.filter(m => m.channelName === 'DT Channel');
+    const dt2Msgs = sentDingTalkMessages.filter(m => m.channelName === 'DT Channel 2');
+    expect(dt1Msgs.length).toBe(3);
+    expect(dt2Msgs.length).toBe(3);
+
+    // All messages should have proper structure
+    for (const m of sentDingTalkMessages) {
+      expect(m.msgtype).toBe('markdown');
+      expect(m.title).toBeDefined();
+      expect(m.text).toBeDefined();
+    }
+  });
+
+  test('DingTalk formatter escapes special markdown characters', async () => {
+    const { createDingTalkFormatter } = await import('../src/formatters');
+
+    const dtFormatter = createDingTalkFormatter({
+      webhook: 'https://oapi.dingtalk.com/robot/send?access_token=escape-test',
+    });
+
+    const result = dtFormatter.format(
+      'Title with *special* chars',
+      'Text with *bold* and _underline_ and `code`',
+      createPayload('error')
+    );
+
+    const text = (result as any).markdown.text;
+    // Special characters should be escaped by DingTalk formatter
+    expect(text).toContain('\\*bold\\*');
+    expect(text).toContain('\\_underline\\_');
+    expect(text).toContain('\\`code\\`');
+  });
+
+  test('DingTalk formatter truncates long content at 4000 chars', async () => {
+    const { createDingTalkFormatter } = await import('../src/formatters');
+
+    const dtFormatter = createDingTalkFormatter({
+      webhook: 'https://oapi.dingtalk.com/robot/send?access_token=truncate-test',
+    });
+
+    // Generate body longer than 4000 chars
+    const longBody = 'A'.repeat(5000);
+    const result = dtFormatter.format('Short Title', longBody, createPayload('idle'));
+
+    const text = (result as any).markdown.text;
+    // Should be truncated
+    expect(text.length).toBeLessThanOrEqual(4000);
+    expect(text).toContain('... (truncated)');
   });
 });

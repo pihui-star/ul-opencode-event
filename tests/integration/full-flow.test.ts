@@ -9,8 +9,8 @@ import * as os from 'node:os';
 import { randomUUID } from 'crypto';
 import type { NotificationConfig, Channel, EventPayload, EventType, EmailSender } from '../../src/types';
 
-// Store captured emails
-let capturedEmails: Array<{
+// Store captured messages (formatter output: { subject, text } or legacy { subject, body })
+let capturedMessages: Array<{
   from?: string;
   to: string | string[];
   subject: string;
@@ -44,13 +44,35 @@ mock.module('../../src/email', () => ({
     const recipients = channel.recipients;
 
     return {
-      async send(subject: string, body: string): Promise<void> {
+      async send(message: unknown, legacyBody?: unknown): Promise<void> {
         try {
           if (mockSendBehavior) {
             await mockSendBehavior();
             return;
           }
-          capturedEmails.push({
+          let subject: string;
+          let body: string;
+
+          // Format 1: FormattedMessage { subject, text } from formatter layer
+          if (message && typeof message === 'object') {
+            const msg = message as { subject?: string; text?: string };
+            if (typeof msg.subject === 'string' && typeof msg.text === 'string') {
+              subject = msg.subject;
+              body = msg.text;
+            } else {
+              return;
+            }
+          }
+          // Format 2: Legacy (subject, body) strings for direct calls
+          else if (typeof message === 'string') {
+            subject = message;
+            body = typeof legacyBody === 'string' ? legacyBody : '';
+          }
+          else {
+            return;
+          }
+
+          capturedMessages.push({
             from: `"${fromName}" <test@test.com>`,
             to: recipients.join(', '),
             subject,
@@ -62,6 +84,9 @@ mock.module('../../src/email', () => ({
           const timestamp = new Date().toISOString();
           console.error(`[${timestamp}] [${fromName}] Failed to send email:`, error);
         }
+      },
+      async close(): Promise<void> {
+        // No-op for mock
       },
     };
   },
@@ -102,12 +127,12 @@ function createPayload(eventType: EventType, overrides: Partial<EventPayload> = 
 
 describe('Full Flow Integration Tests', () => {
   beforeEach(() => {
-    capturedEmails = [];
+    capturedMessages = [];
     mockSendBehavior = null;
   });
 
   afterEach(() => {
-    capturedEmails = [];
+    capturedMessages = [];
     mockSendBehavior = null;
   });
 
@@ -123,9 +148,9 @@ describe('Full Flow Integration Tests', () => {
         duration: '2s',
       }));
 
-      expect(capturedEmails).toHaveLength(1);
-      expect(capturedEmails[0].subject).toContain('Test Project');
-      expect(capturedEmails[0].to).toBe('receiver@test.com');
+      expect(capturedMessages).toHaveLength(1);
+      expect(capturedMessages[0].subject).toContain('Test Project');
+      expect(capturedMessages[0].to).toBe('receiver@test.com');
     });
 
     test('should send email on created event', async () => {
@@ -136,8 +161,8 @@ describe('Full Flow Integration Tests', () => {
       const handler = createEventHandler(config);
       await handler.handle('created', createPayload('created'));
 
-      expect(capturedEmails).toHaveLength(1);
-      expect(capturedEmails[0].subject).toContain('Started');
+      expect(capturedMessages).toHaveLength(1);
+      expect(capturedMessages[0].subject).toContain('Started');
     });
 
     test('should send email on error event with error details', async () => {
@@ -150,9 +175,9 @@ describe('Full Flow Integration Tests', () => {
         error: 'Test error message',
       }));
 
-      expect(capturedEmails).toHaveLength(1);
-      expect(capturedEmails[0].subject).toContain('Error');
-      expect(capturedEmails[0].text).toContain('Test error message');
+      expect(capturedMessages).toHaveLength(1);
+      expect(capturedMessages[0].subject).toContain('Error');
+      expect(capturedMessages[0].text).toContain('Test error message');
     });
   });
 
@@ -177,8 +202,8 @@ describe('Full Flow Integration Tests', () => {
         duration: '1m',
       }));
 
-      expect(capturedEmails).toHaveLength(2);
-      const recipients = capturedEmails.map(e => e.to);
+      expect(capturedMessages).toHaveLength(2);
+      const recipients = capturedMessages.map(e => e.to);
       expect(recipients).toContain('primary@test.com');
       expect(recipients).toContain('secondary@test.com');
     });
@@ -201,8 +226,8 @@ describe('Full Flow Integration Tests', () => {
       const handler = createEventHandler(config);
       await handler.handle('idle', createPayload('idle'));
 
-      expect(capturedEmails).toHaveLength(1);
-      expect(capturedEmails[0].to).toBe('enabled@test.com');
+      expect(capturedMessages).toHaveLength(1);
+      expect(capturedMessages[0].to).toBe('enabled@test.com');
     });
 
     test('should respect event type per channel', async () => {
@@ -225,15 +250,15 @@ describe('Full Flow Integration Tests', () => {
 
       // Send created event - only 'Created Only' should receive
       await handler.handle('created', createPayload('created'));
-      expect(capturedEmails).toHaveLength(1);
-      expect(capturedEmails[0].to).toBe('created-only@test.com');
+      expect(capturedMessages).toHaveLength(1);
+      expect(capturedMessages[0].to).toBe('created-only@test.com');
 
-      capturedEmails.length = 0;
+      capturedMessages.length = 0;
 
       // Send idle event - only 'Idle Only' should receive
       await handler.handle('idle', createPayload('idle', { message: 'Done', duration: '1s' }));
-      expect(capturedEmails).toHaveLength(1);
-      expect(capturedEmails[0].to).toBe('idle-only@test.com');
+      expect(capturedMessages).toHaveLength(1);
+      expect(capturedMessages[0].to).toBe('idle-only@test.com');
     });
   });
 
@@ -252,9 +277,9 @@ describe('Full Flow Integration Tests', () => {
         duration: '5m',
       }));
 
-      expect(capturedEmails[0].subject).toContain('Task Completed');
-      expect(capturedEmails[0].text).toContain('5m');
-      expect(capturedEmails[0].text).toContain('Success');
+      expect(capturedMessages[0].subject).toContain('Task Completed');
+      expect(capturedMessages[0].text).toContain('5m');
+      expect(capturedMessages[0].text).toContain('Success');
     });
 
     test('should use custom templates when provided', async () => {
@@ -276,8 +301,8 @@ describe('Full Flow Integration Tests', () => {
         duration: '10m',
       }));
 
-      expect(capturedEmails[0].subject).toBe('[CUSTOM] Test Project - Done!');
-      expect(capturedEmails[0].text).toBe('Project Test Project finished in 10m. Message: All good');
+      expect(capturedMessages[0].subject).toBe('[CUSTOM] Test Project - Done!');
+      expect(capturedMessages[0].text).toBe('Project Test Project finished in 10m. Message: All good');
     });
 
     test('should include all variables in templates', async () => {
@@ -300,8 +325,8 @@ describe('Full Flow Integration Tests', () => {
         sessionId: 'sess-123',
       }));
 
-      expect(capturedEmails[0].subject).toBe('created - MyProject - sess-123');
-      expect(capturedEmails[0].text).toBe('Time: 2024-06-15T10:30:00Z');
+      expect(capturedMessages[0].subject).toBe('created - MyProject - sess-123');
+      expect(capturedMessages[0].text).toBe('Time: 2024-06-15T10:30:00Z');
     });
   });
 
@@ -322,7 +347,7 @@ describe('Full Flow Integration Tests', () => {
       await expect(handler.handle('idle', createPayload('idle'))).resolves.toBeUndefined();
       
       // Email was attempted but failed
-      expect(capturedEmails).toHaveLength(0);
+      expect(capturedMessages).toHaveLength(0);
     });
 
     test('should continue sending to other channels if one fails', async () => {
@@ -334,7 +359,7 @@ describe('Full Flow Integration Tests', () => {
           throw new Error('First channel failed');
         }
         // Second channel succeeds
-        capturedEmails.push({
+        capturedMessages.push({
           to: 'second@test.com',
           subject: 'test',
         });
@@ -369,7 +394,7 @@ describe('Full Flow Integration Tests', () => {
       const handler = createEventHandler(config);
       await handler.handle('idle', createPayload('idle'));
 
-      expect(capturedEmails).toHaveLength(0);
+      expect(capturedMessages).toHaveLength(0);
     });
 
     test('should handle channel with no recipients', async () => {
@@ -383,7 +408,7 @@ describe('Full Flow Integration Tests', () => {
       const handler = createEventHandler(config);
       await handler.handle('idle', createPayload('idle'));
 
-      expect(capturedEmails).toHaveLength(0);
+      expect(capturedMessages).toHaveLength(0);
     });
   });
 
@@ -399,8 +424,8 @@ describe('Full Flow Integration Tests', () => {
         sessionId: 'new-sess-001',
       }));
 
-      expect(capturedEmails).toHaveLength(1);
-      expect(capturedEmails[0].subject).toContain('Started');
+      expect(capturedMessages).toHaveLength(1);
+      expect(capturedMessages[0].subject).toContain('Started');
     });
 
     test('should process idle event with message and duration', async () => {
@@ -414,9 +439,9 @@ describe('Full Flow Integration Tests', () => {
         duration: '2h 30m',
       }));
 
-      expect(capturedEmails).toHaveLength(1);
-      expect(capturedEmails[0].text).toContain('2h 30m');
-      expect(capturedEmails[0].text).toContain('Task finished successfully');
+      expect(capturedMessages).toHaveLength(1);
+      expect(capturedMessages[0].text).toContain('2h 30m');
+      expect(capturedMessages[0].text).toContain('Task finished successfully');
     });
 
     test('should process error event with error message', async () => {
@@ -429,9 +454,9 @@ describe('Full Flow Integration Tests', () => {
         error: 'Connection refused: ECONNREFUSED',
       }));
 
-      expect(capturedEmails).toHaveLength(1);
-      expect(capturedEmails[0].subject).toContain('Error');
-      expect(capturedEmails[0].text).toContain('Connection refused');
+      expect(capturedMessages).toHaveLength(1);
+      expect(capturedMessages[0].subject).toContain('Error');
+      expect(capturedMessages[0].text).toContain('Connection refused');
     });
   });
 });
@@ -490,13 +515,13 @@ describe('Config Merge Integration Tests', () => {
     const handler = createEventHandler(config);
     await handler.handle('idle', createPayload('idle'));
 
-    expect(capturedEmails).toHaveLength(1);
+    expect(capturedMessages).toHaveLength(1);
   });
 });
 
 describe('EmailSender Integration', () => {
   beforeEach(() => {
-    capturedEmails = [];
+    capturedMessages = [];
     mockSendBehavior = null;
   });
 
@@ -507,9 +532,9 @@ describe('EmailSender Integration', () => {
     expect(sender).not.toBeNull();
     await sender!.send('Direct Subject', 'Direct Body');
 
-    expect(capturedEmails).toHaveLength(1);
-    expect(capturedEmails[0].subject).toBe('Direct Subject');
-    expect(capturedEmails[0].text).toBe('Direct Body');
+    expect(capturedMessages).toHaveLength(1);
+    expect(capturedMessages[0].subject).toBe('Direct Subject');
+    expect(capturedMessages[0].text).toBe('Direct Body');
   });
 
   test('createEmailSender should return null for disabled channel', async () => {

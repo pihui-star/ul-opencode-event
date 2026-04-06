@@ -1,14 +1,14 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
 import type { Channel, EventPayload, EventType, SessionType } from '../src/types';
 
-// Track sent emails for verification
-interface SentEmail {
+// Track sent messages for verification (formatter output: { subject, text })
+interface SentMessage {
   channelName: string;
   subject: string;
-  body: string;
+  text: string;
 }
 
-const sentEmails: SentEmail[] = [];
+const sentMessages: SentMessage[] = [];
 
 // Mock the email module
 mock.module('../src/email', () => ({
@@ -25,14 +25,18 @@ mock.module('../src/email', () => ({
     if (!channel.recipients || channel.recipients.length === 0) {
       return null;
     }
-    // Return a mock sender that tracks emails
+    // Return a mock sender that tracks formatted messages
     return {
-      send: async (subject: string, body: string) => {
-        sentEmails.push({
-          channelName: channel.name || 'unnamed',
-          subject,
-          body,
-        });
+      send: async (message: unknown) => {
+        // Handler now sends FormattedMessage { subject, text } via formatter
+        const msg = message as { subject?: string; text?: string };
+        if (msg?.subject && msg?.text) {
+          sentMessages.push({
+            channelName: channel.name || 'unnamed',
+            subject: msg.subject,
+            text: msg.text,
+          });
+        }
       },
     };
   },
@@ -82,12 +86,12 @@ function createMockEvent(type: string, properties: Record<string, unknown>): { t
 
 describe('NotificationPlugin', () => {
   beforeEach(() => {
-    sentEmails.length = 0;
+    sentMessages.length = 0;
     configMock = null;
   });
 
   afterEach(() => {
-    sentEmails.length = 0;
+    sentMessages.length = 0;
     configMock = null;
   });
 
@@ -155,12 +159,12 @@ describe('NotificationPlugin', () => {
     const event = createMockEvent('session.created', { info: sessionInfo });
     await hooks.event!({ event: event as any });
 
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].channelName).toBe('Created Test');
-    expect(sentEmails[0].subject).toContain('[OpenCode]');
-    expect(sentEmails[0].subject).toContain('Started');
-    expect(sentEmails[0].body).toContain('/my-project');
-    expect(sentEmails[0].body).toContain('Test Session');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].channelName).toBe('Created Test');
+    expect(sentMessages[0].subject).toContain('[OpenCode]');
+    expect(sentMessages[0].subject).toContain('Started');
+    expect(sentMessages[0].text).toContain('/my-project');
+    expect(sentMessages[0].text).toContain('Test Session');
   });
 
   test('session.idle event triggers full notification flow', async () => {
@@ -193,17 +197,17 @@ describe('NotificationPlugin', () => {
     await hooks.event!({ event: createdEvent as any });
 
     // Clear sent emails before idle
-    sentEmails.length = 0;
+    sentMessages.length = 0;
 
     // Now trigger idle event
     const idleEvent = createMockEvent('session.idle', { sessionID: 'session-456' });
     await hooks.event!({ event: idleEvent as any });
 
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].channelName).toBe('Idle Test');
-    expect(sentEmails[0].subject).toContain('Completed');
-    expect(sentEmails[0].body).toContain('Task completed successfully');
-    expect(sentEmails[0].body).toContain('Test Session');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].channelName).toBe('Idle Test');
+    expect(sentMessages[0].subject).toContain('Completed');
+    expect(sentMessages[0].text).toContain('Task completed successfully');
+    expect(sentMessages[0].text).toContain('Test Session');
   });
 
   test('session.error event triggers full notification flow', async () => {
@@ -230,10 +234,10 @@ describe('NotificationPlugin', () => {
     });
     await hooks.event!({ event: errorEvent as any });
 
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].channelName).toBe('Error Test');
-    expect(sentEmails[0].subject).toContain('Error');
-    expect(sentEmails[0].body).toContain('Test error occurred');
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].channelName).toBe('Error Test');
+    expect(sentMessages[0].subject).toContain('Error');
+    expect(sentMessages[0].text).toContain('Test error occurred');
   });
 
   test('unhandled event types are skipped', async () => {
@@ -257,7 +261,7 @@ describe('NotificationPlugin', () => {
     await hooks.event!({ event: unhandledEvent as any });
 
     // Should not send any emails
-    expect(sentEmails.length).toBe(0);
+    expect(sentMessages.length).toBe(0);
   });
 
   test('multiple channels all receive notifications', async () => {
@@ -291,9 +295,9 @@ describe('NotificationPlugin', () => {
     const event = createMockEvent('session.created', { info: sessionInfo });
     await hooks.event!({ event: event as any });
 
-    expect(sentEmails.length).toBe(2);
-    expect(sentEmails[0].channelName).toBe('Primary');
-    expect(sentEmails[1].channelName).toBe('Secondary');
+    expect(sentMessages.length).toBe(2);
+    expect(sentMessages[0].channelName).toBe('Primary');
+    expect(sentMessages[1].channelName).toBe('Secondary');
   });
 
   test('session info is tracked for duration calculation', async () => {
@@ -327,14 +331,14 @@ describe('NotificationPlugin', () => {
     await hooks.event!({ event: createdEvent as any });
 
     // Clear and trigger idle
-    sentEmails.length = 0;
+    sentMessages.length = 0;
 
     const idleEvent = createMockEvent('session.idle', { sessionID: 'session-duration' });
     await hooks.event!({ event: idleEvent as any });
 
-    expect(sentEmails.length).toBe(1);
+    expect(sentMessages.length).toBe(1);
     // Should include duration in the body
-    expect(sentEmails[0].body).toMatch(/\d+m/);
+    expect(sentMessages[0].text).toMatch(/\d+m/);
   });
 
   // ============================================================
@@ -370,10 +374,10 @@ describe('NotificationPlugin', () => {
       const event = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
+      expect(sentMessages.length).toBe(1);
       // Shanghai timezone output: en-CA locale produces "YYYY-MM-DD, HH:mm:ss" format
       // The comma between date and time confirms timezone conversion (ISO uses 'T')
-      expect(sentEmails[0].body).toMatch(/\d{4}-\d{2}-\d{2}, \d{2}:\d{2}:\d{2}/);
+      expect(sentMessages[0].text).toMatch(/\d{4}-\d{2}-\d{2}, \d{2}:\d{2}:\d{2}/);
     });
 
     test('timestamp remains ISO format when no timezone configured (backward compatible)', async () => {
@@ -405,9 +409,9 @@ describe('NotificationPlugin', () => {
       const event = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
+      expect(sentMessages.length).toBe(1);
       // Without timezone, timestamp stays as ISO string with 'T' separator
-      expect(sentEmails[0].body).toContain('T');
+      expect(sentMessages[0].text).toContain('T');
     });
 
     test('invalid timezone falls back gracefully without crashing', async () => {
@@ -440,9 +444,9 @@ describe('NotificationPlugin', () => {
       // Should NOT throw - invalid timezone gracefully falls back to ISO string
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
+      expect(sentMessages.length).toBe(1);
       // Fallback to original ISO format
-      expect(sentEmails[0].body).toContain('T');
+      expect(sentMessages[0].text).toContain('T');
     });
 
     test('UTC timezone produces valid formatted timestamp', async () => {
@@ -474,9 +478,9 @@ describe('NotificationPlugin', () => {
       const event = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
+      expect(sentMessages.length).toBe(1);
       // UTC format: YYYY-MM-DD, HH:mm:ss (en-CA locale with comma separator)
-      expect(sentEmails[0].body).toMatch(/\d{4}-\d{2}-\d{2}, \d{2}:\d{2}:\d{2}/);
+      expect(sentMessages[0].text).toMatch(/\d{4}-\d{2}-\d{2}, \d{2}:\d{2}:\d{2}/);
     });
   });
 
@@ -517,7 +521,7 @@ describe('NotificationPlugin', () => {
       await hooks.event!({ event: createdEvent as any });
 
       // Clear sent emails from session.created
-      sentEmails.length = 0;
+      sentMessages.length = 0;
 
       const event = createMockEvent('question.asked', {
         sessionID: 'q-session-1',
@@ -531,11 +535,11 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].subject).toContain('Question');
-      expect(sentEmails[0].body).toContain('Framework Choice');
-      expect(sentEmails[0].body).toContain('Which framework do you prefer?');
-      expect(sentEmails[0].body).toContain('Test Session');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('Question');
+      expect(sentMessages[0].text).toContain('Framework Choice');
+      expect(sentMessages[0].text).toContain('Which framework do you prefer?');
+      expect(sentMessages[0].text).toContain('Test Session');
     });
 
     test('handles empty questions array gracefully', async () => {
@@ -565,8 +569,8 @@ describe('NotificationPlugin', () => {
       // Should not crash - title and questionText will be undefined (rendered as empty)
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].subject).toContain('Question');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('Question');
     });
   });
 
@@ -601,10 +605,10 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].subject).toContain('Permission');
-      expect(sentEmails[0].body).toContain('Bash: npm install');
-      expect(sentEmails[0].body).toContain('bash');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('Permission');
+      expect(sentMessages[0].text).toContain('Bash: npm install');
+      expect(sentMessages[0].text).toContain('bash');
     });
 
     test('handles missing type field gracefully', async () => {
@@ -634,10 +638,10 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('Some operation without type');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('Some operation without type');
       // permissionType renders as empty when undefined
-      expect(sentEmails[0].body).toContain('()');
+      expect(sentMessages[0].text).toContain('()');
     });
   });
 
@@ -671,9 +675,9 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].subject).toContain('Status Change');
-      expect(sentEmails[0].body).toContain('busy');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('Status Change');
+      expect(sentMessages[0].text).toContain('busy');
     });
 
     test('handles missing status object gracefully', async () => {
@@ -702,8 +706,8 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].subject).toContain('Status Change');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('Status Change');
       // statusType renders as empty string
     });
   });
@@ -739,10 +743,10 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].subject).toContain('Command Executed');
-      expect(sentEmails[0].body).toContain('npm');
-      expect(sentEmails[0].body).toContain('install --save-dev typescript');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('Command Executed');
+      expect(sentMessages[0].text).toContain('npm');
+      expect(sentMessages[0].text).toContain('install --save-dev typescript');
     });
 
     test('handles command with only name, no arguments', async () => {
@@ -772,8 +776,8 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('git');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('git');
     });
   });
 
@@ -806,9 +810,9 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].subject).toContain('File Edited');
-      expect(sentEmails[0].body).toContain('src/index.ts');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('File Edited');
+      expect(sentMessages[0].text).toContain('src/index.ts');
     });
 
     test('handles missing file field gracefully', async () => {
@@ -836,8 +840,8 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].subject).toContain('File Edited');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('File Edited');
       // filePath renders as empty
     });
   });
@@ -876,11 +880,11 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].subject).toContain('Todos Updated');
-      expect(sentEmails[0].body).toContain('[completed] Fix critical bug');
-      expect(sentEmails[0].body).toContain('[in_progress] Add new feature');
-      expect(sentEmails[0].body).toContain('[pending] Write documentation');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('Todos Updated');
+      expect(sentMessages[0].text).toContain('[completed] Fix critical bug');
+      expect(sentMessages[0].text).toContain('[in_progress] Add new feature');
+      expect(sentMessages[0].text).toContain('[pending] Write documentation');
     });
 
     test('handles empty todos array gracefully', async () => {
@@ -909,8 +913,8 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].subject).toContain('Todos Updated');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('Todos Updated');
       // todoSummary is empty string for empty array
     });
   });
@@ -951,7 +955,7 @@ describe('NotificationPlugin', () => {
       await hooks.event!({ event: createMockEvent('file.edited', { file: 'src/test.ts' }) as any });
       await hooks.event!({ event: createMockEvent('todo.updated', { sessionID: 't1', todos: [{ content: 'Test', status: 'pending' }] }) as any });
 
-      expect(sentEmails.length).toBe(0);
+      expect(sentMessages.length).toBe(0);
     });
   });
 
@@ -1020,12 +1024,12 @@ describe('NotificationPlugin', () => {
       }) as any });
 
       // All 6 events should produce emails
-      expect(sentEmails.length).toBe(6);
+      expect(sentMessages.length).toBe(6);
 
       // Every email body should have Shanghai-formatted timestamp
-      for (const email of sentEmails) {
+      for (const email of sentMessages) {
         // Localized format: YYYY-MM-DD, HH:mm:ss (comma = Intl.DateTimeFormat, not ISO 'T')
-        expect(email.body).toMatch(/\d{4}-\d{2}-\d{2}, \d{2}:\d{2}:\d{2}/);
+        expect(email.text).toMatch(/\d{4}-\d{2}-\d{2}, \d{2}:\d{2}:\d{2}/);
       }
     });
 
@@ -1051,26 +1055,26 @@ describe('NotificationPlugin', () => {
 
       // Fire events sequentially - each should produce independent email
       await hooks.event!({ event: createMockEvent('question.asked', { sessionID: 'sq1', questions: [{ header: 'Q1', question: 'A?', options: [] }] }) as any });
-      expect(sentEmails.length).toBe(1);
+      expect(sentMessages.length).toBe(1);
 
       await hooks.event!({ event: createMockEvent('permission.updated', { sessionID: 'sq2', title: 'P1', type: 'bash' }) as any });
-      expect(sentEmails.length).toBe(2);
+      expect(sentMessages.length).toBe(2);
 
       await hooks.event!({ event: createMockEvent('command.executed', { name: 'ls', sessionID: 'sq3' }) as any });
-      expect(sentEmails.length).toBe(3);
+      expect(sentMessages.length).toBe(3);
 
       await hooks.event!({ event: createMockEvent('file.edited', { file: 'a.ts' }) as any });
-      expect(sentEmails.length).toBe(4);
+      expect(sentMessages.length).toBe(4);
 
       await hooks.event!({ event: createMockEvent('todo.updated', { sessionID: 'sq5', todos: [{ content: 'X', status: 'done' }] }) as any });
-      expect(sentEmails.length).toBe(5);
+      expect(sentMessages.length).toBe(5);
 
       // Verify each email has correct subject
-      expect(sentEmails[0].subject).toContain('Question');
-      expect(sentEmails[1].subject).toContain('Permission');
-      expect(sentEmails[2].subject).toContain('Command');
-      expect(sentEmails[3].subject).toContain('File Edited');
-      expect(sentEmails[4].subject).toContain('Todos Updated');
+      expect(sentMessages[0].subject).toContain('Question');
+      expect(sentMessages[1].subject).toContain('Permission');
+      expect(sentMessages[2].subject).toContain('Command');
+      expect(sentMessages[3].subject).toContain('File Edited');
+      expect(sentMessages[4].subject).toContain('Todos Updated');
     });
   });
 
@@ -1107,9 +1111,9 @@ describe('NotificationPlugin', () => {
       const event = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
+      expect(sentMessages.length).toBe(1);
       // NY timezone should also produce localized format with comma
-      expect(sentEmails[0].body).toMatch(/\d{4}-\d{2}-\d{2}, \d{2}:\d{2}:\d{2}/);
+      expect(sentMessages[0].text).toMatch(/\d{4}-\d{2}-\d{2}, \d{2}:\d{2}:\d{2}/);
     });
 
     test('question.asked with multiple questions uses first one', async () => {
@@ -1142,12 +1146,12 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
+      expect(sentMessages.length).toBe(1);
       // Should only use first question
-      expect(sentEmails[0].body).toContain('First Q');
-      expect(sentEmails[0].body).toContain('First answer?');
+      expect(sentMessages[0].text).toContain('First Q');
+      expect(sentMessages[0].text).toContain('First answer?');
       // Should NOT contain second/third question content
-      expect(sentEmails[0].body).not.toContain('Second Q');
+      expect(sentMessages[0].text).not.toContain('Second Q');
     });
 
     test('permission.updated with edit type renders correctly', async () => {
@@ -1177,9 +1181,9 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('Edit: src/index.ts');
-      expect(sentEmails[0].body).toContain('edit');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('Edit: src/index.ts');
+      expect(sentMessages[0].text).toContain('edit');
     });
 
     test('session.status with retry status type', async () => {
@@ -1208,8 +1212,8 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('retry');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('retry');
     });
 
     test('command.executed with empty string arguments', async () => {
@@ -1239,8 +1243,8 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('echo');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('echo');
     });
 
     test('file.edited with nested file path', async () => {
@@ -1268,8 +1272,8 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('src/components/deep/nested/file.tsx');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('src/components/deep/nested/file.tsx');
     });
 
     test('todo.updated with single item produces correct summary format', async () => {
@@ -1298,10 +1302,10 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('[in_progress] Only one task');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('[in_progress] Only one task');
       // Single item should not contain newline separator issues
-      expect(sentEmails[0].body).not.toContain('\n\n');
+      expect(sentMessages[0].text).not.toContain('\n\n');
     });
   });
 
@@ -1339,7 +1343,7 @@ describe('NotificationPlugin', () => {
       const event = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
+      expect(sentMessages.length).toBe(1);
     });
 
     test('sub-agent (parentID) events are filtered by default whitelist ["main"]', async () => {
@@ -1373,7 +1377,7 @@ describe('NotificationPlugin', () => {
       const event = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(0);
+      expect(sentMessages.length).toBe(0);
     });
 
     test('includeSessionTypes: ["main", "subagent"] allows sub-agent notifications', async () => {
@@ -1406,7 +1410,7 @@ describe('NotificationPlugin', () => {
       const event = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(1);
+      expect(sentMessages.length).toBe(1);
     });
 
     test('includeSessionTypes: ["main"] explicitly filters sub-agent notifications', async () => {
@@ -1439,7 +1443,7 @@ describe('NotificationPlugin', () => {
       const event = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(0);
+      expect(sentMessages.length).toBe(0);
     });
 
     test('idle events for sub-agents are filtered by default whitelist', async () => {
@@ -1472,11 +1476,11 @@ describe('NotificationPlugin', () => {
       const createdEvent = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: createdEvent as any });
 
-      sentEmails.length = 0;
+      sentMessages.length = 0;
       const idleEvent = createMockEvent('session.idle', { sessionID: 'session-idle-sub' });
       await hooks.event!({ event: idleEvent as any });
 
-      expect(sentEmails.length).toBe(0);
+      expect(sentMessages.length).toBe(0);
     });
 
     test('error events for sub-agents are filtered by default whitelist', async () => {
@@ -1507,14 +1511,14 @@ describe('NotificationPlugin', () => {
       const createdEvent = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: createdEvent as any });
 
-      sentEmails.length = 0;
+      sentMessages.length = 0;
       const errorEvent = createMockEvent('session.error', {
         sessionID: 'session-error-sub',
         error: { message: 'Sub-agent error occurred' },
       });
       await hooks.event!({ event: errorEvent as any });
 
-      expect(sentEmails.length).toBe(0);
+      expect(sentMessages.length).toBe(0);
     });
 
     test('question events for sub-agents are filtered by default whitelist', async () => {
@@ -1548,14 +1552,14 @@ describe('NotificationPlugin', () => {
       const createdEvent = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: createdEvent as any });
 
-      sentEmails.length = 0;
+      sentMessages.length = 0;
       const questionEvent = createMockEvent('question.asked', {
         sessionID: 'session-question-sub',
         questions: [{ header: 'Sub Question', question: 'What to do?', options: [] }],
       });
       await hooks.event!({ event: questionEvent as any });
 
-      expect(sentEmails.length).toBe(0);
+      expect(sentMessages.length).toBe(0);
     });
 
     test('multiple channels all filter sub-agent events by default whitelist', async () => {
@@ -1590,7 +1594,7 @@ describe('NotificationPlugin', () => {
       const event = createMockEvent('session.created', { info: sessionInfo });
       await hooks.event!({ event: event as any });
 
-      expect(sentEmails.length).toBe(0);
+      expect(sentMessages.length).toBe(0);
     });
   });
 
@@ -1623,9 +1627,9 @@ describe('NotificationPlugin', () => {
       await hooks.event!({ event: idleEvent as any });
 
       // Should send email because we whitelisted 'unknown'
-      expect(sentEmails.length).toBe(1);
+      expect(sentMessages.length).toBe(1);
       // Verify the email body contains unknown-type content
-      expect(sentEmails[0].body).toContain('Task completed successfully');
+      expect(sentMessages[0].text).toContain('Task completed successfully');
     });
 
     test('unknown events filtered by default whitelist ["main"]', async () => {
@@ -1653,7 +1657,7 @@ describe('NotificationPlugin', () => {
       await hooks.event!({ event: idleEvent as any });
 
       // Should be filtered: unknown not in default ['main'] whitelist
-      expect(sentEmails.length).toBe(0);
+      expect(sentMessages.length).toBe(0);
     });
 
     test('unknown events allowed when whitelisted', async () => {
@@ -1683,8 +1687,8 @@ describe('NotificationPlugin', () => {
       });
       await hooks.event!({ event: errorEvent as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('Orphan error');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('Orphan error');
     });
 
     test('file.edited produces sessionType=unknown (no sessionID)', async () => {
@@ -1711,8 +1715,8 @@ describe('NotificationPlugin', () => {
       const fileEvent = createMockEvent('file.edited', { file: 'src/unknown.ts' });
       await hooks.event!({ event: fileEvent as any });
 
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('src/unknown.ts');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('src/unknown.ts');
     });
   });
 
@@ -1745,11 +1749,11 @@ describe('NotificationPlugin', () => {
       await hooks.event!({ event: idleBeforeCreated as any });
 
       // Should still send (unknown is whitelisted) but as unknown type
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('Task completed successfully');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('Task completed successfully');
 
       // Step 2: Register session.created (fills sessionMap)
-      sentEmails.length = 0;
+      sentMessages.length = 0;
       const sessionInfo = {
         id: 'race-session-01',
         projectID: 'test-project',
@@ -1762,13 +1766,13 @@ describe('NotificationPlugin', () => {
       await hooks.event!({ event: createdEvent as any });
 
       // Step 3: Send idle again for same sessionID → sessionMap hit → sessionType='main'
-      sentEmails.length = 0;
+      sentMessages.length = 0;
       const idleAfterCreated = createMockEvent('session.idle', { sessionID: 'race-session-01' });
       await hooks.event!({ event: idleAfterCreated as any });
 
       // Now correctly resolves as 'main' session
-      expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body).toContain('Task completed successfully');
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('Task completed successfully');
     });
   });
 
@@ -1872,9 +1876,9 @@ describe('NotificationPlugin', () => {
         await hooks.event!({ event: event as any });
 
         if (expected === 'pass') {
-          expect(sentEmails.length).toBeGreaterThanOrEqual(1);
+          expect(sentMessages.length).toBeGreaterThanOrEqual(1);
         } else {
-          expect(sentEmails.length).toBe(0);
+          expect(sentMessages.length).toBe(0);
         }
       });
     }
