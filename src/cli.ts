@@ -13,7 +13,8 @@ import * as path from 'path';
 import * as os from 'os';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import type { Channel, SMTPConfig, NotificationConfig } from './types.js';
+import type { Channel, SMTPConfig, DingtalkConfig, NotificationConfig } from './types.js';
+import { generateSign, createDingTalkFormatter } from './dingtalk.js';
 
 const CLI_PREFIX = '[ul-opencode-event-cli]';
 const LOOKUP_TIMEOUT_MS = 1200;
@@ -77,18 +78,23 @@ function parseArgs(): { command: string | null; options: TestOptions } {
 function validateChannel(channel: Channel): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  // Check type
-  if (channel.type !== 'smtp') {
-    errors.push(`Unsupported channel type: "${channel.type}". Only "smtp" is supported.`);
-    return { valid: false, errors };
-  }
-
   // Check enabled
   if (channel.enabled === false) {
     errors.push('Channel is disabled (enabled: false)');
     return { valid: false, errors };
   }
 
+  // Dispatch by channel type
+  if (channel.type === 'dingtalk') {
+    return validateDingtalkChannel(channel, errors);
+  }
+
+  if (channel.type !== 'smtp') {
+    errors.push(`Unsupported channel type: "${channel.type}". Supported types: "smtp", "dingtalk".`);
+    return { valid: false, errors };
+  }
+
+  // SMTP validation
   // Check recipients
   if (!channel.recipients || channel.recipients.length === 0) {
     errors.push('No recipients configured');
@@ -108,6 +114,46 @@ function validateChannel(channel: Channel): { valid: boolean; errors: string[] }
   }
   if (!config.auth?.pass) {
     errors.push('SMTP auth.pass is missing');
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Validate DingTalk channel configuration
+ */
+function validateDingtalkChannel(channel: Channel, errors: string[]): { valid: boolean; errors: string[] } {
+  const config = channel.config as DingtalkConfig;
+
+  // Check webhook URL
+  if (!config.webhook || !config.webhook.trim()) {
+    errors.push('DingTalk webhook URL is missing');
+  } else {
+    const webhookUrl = config.webhook.trim();
+    try {
+      new URL(webhookUrl);
+    } catch {
+      errors.push(`DingTalk webhook URL is invalid: "${webhookUrl}"`);
+    }
+  }
+
+  // Check secret (optional but must be non-empty string if provided)
+  if (config.secret !== undefined && typeof config.secret === 'string' && !config.secret.trim()) {
+    errors.push('DingTalk secret must be a non-empty string');
+  }
+
+  // Check @mention config structure
+  if (config.at !== undefined) {
+    if (typeof config.at !== 'object' || config.at === null || Array.isArray(config.at)) {
+      errors.push('DingTalk at config must be an object with optional atMobiles/atAll fields');
+    } else {
+      if (config.at.atMobiles !== undefined && !Array.isArray(config.at.atMobiles)) {
+        errors.push('DingTalk at.atMobiles must be a string array');
+      }
+      if (config.at.atAll !== undefined && typeof config.at.atAll !== 'boolean') {
+        errors.push('DingTalk at.atAll must be a boolean');
+      }
+    }
   }
 
   return { valid: errors.length === 0, errors };
@@ -192,9 +238,15 @@ async function resolveHostViaLookup(host: string): Promise<string | null> {
 }
 
 /**
- * Test SMTP connection
+ * Test channel connection (SMTP or DingTalk)
  */
 async function testConnection(channel: Channel): Promise<{ success: boolean; error?: string; info?: string }> {
+  // DingTalk connection test
+  if (channel.type === 'dingtalk') {
+    return testDingtalkConnection(channel);
+  }
+
+  // SMTP connection test (existing logic)
   const config = channel.config as SMTPConfig;
   const preResolvedHost = await resolveHostViaLookup(config.host);
   if (preResolvedHost && preResolvedHost !== config.host) {
@@ -247,6 +299,56 @@ async function testConnection(channel: Channel): Promise<{ success: boolean; err
       const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
       return { success: false, error: `${message}; fallback verify failed: ${fallbackMessage}` };
     }
+  }
+}
+
+/**
+ * Test DingTalk webhook connection by sending a minimal message
+ */
+async function testDingtalkConnection(channel: Channel): Promise<{ success: boolean; error?: string; info?: string }> {
+  const config = channel.config as DingtalkConfig;
+  const webhookUrl = config.webhook.trim();
+
+  // Build URL with signing if secret is configured
+  let targetUrl = webhookUrl;
+  if (config.secret) {
+    const timestamp = String(Date.now());
+    const sign = await generateSign(config.secret, timestamp);
+    const separator = targetUrl.includes('?') ? '&' : '?';
+    targetUrl = `${targetUrl}${separator}timestamp=${encodeURIComponent(timestamp)}&sign=${encodeURIComponent(sign)}`;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msgtype: 'text', text: { content: 'connection test' } }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+
+    let result: { errcode?: number; errmsg?: string };
+    try {
+      result = (await response.json()) as { errcode?: number; errmsg?: string };
+    } catch {
+      return { success: false, error: 'Failed to parse DingTalk API response' };
+    }
+
+    if (result.errcode !== undefined && result.errcode !== 0) {
+      return { success: false, error: `DingTalk API error: errcode=${result.errcode}, errmsg=${result.errmsg ?? 'unknown'}` };
+    }
+
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('abort')) {
+      return { success: false, error: 'DingTalk connection timed out (10s)' };
+    }
+    return { success: false, error: message };
   }
 }
 
@@ -340,6 +442,73 @@ If you received this email, your notification channel is configured correctly.`,
 }
 
 /**
+ * Send test message via DingTalk webhook
+ */
+async function sendTestDingTalkMessage(channel: Channel): Promise<{ success: boolean; error?: string; messageId?: string; info?: string }> {
+  const config = channel.config as DingtalkConfig;
+  const timestamp = new Date().toISOString();
+  const channelName = channel.name || 'DingTalk Test';
+
+  // Use DingTalk formatter to generate a properly formatted test message
+  const formatter = createDingTalkFormatter(config);
+  const testBody = `This is a test message from OpenCode notification plugin.
+
+Channel: ${channelName}
+Type: ${channel.type}
+Time: ${timestamp}
+
+If you received this message, your DingTalk notification channel is configured correctly.`;
+
+  const formattedMessage = formatter.format(
+    `[Test] OpenCode Notification Channel Test - ${timestamp}`,
+    testBody,
+    { eventType: 'idle', timestamp, projectName: 'test', sessionId: 'cli-test', sessionType: 'main' }
+  );
+
+  // Build URL with signing if secret is configured
+  let targetUrl = config.webhook.trim();
+  if (config.secret) {
+    const ts = String(Date.now());
+    const sign = await generateSign(config.secret, ts);
+    const separator = targetUrl.includes('?') ? '&' : '?';
+    targetUrl = `${targetUrl}${separator}timestamp=${encodeURIComponent(ts)}&sign=${encodeURIComponent(sign)}`;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formattedMessage),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+
+    let result: { errcode?: number; errmsg?: string };
+    try {
+      result = (await response.json()) as { errcode?: number; errmsg?: string };
+    } catch {
+      return { success: false, error: 'Failed to parse DingTalk API response' };
+    }
+
+    if (result.errcode !== undefined && result.errcode !== 0) {
+      return { success: false, error: `DingTalk API error: errcode=${result.errcode}, errmsg=${result.errmsg ?? 'unknown'}` };
+    }
+
+    return { success: true, messageId: `dingtalk-${timestamp}` };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('abort')) {
+      return { success: false, error: 'DingTalk send timed out (10s)' };
+    }
+    return { success: false, error: message };
+  }
+}
+
+/**
  * Test a single channel
  */
 async function testChannel(channel: Channel, options: TestOptions): Promise<boolean> {
@@ -358,9 +527,16 @@ async function testChannel(channel: Channel, options: TestOptions): Promise<bool
   }
   console.log(`  [OK] Configuration is valid`);
 
-  // Step 2: Test connection
-  const smtpConfig = channel.config as SMTPConfig;
-  console.log(`\n  [2/3] Testing SMTP connection to ${smtpConfig.host}:${smtpConfig.port}...`);
+  // Step 2: Test connection (type-specific output)
+  const isDingtalk = channel.type === 'dingtalk';
+  if (isDingtalk) {
+    const dtConfig = channel.config as DingtalkConfig;
+    console.log(`\n  [2/3] Testing DingTalk webhook: ${dtConfig.webhook}...`);
+  } else {
+    const smtpConfig = channel.config as SMTPConfig;
+    console.log(`\n  [2/3] Testing SMTP connection to ${smtpConfig.host}:${smtpConfig.port}...`);
+  }
+
   const connectionResult = await testConnection(channel);
   if (!connectionResult.success) {
     console.log(`  [FAIL] Connection failed: ${connectionResult.error}`);
@@ -371,27 +547,46 @@ async function testChannel(channel: Channel, options: TestOptions): Promise<bool
     console.log(`  [INFO] ${connectionResult.info}`);
   }
 
-  // Step 3: Send test email (if not skipped)
+  // Step 3: Send test message (if not skipped)
   if (options.noSend) {
-    console.log(`\n  [3/3] Skipping test email (--no-send flag)`);
+    const skipLabel = isDingtalk ? 'test message' : 'test email';
+    console.log(`\n  [3/3] Skipping ${skipLabel} (--no-send flag)`);
     console.log(`\n  [SUCCESS] Channel "${channelName}" passed all tests (connection only)`);
     return true;
   }
 
-  console.log(`\n  [3/3] Sending test email...`);
-  const sendResult = await sendTestEmail(channel);
-  if (!sendResult.success) {
-    console.log(`  [FAIL] Failed to send test email: ${sendResult.error}`);
-    return false;
-  }
-  console.log(`  [OK] Test email sent successfully`);
-  if (sendResult.info) {
-    console.log(`  [INFO] ${sendResult.info}`);
-  }
-  console.log(`  Message ID: ${sendResult.messageId}`);
+  if (isDingtalk) {
+    console.log(`\n  [3/3] Sending test message to DingTalk...`);
+    const sendResult = await sendTestDingTalkMessage(channel);
+    if (!sendResult.success) {
+      console.log(`  [FAIL] Failed to send test message: ${sendResult.error}`);
+      return false;
+    }
+    console.log(`  [OK] Test message sent successfully`);
+    if (sendResult.info) {
+      console.log(`  [INFO] ${sendResult.info}`);
+    }
+    console.log(`  Message ID: ${sendResult.messageId}`);
 
-  console.log(`\n  [SUCCESS] Channel "${channelName}" passed all tests`);
-  console.log(`  Please check the inbox of: ${channel.recipients?.join(', ')}`);
+    console.log(`\n  [SUCCESS] Channel "${channelName}" passed all tests`);
+    console.log(`  Please check your DingTalk group chat.`);
+  } else {
+    console.log(`\n  [3/3] Sending test email...`);
+    const sendResult = await sendTestEmail(channel);
+    if (!sendResult.success) {
+      console.log(`  [FAIL] Failed to send test email: ${sendResult.error}`);
+      return false;
+    }
+    console.log(`  [OK] Test email sent successfully`);
+    if (sendResult.info) {
+      console.log(`  [INFO] ${sendResult.info}`);
+    }
+    console.log(`  Message ID: ${sendResult.messageId}`);
+
+    console.log(`\n  [SUCCESS] Channel "${channelName}" passed all tests`);
+    console.log(`  Please check the inbox of: ${channel.recipients?.join(', ')}`);
+  }
+
   return true;
 }
 

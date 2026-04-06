@@ -4,7 +4,7 @@ import * as os from 'os';
 import type { NotificationConfig, Channel, SessionType } from './types.js';
 import { DEFAULT_SESSION_TYPES } from './types.js';
 
-const SUPPORTED_CHANNEL_TYPES = ['smtp'] as const;
+const SUPPORTED_CHANNEL_TYPES = ['smtp', 'dingtalk'] as const;
 const LOG_PREFIX = '[ul-opencode-event]';
 const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env.UL_OPENCODE_EVENT_DEBUG === 'true';
 
@@ -182,7 +182,7 @@ function getProjectConfigPath(): string | null {
  * - Channels with enabled: false are excluded
  * 
  * Validation:
- * - Channel type must be 'smtp' (only supported type in phase 1)
+ * - Channel type must be 'smtp' or 'dingtalk' (supported types)
  * - Throws clear error for unsupported channel types
  * 
  * @returns Merged and filtered configuration, or default config if no files exist

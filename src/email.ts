@@ -169,16 +169,28 @@ export async function createEmailSender(channel: Channel): Promise<ChannelSender
   const transporter = createTransporter(nodemailer, config, preResolvedHost || undefined);
 
   return {
-    send: async (message: unknown): Promise<void> => {
-      // Type narrowing: detect ChannelSender format ({ subject, text })
-      // or legacy EmailSender format via duck-typing
-      const msg = message as { subject?: string; text?: string } | undefined;
-      if (!msg || typeof msg.subject !== 'string' || typeof msg.text !== 'string') {
+    send: async (message: unknown, legacyBody?: unknown): Promise<void> => {
+      let subject: string;
+      let body: string;
+
+      // Format 1: New ChannelSender format from formatter layer ({ subject, text })
+      if (message && typeof message === 'object') {
+        const msg = message as { subject?: string; text?: string };
+        if (typeof msg.subject === 'string' && typeof msg.text === 'string') {
+          subject = msg.subject;
+          body = msg.text;
+        } else {
+          return;
+        }
+      }
+      // Format 2: Legacy EmailSender format (direct call with two args)
+      else if (typeof message === 'string') {
+        subject = message;
+        body = typeof legacyBody === 'string' ? legacyBody : '';
+      }
+      else {
         return;
       }
-
-      const subject = msg.subject;
-      const body = msg.text;
 
       const mailOptions = {
         from: `"${fromName}" <${fromAddress}>`,

@@ -1,14 +1,14 @@
 /**
  * Multi-channel event handler for notifications
  *
- * nodemailer is loaded lazily to avoid blocking oh-my-opencode during loading.
+ * Channel senders are loaded lazily to avoid blocking oh-my-opencode during loading.
  * Only imports when actually needed (when creating senders).
+ * Supports SMTP and DingTalk channels via a unified ChannelSender interface.
  */
-import type { NotificationConfig, EventPayload, EventType, TemplateConfig } from './types.js';
+import type { NotificationConfig, EventPayload, EventType, TemplateConfig, ChannelSender } from './types.js';
 import { renderTemplate } from './template.js';
 import { getDefaultTemplates } from './locales.js';
-
-import type { EmailSender } from './email.js';
+import { getFormatter } from './formatters.js';
 
 /**
  * 事件默认开关配置
@@ -36,8 +36,8 @@ export interface EventHandler {
  * Senders are created lazily on first handle() call to avoid importing nodemailer at plugin load time.
  */
 export function createEventHandler(config: NotificationConfig): EventHandler {
-  // Lazy sender cache - created on first use
-  const senders: Map<string, EmailSender> = new Map();
+  // Lazy sender cache - created on first use (supports all channel types)
+  const senders: Map<string, ChannelSender> = new Map();
   let sendersInitialized = false;
 
   // Resolve locale-aware default templates at creation time
@@ -55,6 +55,18 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
               // Dynamic import to avoid blocking plugin loading
               const emailModule = await import('./email.js');
               const sender = await emailModule.createEmailSender(channel);
+              if (sender) {
+                const key = channel.name || `channel-${i}`;
+                senders.set(key, sender);
+              }
+            } catch {
+              // Silently skip channels that fail to initialize
+            }
+          } else if (channel.type === 'dingtalk' && channel.enabled !== false) {
+            try {
+              // Dynamic import to avoid blocking plugin loading
+              const dingtalkModule = await import('./dingtalk.js');
+              const sender = await dingtalkModule.createDingTalkSender(channel);
               if (sender) {
                 const key = channel.name || `channel-${i}`;
                 senders.set(key, sender);
@@ -113,7 +125,15 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
         const key = channel.name || `channel-${i}`;
         const sender = senders.get(key);
         if (sender) {
-          await sender.send(subject, body);
+          const formatter = getFormatter(channel.type, channel);
+          if (formatter) {
+            // Format message for this channel type, then send via ChannelSender interface
+            const formatted = formatter.format(subject, body, payload);
+            await sender.send(formatted);
+          } else {
+            // Fallback: for channels without a formatter, use legacy subject/body signature
+            await (sender as import('./email.js').EmailSender).send(subject, body);
+          }
         }
       }
     },
