@@ -249,6 +249,8 @@ export const NotificationPlugin: Plugin = async (ctx) => {
     event: async ({ event }) => {
       if (event.type === 'session.created') {
         sessionMap.set(event.properties.info.id, event.properties.info);
+      } else if (event.type === 'session.updated') {
+        sessionMap.set(event.properties.info.id, event.properties.info);
       }
       
       let sessionInfo: Session | undefined;

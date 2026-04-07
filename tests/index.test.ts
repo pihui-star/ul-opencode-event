@@ -1883,4 +1883,259 @@ describe('NotificationPlugin', () => {
       });
     }
   });
+
+  // ============================================================
+  // session.updated event 测试组
+  // ============================================================
+  describe('session.updated event', () => {
+    test('session.updated refreshes title - idle carries new title', async () => {
+      configMock = {
+        channels: [createMockChannel({
+          name: 'Updated Title Test',
+          events: { idle: true },
+        })],
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/updated-title-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+      const sessionId = 'updated-title-session-01';
+
+      // Step 1: session.created with old title
+      const createdEvent = createMockEvent('session.created', {
+        info: {
+          id: sessionId,
+          projectID: 'p1',
+          directory: '/d1',
+          title: 'Old Title',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+        },
+      });
+      await hooks.event!({ event: createdEvent as any });
+      sentMessages.length = 0; // clear created notification
+
+      // Step 2: session.updated with new title (same session ID)
+      const updatedEvent = createMockEvent('session.updated', {
+        info: {
+          id: sessionId,
+          projectID: 'p1',
+          directory: '/d1',
+          title: 'New Title',
+          version: '1.1',
+          time: { created: Date.now() - 1000, updated: Date.now() },
+        },
+      });
+      await hooks.event!({ event: updatedEvent as any });
+
+      // Step 3: session.idle - should carry the refreshed title
+      const idleEvent = createMockEvent('session.idle', { sessionID: sessionId });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('New Title');
+      expect(sentMessages[0].text).not.toContain('Old Title');
+    });
+
+    test('session.updated does not produce any notification', async () => {
+      configMock = {
+        channels: [createMockChannel({
+          name: 'Updated No Notify Test',
+          events: { idle: true },
+        })],
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/updated-no-notify-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Only trigger session.updated, no created/idle
+      const updatedEvent = createMockEvent('session.updated', {
+        info: {
+          id: 'updated-no-notify-session-01',
+          projectID: 'p1',
+          directory: '/d1',
+          title: 'Just Updated',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+        },
+      });
+      await hooks.event!({ event: updatedEvent as any });
+
+      expect(sentMessages.length).toBe(0);
+    });
+
+    test('session.updated before session.created - created overwrites', async () => {
+      configMock = {
+        channels: [createMockChannel({
+          name: 'Updated Before Created Test',
+          events: { idle: true },
+        })],
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/updated-before-created-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+      const sessionId = 'updated-before-created-session-01';
+
+      // Step 1: session.updated arrives BEFORE session.created
+      const updatedEvent = createMockEvent('session.updated', {
+        info: {
+          id: sessionId,
+          projectID: 'p1',
+          directory: '/d1',
+          title: 'Pre-created Title',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+        },
+      });
+      await hooks.event!({ event: updatedEvent as any });
+
+      // Step 2: session.created overwrites with official title
+      const createdEvent = createMockEvent('session.created', {
+        info: {
+          id: sessionId,
+          projectID: 'p1',
+          directory: '/d1',
+          title: 'Official Title',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+        },
+      });
+      await hooks.event!({ event: createdEvent as any });
+      sentMessages.length = 0; // clear created notification
+
+      // Step 3: session.idle should contain "Official Title" (created wins)
+      const idleEvent = createMockEvent('session.idle', { sessionID: sessionId });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('Official Title');
+      expect(sentMessages[0].text).not.toContain('Pre-created Title');
+    });
+
+    test('session.updated preserves sub-agent parentID for filtering', async () => {
+      // Part A: default whitelist ['main'] filters out subagent
+      configMock = {
+        channels: [createMockChannel({
+          name: 'Updated Subagent Filter Test',
+          events: { idle: true },
+        })],
+        includeSessionTypes: ['main'], // default, subagent NOT included
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/updated-subagent-filter-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+      const sessionId = 'updated-subagent-session-01';
+
+      // session.created with parentID (sub-agent)
+      const createdEvent = createMockEvent('session.created', {
+        info: {
+          id: sessionId,
+          projectID: 'p1',
+          directory: '/d1',
+          title: 'SubAgent Task',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+          parentID: 'parent-main-01',
+        },
+      });
+      await hooks.event!({ event: createdEvent as any });
+      sentMessages.length = 0;
+
+      // session.updated still has parentID
+      const updatedEvent = createMockEvent('session.updated', {
+        info: {
+          id: sessionId,
+          projectID: 'p1',
+          directory: '/d1',
+          title: 'SubAgent Task Updated',
+          version: '1.1',
+          time: { created: Date.now(), updated: Date.now() },
+          parentID: 'parent-main-01',
+        },
+      });
+      await hooks.event!({ event: updatedEvent as any });
+
+      // session.idle → filtered by whitelist (subagent not in ['main'])
+      const idleEvent = createMockEvent('session.idle', { sessionID: sessionId });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(sentMessages.length).toBe(0);
+
+      // Bonus: with includeSessionTypes including subagent, notification should arrive
+      sentMessages.length = 0;
+      configMock = {
+        channels: [createMockChannel({
+          name: 'Updated Subagent Allowed Test',
+          events: { idle: true },
+        })],
+        includeSessionTypes: ['main', 'subagent'],
+      };
+
+      const hooks2 = await NotificationPlugin(ctx);
+
+      const createdEvent2 = createMockEvent('session.created', {
+        info: {
+          id: 'updated-subagent-session-02',
+          projectID: 'p1',
+          directory: '/d1',
+          title: 'SubAgent Task 2',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+          parentID: 'parent-main-02',
+        },
+      });
+      await hooks2.event!({ event: createdEvent2 as any });
+      sentMessages.length = 0;
+
+      const updatedEvent2 = createMockEvent('session.updated', {
+        info: {
+          id: 'updated-subagent-session-02',
+          projectID: 'p1',
+          directory: '/d1',
+          title: 'SubAgent Task 2 Updated',
+          version: '1.1',
+          time: { created: Date.now(), updated: Date.now() },
+          parentID: 'parent-main-02',
+        },
+      });
+      await hooks2.event!({ event: updatedEvent2 as any });
+
+      const idleEvent2 = createMockEvent('session.idle', { sessionID: 'updated-subagent-session-02' });
+      await hooks2.event!({ event: idleEvent2 as any });
+
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].text).toContain('SubAgent Task 2 Updated');
+    });
+  });
 });
