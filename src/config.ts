@@ -3,10 +3,9 @@ import * as path from 'path';
 import * as os from 'os';
 import type { NotificationConfig, Channel, SessionType } from './types.js';
 import { DEFAULT_SESSION_TYPES } from './types.js';
+import { logger } from './logger.js';
 
 const SUPPORTED_CHANNEL_TYPES = ['smtp', 'dingtalk'] as const;
-const LOG_PREFIX = '[ul-opencode-event]';
-const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env.UL_OPENCODE_EVENT_DEBUG === 'true';
 
 /**
  * Default configuration returned when no config files exist
@@ -26,15 +25,13 @@ function loadConfigFile(filePath: string): NotificationConfig | null {
     const content = fs.readFileSync(filePath, 'utf-8');
     const config = JSON.parse(content) as NotificationConfig;
     if (!Array.isArray(config.channels)) {
-      console.error(`${LOG_PREFIX} Invalid config format in ${filePath}: "channels" must be an array`);
+      logger.error(`Invalid config format in ${filePath}: "channels" must be an array`);
       return null;
     }
-    if (DEBUG_ENABLED) {
-      console.info(`${LOG_PREFIX} Loaded config: ${filePath} (${config.channels.length} channels)`);
-    }
+    logger.debug(`Loaded config: ${filePath} (${config.channels.length} channels)`);
     return config;
   } catch (error) {
-    console.error(`${LOG_PREFIX} Failed to parse config file: ${filePath}`, error);
+    logger.error(`Failed to parse config file: ${filePath}: ${error}`);
     return null;
   }
 }
@@ -67,7 +64,7 @@ function validateIncludeSessionTypes(types?: unknown): SessionType[] {
 
   // non-array → warn + default
   if (!Array.isArray(types)) {
-    console.warn(`${LOG_PREFIX} includeSessionTypes must be an array, got ${typeof types}. Using default.`);
+    logger.warn(`includeSessionTypes must be an array, got ${typeof types}. Using default.`);
     return [...DEFAULT_SESSION_TYPES];
   }
 
@@ -82,7 +79,7 @@ function validateIncludeSessionTypes(types?: unknown): SessionType[] {
     if (typeof item === 'string' && VALID_TYPES.includes(item as SessionType)) {
       result.push(item as SessionType);
     } else {
-      console.warn(`${LOG_PREFIX} Invalid session type "${item}" in includeSessionTypes. Valid values: ${VALID_TYPES.join(', ')}`);
+      logger.warn(`Invalid session type "${item}" in includeSessionTypes. Valid values: ${VALID_TYPES.join(', ')}`);
     }
   }
 
@@ -122,6 +119,7 @@ function mergeChannels(
     
     if (existingIndex >= 0) {
       // Override global channel with project channel (same name)
+      logger.debug(`Channel '${projectChannel.name}' merged from project + global`);
       result[existingIndex] = projectChannel;
     } else {
       // Append project channel (no name match)
@@ -199,11 +197,7 @@ export function loadConfig(): NotificationConfig {
   
   // If no configs exist, return default
   if (!globalConfig && !projectConfig) {
-    if (DEBUG_ENABLED) {
-      console.info(
-        `${LOG_PREFIX} No config found. Checked: ${globalConfigPath}, ${path.join(process.cwd(), '.opencode', 'ul-opencode-event.json')}, ${path.join(process.cwd(), 'ul-opencode-event.json')}`
-      );
-    }
+    logger.debug(`No config found. Checked: ${globalConfigPath}, ${path.join(process.cwd(), '.opencode', 'ul-opencode-event.json')}, ${path.join(process.cwd(), 'ul-opencode-event.json')}`);
     return DEFAULT_CONFIG;
   }
   
@@ -229,8 +223,8 @@ export function loadConfig(): NotificationConfig {
   // Deprecation warning for old field
   for (const rawConfig of [globalConfig, projectConfig] as Array<typeof globalConfig>) {
     if (rawConfig && 'includeSubagentEvents' in rawConfig) {
-      console.warn(
-        `${LOG_PREFIX} "includeSubagentEvents" is deprecated. Use "includeSessionTypes" instead (e.g., ["main", "subagent"]).`
+      logger.warn(
+        `"includeSubagentEvents" is deprecated. Use "includeSessionTypes" instead (e.g., ["main", "subagent"]).`
       );
     }
   }

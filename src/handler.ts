@@ -9,6 +9,7 @@ import type { NotificationConfig, EventPayload, EventType, TemplateConfig, Chann
 import { renderTemplate } from './template.js';
 import { getDefaultTemplates } from './locales.js';
 import { getFormatter } from './formatters.js';
+import { logger } from './logger.js';
 
 /**
  * 事件默认开关配置
@@ -59,8 +60,8 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
                 const key = channel.name || `channel-${i}`;
                 senders.set(key, sender);
               }
-            } catch {
-              // Silently skip channels that fail to initialize
+            } catch (error) {
+              logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
             }
           } else if (channel.type === 'dingtalk' && channel.enabled !== false) {
             try {
@@ -71,8 +72,8 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
                 const key = channel.name || `channel-${i}`;
                 senders.set(key, sender);
               }
-            } catch {
-              // Silently skip channels that fail to initialize
+            } catch (error) {
+              logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
             }
           }
         }
@@ -126,13 +127,18 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
         const sender = senders.get(key);
         if (sender) {
           const formatter = getFormatter(channel.type, channel);
-          if (formatter) {
-            // Format message for this channel type, then send via ChannelSender interface
-            const formatted = formatter.format(subject, body, payload);
-            await sender.send(formatted);
-          } else {
-            // Fallback: for channels without a formatter, use legacy subject/body signature
-            await (sender as import('./email.js').EmailSender).send(subject, body);
+          try {
+            if (formatter) {
+              // Format message for this channel type, then send via ChannelSender interface
+              const formatted = formatter.format(subject, body, payload);
+              await sender.send(formatted);
+            } else {
+              // Fallback: for channels without a formatter, use legacy subject/body signature
+              await (sender as import('./email.js').EmailSender).send(subject, body);
+            }
+            logger.info(`Notification sent: ${eventType} -> ${key} (${payload.sessionId})`);
+          } catch (error) {
+            logger.error(`Failed to send notification (${eventType} -> ${key}): ${error instanceof Error ? error.message : String(error)}`);
           }
         }
       }

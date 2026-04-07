@@ -11,10 +11,9 @@
  */
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { logger, DEBUG_ENABLED } from './logger.js';
 import type { Channel, ChannelSender, SMTPConfig } from './types.js';
 
-const LOG_PREFIX = '[ul-opencode-event]';
-const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env.UL_OPENCODE_EVENT_DEBUG === 'true';
 const LOOKUP_TIMEOUT_MS = 1200;
 
 // Lazy-loaded nodemailer cache
@@ -57,6 +56,7 @@ async function resolveHostViaLookup(host: string): Promise<string | null> {
   // Try IPv4 first (most SMTP servers support it)
   try {
     const addr = await withTimeout(lookup(host, { family: 4 }), LOOKUP_TIMEOUT_MS);
+    logger.debug(`DNS resolved ${host} -> ${addr.address}`);
     return addr.address;
   } catch {
     // IPv4 failed, try IPv6
@@ -64,11 +64,13 @@ async function resolveHostViaLookup(host: string): Promise<string | null> {
 
   try {
     const addr = await withTimeout(lookup(host, { family: 6 }), LOOKUP_TIMEOUT_MS);
+    logger.debug(`DNS resolved ${host} -> ${addr.address}`);
     return addr.address;
   } catch {
     // Both failed
   }
 
+  logger.debug(`DNS lookup failed for ${host}, using original (fallback)`);
   return null;
 }
 
@@ -204,13 +206,13 @@ export async function createEmailSender(channel: Channel): Promise<ChannelSender
         try {
           await transporter.sendMail(mailOptions);
           if (DEBUG_ENABLED) {
-            console.info(`${LOG_PREFIX} [${fromName}] Email sent successfully (pre-resolved: ${preResolvedHost})`);
+            logger.debug(`[${fromName}] Email sent successfully (pre-resolved: ${preResolvedHost})`);
           }
           return;
         } catch (preResolveError) {
           const preResolveMessage = preResolveError instanceof Error ? preResolveError.message : String(preResolveError);
           if (DEBUG_ENABLED) {
-            console.warn(`${LOG_PREFIX} [${fromName}] Pre-resolved send failed (${preResolveMessage}), trying hostname...`);
+            logger.warn(`[${fromName}] Pre-resolved send failed (${preResolveMessage}), trying hostname...`);
           }
 
           // Strategy 2: Fallback to hostname-based transport
@@ -218,7 +220,7 @@ export async function createEmailSender(channel: Channel): Promise<ChannelSender
             const hostTransporter = createTransporter(nodemailer, config);
             await hostTransporter.sendMail(mailOptions);
             if (DEBUG_ENABLED) {
-              console.info(`${LOG_PREFIX} [${fromName}] Email sent via hostname fallback`);
+              logger.debug(`[${fromName}] Email sent via hostname fallback`);
             }
             return;
           } finally {
@@ -231,7 +233,7 @@ export async function createEmailSender(channel: Channel): Promise<ChannelSender
       try {
         await transporter.sendMail(mailOptions);
         if (DEBUG_ENABLED) {
-          console.info(`${LOG_PREFIX} [${fromName}] Email sent successfully`);
+          logger.debug(`[${fromName}] Email sent successfully`);
         }
         return;
       } catch (error) {
@@ -246,7 +248,7 @@ export async function createEmailSender(channel: Channel): Promise<ChannelSender
               fallbackTransport = createTransporter(nodemailer, config, resolvedHost);
               await fallbackTransport.sendMail(mailOptions);
               if (DEBUG_ENABLED) {
-                console.info(`${LOG_PREFIX} [${fromName}] Email sent via emergency fallback (resolved: ${resolvedHost})`);
+                logger.debug(`[${fromName}] Email sent via emergency fallback (resolved: ${resolvedHost})`);
               }
               return;
             } catch {
@@ -258,8 +260,7 @@ export async function createEmailSender(channel: Channel): Promise<ChannelSender
         }
 
         // Silent failure: log error but don't throw
-        const timestamp = new Date().toISOString();
-        console.error(`[${timestamp}] [${fromName}] Failed to send email:`, error);
+        logger.error(`[${fromName}] Failed to send email: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
 

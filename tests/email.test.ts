@@ -318,8 +318,8 @@ describe('createEmailSender', () => {
         await sender!.send('Subject', 'Body');
 
         expect(capturedLogs.length).toBe(1);
-        // Should contain timestamp pattern [ISO date]
-        expect(capturedLogs[0]).toMatch(/\[\d{4}-\d{2}-\d{2}T/);
+        // Should contain new log format prefix
+        expect(capturedLogs[0]).toMatch(/\[ul-opencode-event\] \[ERROR\]/);
         // Should contain channel name
         expect(capturedLogs[0]).toContain('Error Channel');
         // Should contain error message

@@ -9,9 +9,7 @@ import { createEventHandler, type EventHandler } from './handler.js';
 import { getDefaultTimezone } from './locales.js';
 import type { EventPayload, EventType, SessionType } from './types.js';
 import { DEFAULT_SESSION_TYPES } from './types.js';
-
-const LOG_PREFIX = '[ul-opencode-event]';
-const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env.UL_OPENCODE_EVENT_DEBUG === 'true';
+import { logger, DEBUG_ENABLED } from './logger.js';
 
 /**
  * Resolve session type from SDK Session info.
@@ -230,29 +228,38 @@ export const NotificationPlugin: Plugin = async (ctx) => {
   try {
     config = loadConfig();
   } catch (error) {
-    console.error(`${LOG_PREFIX} Failed to initialize plugin config`, error);
+    logger.error(`Failed to initialize plugin config: ${error}`);
     return {};
   }
   
   if (config.channels.length === 0) {
-    console.warn(`${LOG_PREFIX} Plugin loaded but no enabled channels found`);
+    logger.warn('Plugin loaded but no enabled channels found');
     return {};
   }
 
   const eventHandler: EventHandler = createEventHandler(config);
   const sessionMap = new Map<string, Session>();
   if (DEBUG_ENABLED) {
-    console.info(`${LOG_PREFIX} Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
+    logger.debug(`Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
   }
 
   return {
     event: async ({ event }) => {
+      if (DEBUG_ENABLED) {
+        const props = event.properties as Record<string, unknown>;
+        const info = (props as { info?: { id?: string; title?: string } }).info;
+        logger.debug(`[EVENT] type=${event.type}` +
+          (info?.id ? ` session.id=${info.id}` : '') +
+          (props.sessionID ? ` sessionID=${String(props.sessionID)}` : '') +
+          (info?.title ? ` title="${info.title}"` : ' title=(empty/missing)'));
+      }
+
       if (event.type === 'session.created') {
         sessionMap.set(event.properties.info.id, event.properties.info);
       } else if (event.type === 'session.updated') {
         sessionMap.set(event.properties.info.id, event.properties.info);
       }
-      
+
       let sessionInfo: Session | undefined;
       const props = event.properties as Record<string, unknown>;
       if (typeof props.sessionID === 'string') {
@@ -262,6 +269,12 @@ export const NotificationPlugin: Plugin = async (ctx) => {
       }
 
       const resolvedTimezone = config.timezone ?? getDefaultTimezone(config.language);
+      if (DEBUG_ENABLED && sessionInfo) {
+        logger.debug(`[RESOLVED] sessionInfo.id=${sessionInfo.id} title="${sessionInfo.title}" parentID=${sessionInfo.parentID ?? '(none)'}`);
+      }
+      if (DEBUG_ENABLED && !sessionInfo && typeof (event.properties as Record<string, unknown>).sessionID === 'string') {
+        logger.debug(`[RESOLVED] MISS sessionID=${(event.properties as Record<string, unknown>).sessionID} - sessionMap has no entry`);
+      }
       const payload = eventToPayload(event, ctx.directory, sessionInfo, resolvedTimezone);
       
       if (!payload) {
@@ -272,23 +285,23 @@ export const NotificationPlugin: Plugin = async (ctx) => {
       const allowedTypes = config.includeSessionTypes ?? DEFAULT_SESSION_TYPES;
       if (!allowedTypes.includes(payload.sessionType)) {
         if (DEBUG_ENABLED) {
-          console.info(`${LOG_PREFIX} Skipping ${payload.sessionType} event ${payload.eventType} for session ${payload.sessionId}`);
+          logger.debug(`Skipping ${payload.sessionType} event ${payload.eventType} for session ${payload.sessionId}`);
         }
         return;
       }
 
       // Debug: warn when sessionMap miss produces 'unknown' (possible race condition)
       if (DEBUG_ENABLED && payload.sessionType === 'unknown' && typeof (event.properties as Record<string, unknown>).sessionID === 'string') {
-        console.warn(`${LOG_PREFIX} sessionMap miss for sessionID=${(event.properties as Record<string, unknown>).sessionID}, treating as 'unknown'. Race condition?`);
+        logger.warn(`sessionMap miss for sessionID=${(event.properties as Record<string, unknown>).sessionID}, treating as 'unknown'. Race condition?`);
       }
 
       if (DEBUG_ENABLED) {
-        console.info(`${LOG_PREFIX} Handling event ${payload.eventType} for session ${payload.sessionId}`);
+        logger.debug(`Handling event ${payload.eventType} for session ${payload.sessionId}`);
       }
       try {
         await eventHandler.handle(payload.eventType, payload);
       } catch (error) {
-        console.error(`${LOG_PREFIX} Failed to handle event ${payload.eventType}`, error);
+        logger.error(`Failed to handle event ${payload.eventType}: ${error}`);
       }
     },
   };

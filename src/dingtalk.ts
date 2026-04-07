@@ -9,9 +9,7 @@
  */
 
 import type { Channel, ChannelSender, ChannelFormatter, FormattedMessage, DingtalkConfig } from './types.js';
-
-const LOG_PREFIX = '[ul-opencode-event]';
-const DEBUG_ENABLED = process.env.UL_OPENCODE_EVENT_DEBUG === '1' || process.env.UL_OPENCODE_EVENT_DEBUG === 'true';
+import { logger, DEBUG_ENABLED } from './logger.js';
 
 // ─── Signing ───────────────────────────────────────────────
 
@@ -215,6 +213,8 @@ export async function createDingTalkSender(channel: Channel): Promise<ChannelSen
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
+      logger.debug(`DingTalk webhook POST ${targetUrl}`);
+
       try {
         const response = await fetch(targetUrl, {
           method: 'POST',
@@ -224,6 +224,8 @@ export async function createDingTalkSender(channel: Channel): Promise<ChannelSen
         });
 
         clearTimeout(timer);
+
+        logger.debug(`DingTalk response: ${response.status} ${response.statusText}`);
 
         // Parse response
         let result: { errcode?: number; errmsg?: string };
@@ -235,26 +237,18 @@ export async function createDingTalkSender(channel: Channel): Promise<ChannelSen
 
         if (result.errcode !== undefined && result.errcode !== 0) {
           // DingTalk API returned an error
-          if (DEBUG_ENABLED) {
-            console.error(
-              `${LOG_PREFIX} [${channelName}] DingTalk API error: errcode=${result.errcode}, errmsg=${result.errmsg ?? 'unknown'}`
-            );
-          }
+          logger.debug(`[${channelName}] DingTalk API error: errcode=${result.errcode}, errmsg=${result.errmsg ?? 'unknown'}`);
           return;
         }
 
         // Success (errcode === 0 or no errcode in response)
-        if (DEBUG_ENABLED) {
-          console.info(`${LOG_PREFIX} [${channelName}] DingTalk message sent successfully`);
-        }
+        logger.debug(`[${channelName}] DingTalk message sent successfully`);
       } catch (error) {
         clearTimeout(timer);
 
-        // Network error or abort - silent failure with debug logging
-        if (DEBUG_ENABLED) {
-          const message = error instanceof Error ? error.message : String(error);
-          console.error(`${LOG_PREFIX} [${channelName}] Failed to send DingTalk message: ${message}`);
-        }
+        // Network error or abort - log error
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`DingTalk send failed: ${message}`);
       }
     },
 
