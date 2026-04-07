@@ -1,35 +1,104 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\session-title-in-templates.md",
-  "started_at": "2026-04-06T09:52:54.623Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\dingtalk-channel.md",
+  "started_at": "2026-04-06T12:15:40.671Z",
   "session_ids": [
-    "ses_29de0a984ffernCJpotDptITho",
-    "ses_29dc8bd04ffeAM6QzJ6ZYtWiyk",
-    "ses_29dc4abf3ffeF0Q2WjSmck5Fnn",
-    "ses_29db02930ffejTDdthJ1x2ZIYO",
-    "ses_29daffaacffeDUGuulrIwPYWRo",
-    "ses_29daf7f04ffeGkgNA4sSYpTjfr",
-    "ses_29dafc2f9ffeXk2nPkpK2PYGsu"
+    "ses_29d9bd3d5ffeLRq67Jh6kzixAL",
+    "ses_29d445bacffel5SC8bXzV0HDGt",
+    "ses_29d3f00d6ffe50BGwEjQTGLoB0",
+    "ses_29d3992b0ffeeflT5cVtrzMliu",
+    "ses_29d335f0fffePgI8v9PsdYh07D",
+    "ses_29d2abe50ffe5iByJsv8KA6VDs",
+    "ses_29d2716affferMqSxRocmC2DIR",
+    "ses_29d278bc4ffeiaUeh7UxdriPVc",
+    "ses_29d25fddcffeDL7AzZDBoYr8um",
+    "ses_29d258035ffepEk6Yyf9Q3JVij",
+    "ses_29d10ff43ffeDGV9KSeW96010A",
+    "ses_29d0dd827ffeWjheJmK3JeiGcg",
+    "ses_29d0a4e36ffe2RoSsK3er5vEku",
+    "ses_29d09fdd4ffec2ZgCCG8ghxis1",
+    "ses_29d097453ffe8lkPuV56zD1Qdi",
+    "ses_29d0abc97ffeg3Zfq6jLYkjjea",
+    "ses_29cfc1992ffe55iMJqxRlnkg5e",
+    "ses_29cf5c798ffeOK3c5QvxtfHV32",
+    "ses_29cf4e202ffeVOFnP9aDvXDU7h",
+    "ses_29cf56ab3ffevDa9aljdOn9yK1",
+    "ses_29cf475ffffe0JUQ9WQU8bLoih",
+    "ses_29cebb913ffeqtUGEARq1moE0U",
+    "ses_29ce90cb7ffeAA2VltYZWubXBB",
+    "ses_298687dfcffe4WvGkmW31uiGj7",
+    "ses_2984b9315ffeIJ9DtNz2oi67NY",
+    "ses_298479d48ffe84IVkalsQmvqEk",
+    "ses_29845033bffeJcGya8kKz2JvAX",
+    "ses_298427f52ffewmtZTtnKamLQFH",
+    "ses_298424757ffeUDPKtu8B5i5GYl",
+    "ses_29841d2ecffeZxcemJ24rnTO5u",
+    "ses_298421594ffenvlK74SRjlnqAj"
   ],
-  "plan_name": "session-title-in-templates",
+  "plan_name": "dingtalk-channel",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "**EventPayload 类型定义新增 sessionTitle 字段**",
-      "session_id": "ses_29dc8bd04ffeAM6QzJ6ZYtWiyk",
+      "task_title": "**类型定义与接口设计** (`src/types.ts`)",
+      "session_id": "ses_29d445bacffel5SC8bXzV0HDGt",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-06T09:56:32.817Z"
+      "updated_at": "2026-04-06T12:22:39.857Z"
     },
-    "final-wave:f1": {
-      "task_key": "final-wave:f1",
-      "task_label": "F1",
-      "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_29dafc2f9ffeXk2nPkpK2PYGsu",
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "**邮件发送器适配新接口** (`src/email.ts`)",
+      "session_id": "ses_29d3f00d6ffe50BGwEjQTGLoB0",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-06T12:27:23.831Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "**钉钉发送器核心实现** (`src/dingtalk.ts`) -- 新文件",
+      "session_id": "ses_29d3992b0ffeeflT5cVtrzMliu",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-06T12:35:17.231Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "**通道格式化器注册表** (`src/formatters.ts` 或内联在 `src/handler.ts`)",
+      "session_id": "ses_29d335f0fffePgI8v9PsdYh07D",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-04-06T10:27:44.430Z"
+      "updated_at": "2026-04-06T12:41:27.219Z"
+    },
+    "todo:5": {
+      "task_key": "todo:5",
+      "task_label": "5",
+      "task_title": "**Handler 多通道重构** (`src/handler.ts`) -- 核心改造",
+      "session_id": "ses_29d278bc4ffeiaUeh7UxdriPVc",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-06T12:56:29.678Z"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "**Handler 重构测试更新** (`tests/handler.test.ts`)",
+      "session_id": "ses_29d0abc97ffeg3Zfq6jLYkjjea",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-06T13:35:15.617Z"
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "**CLI 钉钉测试** (`tests/` 或集成到现有 CLI 测试)",
+      "session_id": "ses_298421594ffenvlK74SRjlnqAj",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-07T11:42:44.703Z"
     }
   }
 }
