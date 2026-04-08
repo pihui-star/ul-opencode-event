@@ -10,6 +10,7 @@ import { getDefaultTimezone } from './locales.js';
 import type { EventPayload, EventType, SessionType } from './types.js';
 import { DEFAULT_SESSION_TYPES } from './types.js';
 import { logger, DEBUG_ENABLED } from './logger.js';
+import { runAutoUpdate } from './updater.js';
 
 /**
  * Resolve session type from SDK Session info.
@@ -220,6 +221,11 @@ function formatError(error: unknown): string {
 }
 
 /**
+ * Guard flag to ensure auto-update only runs once per plugin load
+ */
+let hasCheckedUpdate = false;
+
+/**
  * Notification Plugin for OpenCode
  * Listens for session events and sends notifications via configured channels
  */
@@ -256,6 +262,21 @@ export const NotificationPlugin: Plugin = async (ctx) => {
 
       if (event.type === 'session.created') {
         sessionMap.set(event.properties.info.id, event.properties.info);
+
+        // Auto-update check (runs once, first main session only)
+        if (!hasCheckedUpdate) {
+          hasCheckedUpdate = true;
+          const info = event.properties.info;
+          const isCliMode = process.env.OPENCODE_CLI_RUN_MODE === 'true';
+          const isSubSession = info.parentID !== undefined && info.parentID !== '';
+          if (!isCliMode && !isSubSession) {
+            setTimeout(() => {
+              runAutoUpdate(ctx, config.auto_update ?? true).catch((err) => {
+                logger.error(`Auto-update check failed: ${err}`);
+              });
+            }, 0);
+          }
+        }
       } else if (event.type === 'session.updated') {
         sessionMap.set(event.properties.info.id, event.properties.info);
       }

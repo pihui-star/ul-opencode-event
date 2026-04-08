@@ -216,6 +216,7 @@ export function loadConfig(): NotificationConfig {
   // Merge top-level fields (language, timezone) — project config takes priority
   const mergedLanguage = projectConfig?.language ?? globalConfig?.language;
   const mergedTimezone = projectConfig?.timezone ?? globalConfig?.timezone;
+  const mergedAutoUpdate = projectConfig?.auto_update ?? globalConfig?.auto_update;
 
   // Merge includeSessionTypes — project overrides global
   const rawIncludeSessionTypes = projectConfig?.includeSessionTypes ?? globalConfig?.includeSessionTypes;
@@ -233,6 +234,7 @@ export function loadConfig(): NotificationConfig {
     channels: enabledChannels,
     ...(mergedLanguage !== undefined && { language: mergedLanguage }),
     ...(mergedTimezone !== undefined && { timezone: mergedTimezone }),
+    ...(mergedAutoUpdate !== undefined ? { auto_update: mergedAutoUpdate } : { auto_update: true }),
     includeSessionTypes: validateIncludeSessionTypes(rawIncludeSessionTypes),
   };
 }

@@ -27,6 +27,8 @@ export interface NotificationConfig {
   timezone?: string;        // IANA 时区标识符，如 "Asia/Shanghai"
   language?: LocaleType;           // 默认提示模板语言 (默认 'en')
   includeSessionTypes?: SessionType[]; // 包含的会话类型 (默认 ['main'])
+  /** 自动更新开关（默认 true） */
+  auto_update?: boolean;
 }
 
 /**
