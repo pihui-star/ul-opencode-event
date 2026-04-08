@@ -120,8 +120,8 @@ export function createDingTalkFormatter(config: DingtalkConfig): ChannelFormatte
         processedLines.push(escapeMarkdown(trimmed));
       }
 
-      // 3. Join and truncate
-      let text = processedLines.join('\n');
+      // 3. Join with double newlines (DingTalk Markdown requires \n\n for line breaks)
+      let text = processedLines.join('\n\n');
 
       if (text.length > MAX_CONTENT_LENGTH) {
         text = text.slice(0, TRUNCATE_KEEP_LENGTH) + TRUNCATE_SUFFIX;
