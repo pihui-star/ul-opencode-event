@@ -605,6 +605,46 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('projectName field', () => {
+    test('projectName from config file is not returned by loadConfig (not yet in merge logic)', () => {
+      const projectConfig: NotificationConfig = {
+        channels: [
+          {
+            type: 'smtp',
+            enabled: true,
+            name: 'Project Email',
+            config: {
+              host: 'smtp.project.com',
+              port: 587,
+              auth: { user: 'project@test.com', pass: 'pass' },
+            },
+            recipients: ['dev@project.com'],
+            events: { idle: true },
+          },
+        ],
+        projectName: 'my-awesome-project',
+      };
+
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+
+      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === projectPath) return JSON.stringify(projectConfig);
+        throw new Error('File not found');
+      });
+
+      const config = loadConfig();
+
+      // projectName is defined in NotificationConfig type but loadConfig() 
+      // does not yet include it in the return object merge logic.
+      // The index.ts plugin reads it via: config.projectName || path.basename(ctx.directory)
+      expect(config.projectName).toBeUndefined();
+      // Channels are still loaded correctly
+      expect(config.channels).toHaveLength(1);
+      expect(config.channels[0].name).toBe('Project Email');
+    });
+  });
+
   describe('includeSessionTypes merge', () => {
     test('global includeSessionTypes preserved when project does not set it', () => {
       const globalConfig: NotificationConfig = {

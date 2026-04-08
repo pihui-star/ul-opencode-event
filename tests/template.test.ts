@@ -64,4 +64,11 @@ describe("renderTemplate", () => {
       "idle 2024-01-01T00:00:00Z test-project session-123 Task completed  5m"
     );
   });
+
+  test("replaces projectPath variable", () => {
+    const result = renderTemplate("Path: {{projectPath}}", {
+      projectPath: "/full/path/to/project",
+    });
+    expect(result).toBe("Path: /full/path/to/project");
+  });
 });

@@ -4,6 +4,7 @@
  */
 import type { Plugin } from '@opencode-ai/plugin';
 import type { Event, Session } from '@opencode-ai/sdk';
+import * as path from 'path';
 import { loadConfig } from './config.js';
 import { createEventHandler, type EventHandler } from './handler.js';
 import { getDefaultTimezone } from './locales.js';
@@ -27,10 +28,11 @@ function resolveSessionType(sessionInfo?: Session): SessionType {
 /**
  * Convert SDK Event to internal EventPayload
  */
-function eventToPayload(event: Event, projectName: string, sessionInfo?: Session, timezone?: string): EventPayload | null {
+function eventToPayload(event: Event, projectName: string, sessionInfo?: Session, timezone?: string, projectPath?: string): EventPayload | null {
   const basePayload = {
     timestamp: formatTimestamp(new Date().toISOString(), timezone),
     projectName,
+    projectPath,
     sessionId: '',
     sessionTitle: undefined,
   };
@@ -296,7 +298,8 @@ export const NotificationPlugin: Plugin = async (ctx) => {
       if (DEBUG_ENABLED && !sessionInfo && typeof (event.properties as Record<string, unknown>).sessionID === 'string') {
         logger.debug(`[RESOLVED] MISS sessionID=${(event.properties as Record<string, unknown>).sessionID} - sessionMap has no entry`);
       }
-      const payload = eventToPayload(event, ctx.directory, sessionInfo, resolvedTimezone);
+      const resolvedProjectName = config.projectName || path.basename(ctx.directory) || 'unknown-project';
+      const payload = eventToPayload(event, resolvedProjectName, sessionInfo, resolvedTimezone, ctx.directory);
       
       if (!payload) {
         return;

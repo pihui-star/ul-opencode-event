@@ -26,6 +26,8 @@ export interface NotificationConfig {
   channels: Channel[];
   timezone?: string;        // IANA 时区标识符，如 "Asia/Shanghai"
   language?: LocaleType;           // 默认提示模板语言 (默认 'en')
+  /** 项目简称（默认取目录名 basename） */
+  projectName?: string;
   includeSessionTypes?: SessionType[]; // 包含的会话类型 (默认 ['main'])
   /** 自动更新开关（默认 true） */
   auto_update?: boolean;
@@ -142,6 +144,8 @@ export interface EventPayload {
   eventType: EventType;
   timestamp: string;
   projectName: string;
+  /** 项目完整路径 */
+  projectPath?: string;
   sessionId: string;
   message?: string;
   error?: string;

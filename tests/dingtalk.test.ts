@@ -36,6 +36,7 @@ const dummyPayload = {
   eventType: 'idle' as const,
   timestamp: '2024-01-01T12:00:00Z',
   projectName: 'test-project',
+  projectPath: '/test/project',
   sessionId: 'sess-123',
   sessionType: 'main' as const,
 };
@@ -285,7 +286,9 @@ describe('createDingTalkFormatter', () => {
     expect(result.msgtype).toBe('markdown');
     expect(result.markdown).toBeDefined();
     expect(result.markdown.title).toBe('Subject');
-    expect(result.markdown.text).toBe('Body content');
+    // DingTalk formatter inserts ### heading as first line
+    expect(result.markdown.text).toContain('### Subject');
+    expect(result.markdown.text).toContain('Body content');
   });
 });
 

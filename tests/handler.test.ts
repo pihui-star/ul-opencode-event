@@ -69,7 +69,9 @@ function createPayload(eventType: EventType, overrides: Partial<EventPayload> = 
     eventType,
     timestamp: '2024-01-01T12:00:00Z',
     projectName: 'test-project',
+    projectPath: '/test/project',
     sessionId: 'session-123',
+    sessionType: 'main' as const,
     ...overrides,
   };
 }
@@ -346,6 +348,31 @@ describe('createEventHandler', () => {
     
     expect(sentMessages[0].subject).toBe('Custom: test-project Started');
     expect(sentMessages[0].text).toBe('Custom body for test-project');
+  });
+
+  test('projectPath template variable is available in custom templates', async () => {
+    const config: NotificationConfig = {
+      channels: [
+        createMockChannel({
+          name: 'ProjectPath Test',
+          templates: {
+            idle: {
+              subject: '[{{projectName}}] Done',
+              body: 'Path: {{projectPath}} - Duration: {{duration}}',
+            },
+          },
+        }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+    await handler.handle('idle', createPayload('idle', {
+      projectPath: '/full/path/to/project',
+      duration: '10m',
+    }));
+
+    expect(sentMessages[0].subject).toBe('[test-project] Done');
+    expect(sentMessages[0].text).toBe('Path: /full/path/to/project - Duration: 10m');
   });
 
   // --- Multi-language template tests ---

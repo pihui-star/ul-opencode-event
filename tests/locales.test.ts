@@ -35,17 +35,20 @@ describe('getDefaultTemplates', () => {
   test('returns English templates by default (no locale)', () => {
     const templates = getDefaultTemplates();
     expect(templates.created.subject).toContain('Task Started');
+    expect(templates.created.subject).toContain('{{projectName}}');
   });
 
   test('returns English templates for "en"', () => {
     const templates = getDefaultTemplates('en');
     expect(templates.idle.subject).toContain('Task Completed');
+    expect(templates.idle.subject).toContain('{{projectName}}');
     expect(templates.error.body).toContain('Error at');
   });
 
   test('returns Chinese templates for "zh"', () => {
     const templates = getDefaultTemplates('zh');
     expect(templates.idle.subject).toContain('任务已完成');
+    expect(templates.idle.subject).toContain('{{projectName}}');
     expect(templates.error.body).toContain('错误信息');
   });
 
@@ -66,6 +69,51 @@ describe('getDefaultTemplates', () => {
         expect(templates[event]).toBeDefined();
         expect(templates[event].subject).toBeDefined();
         expect(templates[event].body).toBeDefined();
+      }
+    }
+  });
+
+  test('all subjects start with [{{projectName}}]', () => {
+    const eventTypes: EventType[] = [
+      'created', 'idle', 'error', 'question', 'permission',
+      'status', 'command', 'fileEdited', 'todo',
+    ];
+
+    for (const locale of ['zh', 'en']) {
+      const templates = getDefaultTemplates(locale);
+      for (const event of eventTypes) {
+        expect(templates[event].subject).toMatch(/^\[\{\{projectName\}\}\]/);
+      }
+    }
+  });
+
+  test('bodies do not contain sessionType or parentSessionId', () => {
+    const eventTypes: EventType[] = [
+      'created', 'idle', 'error', 'question', 'permission',
+      'status', 'command', 'fileEdited', 'todo',
+    ];
+
+    for (const locale of ['zh', 'en']) {
+      const templates = getDefaultTemplates(locale);
+      for (const event of eventTypes) {
+        expect(templates[event].body).not.toContain('{{sessionType}}');
+        expect(templates[event].body).not.toContain('{{parentSessionId}}');
+      }
+    }
+  });
+
+  test('bodies do not contain old Project: or 项目: labels', () => {
+    const eventTypes: EventType[] = [
+      'created', 'idle', 'error', 'question', 'permission',
+      'status', 'command', 'fileEdited', 'todo',
+    ];
+
+    for (const locale of ['zh', 'en']) {
+      const templates = getDefaultTemplates(locale);
+      for (const event of eventTypes) {
+        const body = templates[event].body ?? '';
+        expect(body).not.toContain('项目:');
+        expect(body).not.toContain('Project:');
       }
     }
   });

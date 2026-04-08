@@ -96,9 +96,11 @@ export function createDingTalkFormatter(config: DingtalkConfig): ChannelFormatte
         ? rawTitle.slice(0, MAX_TITLE_LENGTH) + '...'
         : rawTitle;
 
-      // 2. Process body lines
+      // 2. Insert subject heading first
+      const processedLines: string[] = [`### ${escapeMarkdown(title)}`];
+
+      // 3. Process body lines
       const lines = body.split('\n');
-      const processedLines: string[] = [];
 
       for (const line of lines) {
         const trimmed = line.trim();

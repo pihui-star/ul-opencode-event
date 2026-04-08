@@ -116,6 +116,7 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
           todoSummary: payload.todoSummary,
           sessionType: payload.sessionType,
           parentSessionId: payload.parentSessionId,
+          projectPath: payload.projectPath,
         };
 
         // Render templates

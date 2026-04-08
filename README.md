@@ -97,6 +97,7 @@ Create `ul-opencode-event.json` in your project root:
 ### Full Configuration Example
 ```json
 {
+  "projectName": "my-project",
   "channels": [
     {
       "type": "smtp",
@@ -119,12 +120,12 @@ Create `ul-opencode-event.json` in your project root:
       },
       "templates": {
         "idle": {
-          "subject": "[OpenCode] 任务完成 - {{projectName}}",
-          "body": "任务已完成\n\n项目: {{projectName}}\n时间: {{timestamp}}\n耗时: {{duration}}\n消息: {{message}}"
+          "subject": "[{{projectName}}] 任务完成",
+          "body": "任务已完成\n\n时间: {{timestamp}}\n耗时: {{duration}}\n消息: {{message}}"
         },
         "error": {
-          "subject": "[OpenCode] 任务错误 - {{projectName}}",
-          "body": "任务发生错误\n\n项目: {{projectName}}\n时间: {{timestamp}}\n错误: {{error}}"
+          "subject": "[{{projectName}}] 任务错误",
+          "body": "任务发生错误\n\n时间: {{timestamp}}\n错误: {{error}}"
         }
       }
     }
@@ -209,10 +210,10 @@ Create `ul-opencode-event.json` in your project root:
       },
       "templates": {
         "idle": {
-          "body": "**OpenCode 任务完成**\n\n项目: {{projectName}}\n时间: {{timestamp}}\n耗时: {{duration}}\n消息: {{message}}"
+          "body": "### [{{projectName}}] 任务完成\n\n**耗时**: {{duration}}\n**消息**: {{message}}\n\n> {{timestamp}}"
         },
         "error": {
-          "body": "**OpenCode 任务错误**\n\n项目: {{projectName}}\n时间: {{timestamp}}\n错误: {{error}}"
+          "body": "### [{{projectName}}] 任务错误\n\n**错误**: {{error}}\n\n> {{timestamp}}"
         }
       }
     }
@@ -342,7 +343,8 @@ You can also use an IPv6 address directly as the host:
 |----------|-------------|------------------|
 | `{{eventType}}` | Event type (created, idle, error) | All |
 | `{{timestamp}}` | ISO 8601 timestamp | All |
-| `{{projectName}}` | Project name | All |
+| `{{projectName}}` | Project short name (directory basename or config value) | All |
+| `{{projectPath}}` | Project full path (e.g. `/home/user/my-project`) | All |
 | `{{sessionId}}` | Session ID | All |
 | `{{message}}` | Completion message | idle |
 | `{{duration}}` | Task duration | idle |

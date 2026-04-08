@@ -62,10 +62,10 @@
       },
       "templates": {
         "idle": {
-          "body": "**OpenCode 任务完成**\n\n项目: {{projectName}}\n时间: {{timestamp}}\n耗时: {{duration}}\n消息: {{message}}"
+          "body": "### [{{projectName}}] 任务完成\n\n**耗时**: {{duration}}\n**消息**: {{message}}\n\n> {{timestamp}}"
         },
         "error": {
-          "body": "**OpenCode 任务错误**\n\n项目: {{projectName}}\n时间: {{timestamp}}\n错误: {{error}}"
+          "body": "### [{{projectName}}] 任务错误\n\n**错误**: {{error}}\n\n> {{timestamp}}"
         }
       }
     }
@@ -164,6 +164,10 @@ Step 4: 拼接 URL 参数
 
 钉钉 Markdown 是标准 Markdown 的子集，有以下特殊处理：
 
+**Subject 前置为标题：**
+
+模板中的 `subject` 字段会被自动格式化为 `### ` 三级标题，并前置到 `body` 内容之前，作为钉钉消息正文的开头。这意味着用户自定义模板只需关注 `body` 部分，`subject` 会自动出现在消息顶部。
+
 **特殊字符转义（17 个字符）：**
 
 | 字符 | 转义后 | 说明 |
@@ -218,8 +222,8 @@ Body:     JSON.stringify(FormattedMessage)
 {
   "msgtype": "markdown",
   "markdown": {
-    "title": "[OpenCode] 任务完成 - my-project",
-    "text": "**项目**: my-project\n**时间**: 2026-04-06T21:00:00Z\n**耗时**: 2m30s\n**消息**: Task completed"
+    "title": "[my-project] 任务完成",
+    "text": "### [my-project] 任务完成\n\n**耗时**: 2m30s\n**消息**: Task completed\n\n> 2026-04-06T21:00:00Z"
   },
   "at": {
     "atMobiles": ["13800138000"],

@@ -120,7 +120,9 @@ function createPayload(eventType: EventType, overrides: Partial<EventPayload> = 
     eventType,
     timestamp: '2024-01-01T12:00:00Z',
     projectName: 'Test Project',
+    projectPath: '/test/project',
     sessionId: 'test-session',
+    sessionType: 'main' as const,
     ...overrides,
   };
 }

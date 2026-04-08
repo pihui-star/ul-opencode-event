@@ -43,7 +43,7 @@ mock.module('../src/email', () => ({
 }));
 
 // Mock the config module to provide test configuration
-let configMock: { channels: Channel[]; timezone?: string; includeSessionTypes?: SessionType[] } | null = null;
+let configMock: { channels: Channel[]; timezone?: string; includeSessionTypes?: SessionType[]; projectName?: string } | null = null;
 
 mock.module('../src/config', () => ({
   loadConfig: () => {
@@ -52,6 +52,7 @@ mock.module('../src/config', () => ({
         channels: configMock.channels,
         timezone: configMock.timezone,
         includeSessionTypes: configMock.includeSessionTypes,
+        projectName: configMock.projectName,
       };
     }
     return { channels: [] };
@@ -161,9 +162,8 @@ describe('NotificationPlugin', () => {
 
     expect(sentMessages.length).toBe(1);
     expect(sentMessages[0].channelName).toBe('Created Test');
-    expect(sentMessages[0].subject).toContain('[OpenCode]');
+    expect(sentMessages[0].subject).toContain('[my-project]');
     expect(sentMessages[0].subject).toContain('Started');
-    expect(sentMessages[0].text).toContain('/my-project');
     expect(sentMessages[0].text).toContain('Test Session');
   });
 
@@ -1882,6 +1882,79 @@ describe('NotificationPlugin', () => {
         }
       });
     }
+  });
+
+  // ============================================================
+  // projectName config 测试组
+  // ============================================================
+  describe('projectName config', () => {
+    test('uses config.projectName in subject when set', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'ProjectName Test' })],
+        projectName: 'MyCustomName',
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/actual/project/dir',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'session-pn-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'PN Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+      };
+
+      const event = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: event as any });
+
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('[MyCustomName]');
+      expect(sentMessages[0].subject).toContain('Started');
+    });
+
+    test('falls back to path.basename(ctx.directory) when projectName not configured', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Fallback Name Test' })],
+        // projectName intentionally omitted
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/fallback-project-dir',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'session-fb-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Fallback Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+      };
+
+      const event = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: event as any });
+
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toContain('[fallback-project-dir]');
+      expect(sentMessages[0].subject).toContain('Started');
+    });
   });
 
   // ============================================================

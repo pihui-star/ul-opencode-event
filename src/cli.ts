@@ -462,7 +462,7 @@ If you received this message, your DingTalk notification channel is configured c
   const formattedMessage = formatter.format(
     `[Test] OpenCode Notification Channel Test - ${timestamp}`,
     testBody,
-    { eventType: 'idle', timestamp, projectName: 'test', sessionId: 'cli-test', sessionType: 'main' }
+    { eventType: 'idle', timestamp, projectName: 'test', sessionId: 'cli-test', sessionType: 'main', projectPath: process.cwd() }
   );
 
   // Build URL with signing if secret is configured

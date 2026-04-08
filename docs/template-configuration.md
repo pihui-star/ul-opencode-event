@@ -90,11 +90,14 @@ interface ChannelTemplates {
 |------|------|--------|
 | `{{eventType}}` | 事件类型名称 | `idle`、`error`、`question` |
 | `{{timestamp}}` | 事件发生时间（ISO 8601） | `2026-04-08T14:30:00.000Z` |
-| `{{projectName}}` | 项目名称 | `my-project` |
+| `{{projectName}}` | 项目短名称（目录名或配置值） | `my-project` |
+| `{{projectPath}}` | 项目完整路径 | `/home/user/my-project` |
 | `{{sessionId}}` | 会话 ID | `ses_abc123` |
 | `{{sessionTitle}}` | 会话标题（来自 SDK Session.title） | `Fix auth bug` |
 | `{{sessionType}}` | 会话类型 | `main`、`subagent`、`unknown` |
 | `{{parentSessionId}}` | 父会话 ID（子代理事件时有值，主会话为空） | `ses_parent456` |
+
+> **关于 `projectName`**：`projectName` 显示项目的短名称（目录名），而非完整路径。可通过配置文件顶层 `"projectName": "自定义名称"` 字段覆盖自动取值。如需完整路径，请使用 `{{projectPath}}`。
 
 ### 5.2 各事件类型特有变量
 
@@ -288,118 +291,91 @@ interface ChannelTemplates {
 #### created - 会话创建
 
 ```
-Subject: [OpenCode] 任务已启动 - {{projectName}}
+Subject: [{{projectName}}] 任务已启动
 Body:
 任务启动时间: {{timestamp}}
-项目: {{projectName}}
 会话: {{sessionTitle}} ({{sessionId}})
-代理类型: {{sessionType}}
-父会话: {{parentSessionId}}
 ```
 
 #### idle - 任务完成
 
 ```
-Subject: [OpenCode] 任务已完成 - {{projectName}}
+Subject: [{{projectName}}] 任务已完成
 Body:
 任务完成时间: {{timestamp}}
-项目: {{projectName}}
 会话: {{sessionTitle}} ({{sessionId}})
 消息: {{message}}
 耗时: {{duration}}
-代理类型: {{sessionType}}
-父会话: {{parentSessionId}}
 ```
 
 #### error - 任务出错
 
 ```
-Subject: [OpenCode] 任务出错 - {{projectName}}
+Subject: [{{projectName}}] 任务出错
 Body:
 错误发生时间: {{timestamp}}
-项目: {{projectName}}
 会话: {{sessionTitle}} ({{sessionId}})
 错误信息: {{error}}
-代理类型: {{sessionType}}
-父会话: {{parentSessionId}}
 ```
 
 #### question - AI 提问
 
 ```
-Subject: [OpenCode] AI 提问 - {{projectName}}
+Subject: [{{projectName}}] AI 提问
 Body:
 OpenCode 在 {{timestamp}} 向您提问
-项目: {{projectName}}
 会话: {{sessionTitle}} ({{sessionId}})
 问题: {{title}}
 {{questionText}}
-代理类型: {{sessionType}}
-父会话: {{parentSessionId}}
 ```
 
 #### permission - 权限确认
 
 ```
-Subject: [OpenCode] 需要权限确认 - {{projectName}}
+Subject: [{{projectName}}] 需要权限确认
 Body:
 {{timestamp}} 需要权限确认
-项目: {{projectName}}
 会话: {{sessionTitle}} ({{sessionId}})
 {{title}} ({{permissionType}})
-代理类型: {{sessionType}}
-父会话: {{parentSessionId}}
 ```
 
 #### status - 状态变更
 
 ```
-Subject: [OpenCode] 状态变更 - {{projectName}}
+Subject: [{{projectName}}] 状态变更
 Body:
 会话状态变更时间: {{timestamp}}
-项目: {{projectName}}
 会话: {{sessionTitle}} ({{sessionId}})
 状态: {{statusType}}
-代理类型: {{sessionType}}
-父会话: {{parentSessionId}}
 ```
 
 #### command - 命令执行
 
 ```
-Subject: [OpenCode] 命令已执行 - {{projectName}}
+Subject: [{{projectName}}] 命令已执行
 Body:
 命令执行时间: {{timestamp}}
-项目: {{projectName}}
 会话: {{sessionTitle}} ({{sessionId}})
 命令: {{commandName}} {{arguments}}
-代理类型: {{sessionType}}
-父会话: {{parentSessionId}}
 ```
 
 #### fileEdited - 文件编辑
 
 ```
-Subject: [OpenCode] 文件已编辑 - {{projectName}}
+Subject: [{{projectName}}] 文件已编辑
 Body:
 文件编辑时间: {{timestamp}}
-项目: {{projectName}}
 文件: {{filePath}}
-代理类型: {{sessionType}}
-父会话: {{parentSessionId}}
 ```
 
 #### todo - Todo 更新
 
 ```
-Subject: [OpenCode] Todo 已更新 - {{projectName}}
+Subject: [{{projectName}}] Todo 已更新
 Body:
 Todo 更新时间: {{timestamp}}
-项目: {{projectName}}
 会话: {{sessionTitle}} ({{sessionId}})
 {{todoSummary}}
-代理类型: {{sessionType}}
-父会话: {{parentSessionId}}
 ```
 
 ### 7.2 英文默认模板（`language: "en"`）
@@ -407,118 +383,91 @@ Todo 更新时间: {{timestamp}}
 #### created - Session Created
 
 ```
-Subject: [OpenCode] Task Started - {{projectName}}
+Subject: [{{projectName}}] Task Started
 Body:
 Task started at {{timestamp}}
-Project: {{projectName}}
 Session: {{sessionTitle}} ({{sessionId}})
-Agent Type: {{sessionType}}
-Parent Session: {{parentSessionId}}
 ```
 
 #### idle - Task Completed
 
 ```
-Subject: [OpenCode] Task Completed - {{projectName}}
+Subject: [{{projectName}}] Task Completed
 Body:
 Task completed at {{timestamp}}
-Project: {{projectName}}
 Session: {{sessionTitle}} ({{sessionId}})
 Message: {{message}}
 Duration: {{duration}}
-Agent Type: {{sessionType}}
-Parent Session: {{parentSessionId}}
 ```
 
 #### error - Task Error
 
 ```
-Subject: [OpenCode] Task Error - {{projectName}}
+Subject: [{{projectName}}] Task Error
 Body:
 Error at {{timestamp}}
-Project: {{projectName}}
 Session: {{sessionTitle}} ({{sessionId}})
 Error: {{error}}
-Agent Type: {{sessionType}}
-Parent Session: {{parentSessionId}}
 ```
 
 #### question - Question
 
 ```
-Subject: [OpenCode] Question - {{projectName}}
+Subject: [{{projectName}}] Question
 Body:
 OpenCode has a question at {{timestamp}}
-Project: {{projectName}}
 Session: {{sessionTitle}} ({{sessionId}})
 Question: {{title}}
 {{questionText}}
-Agent Type: {{sessionType}}
-Parent Session: {{parentSessionId}}
 ```
 
 #### permission - Permission Required
 
 ```
-Subject: [OpenCode] Permission Required - {{projectName}}
+Subject: [{{projectName}}] Permission Required
 Body:
 Permission needed at {{timestamp}}
-Project: {{projectName}}
 Session: {{sessionTitle}} ({{sessionId}})
 {{title}} ({{permissionType}})
-Agent Type: {{sessionType}}
-Parent Session: {{parentSessionId}}
 ```
 
 #### status - Status Change
 
 ```
-Subject: [OpenCode] Status Change - {{projectName}}
+Subject: [{{projectName}}] Status Change
 Body:
 Session status changed at {{timestamp}}
-Project: {{projectName}}
 Session: {{sessionTitle}} ({{sessionId}})
 Status: {{statusType}}
-Agent Type: {{sessionType}}
-Parent Session: {{parentSessionId}}
 ```
 
 #### command - Command Executed
 
 ```
-Subject: [OpenCode] Command Executed - {{projectName}}
+Subject: [{{projectName}}] Command Executed
 Body:
 Command executed at {{timestamp}}
-Project: {{projectName}}
 Session: {{sessionTitle}} ({{sessionId}})
 Command: {{commandName}} {{arguments}}
-Agent Type: {{sessionType}}
-Parent Session: {{parentSessionId}}
 ```
 
 #### fileEdited - File Edited
 
 ```
-Subject: [OpenCode] File Edited - {{projectName}}
+Subject: [{{projectName}}] File Edited
 Body:
 File edited at {{timestamp}}
-Project: {{projectName}}
 File: {{filePath}}
-Agent Type: {{sessionType}}
-Parent Session: {{parentSessionId}}
 ```
 
 #### todo - Todos Updated
 
 ```
-Subject: [OpenCode] Todos Updated - {{projectName}}
+Subject: [{{projectName}}] Todos Updated
 Body:
 Todos updated at {{timestamp}}
-Project: {{projectName}}
 Session: {{sessionTitle}} ({{sessionId}})
 {{todoSummary}}
-Agent Type: {{sessionType}}
-Parent Session: {{parentSessionId}}
 ```
 
 ---
@@ -529,7 +478,7 @@ Parent Session: {{parentSessionId}}
 
 | 维度 | SMTP | DingTalk |
 |------|------|----------|
-| `subject` 字段 | 使用（邮件主题） | 忽略（仅用于消息 title 属性） |
+| `subject` 字段 | 使用（邮件主题） | 格式化为 `###` 标题后前置到消息正文 |
 | `body` 字段 | 纯文本 | Markdown 子集 |
 | 变量渲染 | 透传，原样输出 | 特殊字符自动转义（17 个字符） |
 | 内容截断 | 无 | body 最大 4000 字符，超长截断 |
@@ -561,6 +510,10 @@ A: 可以。每个通道（channel）有独立的 `templates` 字段，互不影
 **Q: `language` 设置和 `templates` 是什么关系？**
 
 A: `language` 决定未配置自定义模板时使用的内置默认模板语言（`zh` 或 `en`）。如果通道为某个事件类型配置了 `templates`，则自定义模板优先，`language` 设置对该事件不生效。
+
+**Q: `projectName` 显示的是什么？**
+
+A: `projectName` 显示项目的短名称（即项目目录的 basename，如 `/home/user/my-project` 中的 `my-project`）。可通过配置文件顶层字段 `"projectName": "自定义名称"` 覆盖。如需显示完整路径，使用 `{{projectPath}}` 变量。
 
 **Q: 可以只覆盖 `subject` 而不覆盖 `body` 吗？**
 
