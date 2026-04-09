@@ -359,11 +359,11 @@ describe('loadConfig', () => {
       const config = {
         channels: [
           {
-            type: 'feishu',
+            type: 'slack',
             enabled: true,
-            name: 'Feishu Channel',
+            name: 'Slack Channel',
             config: {
-              webhook: 'https://feishu.com/webhook',
+              webhook: 'https://slack.com/webhook',
             },
             events: { created: true },
           },
@@ -380,7 +380,7 @@ describe('loadConfig', () => {
         throw new Error('File not found');
       });
 
-      expect(() => loadConfig()).toThrow('Unsupported channel type: "feishu". Supported types: smtp, dingtalk');
+      expect(() => loadConfig()).toThrow('Unsupported channel type: "slack". Supported types: smtp, dingtalk, feishu');
     });
 
     test('throws error for invalid channel type', () => {
@@ -469,14 +469,14 @@ describe('loadConfig', () => {
       expect(() => loadConfig()).not.toThrow();
     });
 
-    test('type "feishu" still throws "Unsupported channel type" error', () => {
+    test('type "slack" still throws "Unsupported channel type" error', () => {
       const config = {
         channels: [
           {
-            type: 'feishu',
+            type: 'slack',
             enabled: true,
-            name: 'Feishu Bot',
-            config: { webhook: 'https://open.feishu.cn/webhook' },
+            name: 'Slack Bot',
+            config: { webhook: 'https://hooks.slack.com/webhook' },
             events: { created: true },
           },
         ],
@@ -490,7 +490,7 @@ describe('loadConfig', () => {
         throw new Error('File not found');
       });
 
-      expect(() => loadConfig()).toThrow(/Unsupported channel type: "feishu"/);
+      expect(() => loadConfig()).toThrow(/Unsupported channel type: "slack"/);
     });
 
     test('global + project dingtalk config merges by name (project overrides)', () => {

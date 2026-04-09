@@ -20,6 +20,7 @@ OpenCode multi-channel notification plugin that keeps you informed wherever you 
 | 🔜 Telegram | Planned | Telegram bot notifications |
 | 🔜 Slack | Planned | Slack incoming webhooks |
 | ✅ DingTalk | Available | 钉钉机器人 |
+| ✅ Feishu | Available | 飞书机器人 |
 | 🔜 WeChat Work | Planned | 企业微信 |
 
 **Have a channel request?** Open an issue on our [Gitee repo](https://gitee.com/augushong/ul-opencode-event)!
@@ -274,6 +275,106 @@ A: 排查步骤：
 2. 设置环境变量 `UL_OPENCODE_EVENT_DEBUG=1` 查看详细日志
 3. 检查钉钉群中机器人是否已被移除或禁用
 4. 确认 Webhook 地址中的 `access_token` 未过期（通常不会过期）
+
+### 飞书机器人配置
+
+通过飞书群自定义机器人接收 OpenCode 通知消息，支持交互式卡片格式。
+
+#### 获取 Webhook 和 Secret
+
+1. 进入目标飞书群聊 -> 右上角 **设置**
+2. 点击 **群机器人** -> **添加机器人**
+3. 选择 **自定义机器人**
+4. 设置头像、名称、描述 -> 点击 **添加**
+5. **安全设置** 可选择签名校验（推荐），复制生成的 **Secret**
+6. 复制 **Webhook 地址**（格式: `https://open.feishu.cn/open-apis/bot/v2/hook/xxx`）
+
+> **建议**: 开启签名校验模式，避免 Webhook 被恶意调用。
+
+#### 最小配置
+
+```json
+{
+  "channels": [
+    {
+      "type": "feishu",
+      "enabled": true,
+      "name": "飞书通知",
+      "config": {
+        "webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_HOOK_ID"
+      },
+      "events": {
+        "idle": true,
+        "error": true
+      }
+    }
+  ]
+}
+```
+
+#### 完整配置示例
+
+```json
+{
+  "channels": [
+    {
+      "type": "feishu",
+      "enabled": true,
+      "name": "飞书通知",
+      "config": {
+        "webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_HOOK_ID",
+        "secret": "your-secret-key-here"
+      },
+      "events": {
+        "created": false,
+        "idle": true,
+        "error": true
+      },
+      "templates": {
+        "idle": {
+          "body": "**项目**: {{projectName}}\n**耗时**: {{duration}}\n**消息**: {{message}}\n\n> {{timestamp}}"
+        },
+        "error": {
+          "body": "**项目**: {{projectName}}\n**错误**: {{error}}\n\n> {{timestamp}}"
+        }
+      }
+    }
+  ]
+}
+```
+
+#### 飞书配置字段说明
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `webhook` | string | Yes | - | 飞书机器人 Webhook 地址 |
+| `secret` | string | No | - | 签名校验密钥（安全设置选"签名校验"时提供） |
+
+> **注意**: 飞书通道不需要 `recipients` 字段，消息发送到机器人所在的飞书群。
+
+#### 飞书常见问题
+
+**Q: 签名失败怎么办？**
+
+A: 检查以下几点：
+1. 确认 `secret` 值与飞书后台显示的完全一致（注意前后空格）
+2. 确认服务器时间与标准时间偏差不超过 1 小时
+3. 如果使用代理/TUN 环境，确认网络能正常访问 `open.feishu.cn`
+
+**Q: 飞书消息格式支持什么？**
+
+A: 飞书通道使用交互式卡片格式，支持 lark_md（飞书 Markdown）语法：
+- 标题: `**text**`（加粗）
+- 链接: `[text](url)`
+- 代码块: ` ```code``` `
+- 有序/无序列表
+
+**Q: 消息丢失或收不到怎么办？**
+
+A: 排查步骤：
+1. 运行 `npx @ulthon/ul-opencode-event test --channel "飞书通知"` 测试连接
+2. 设置环境变量 `UL_OPENCODE_EVENT_DEBUG=1` 查看详细日志
+3. 检查飞书群中机器人是否已被移除或禁用
 
 ### IPv4/IPv6 Configuration
 

@@ -75,6 +75,17 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
             } catch (error) {
               logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
             }
+          } else if (channel.type === 'feishu' && channel.enabled !== false) {
+            try {
+              const feishuModule = await import('./feishu.js');
+              const sender = await feishuModule.createFeishuSender(channel);
+              if (sender) {
+                const key = channel.name || `channel-${i}`;
+                senders.set(key, sender);
+              }
+            } catch (error) {
+              logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
+            }
           }
         }
       }

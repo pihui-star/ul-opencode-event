@@ -13,8 +13,9 @@ import * as path from 'path';
 import * as os from 'os';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import type { Channel, SMTPConfig, DingtalkConfig, NotificationConfig } from './types.js';
+import type { Channel, SMTPConfig, DingtalkConfig, FeishuConfig, NotificationConfig } from './types.js';
 import { generateSign, createDingTalkFormatter } from './dingtalk.js';
+import { generateFeishuSign, createFeishuFormatter } from './feishu.js';
 
 const CLI_PREFIX = '[ul-opencode-event-cli]';
 const LOOKUP_TIMEOUT_MS = 1200;
@@ -89,8 +90,12 @@ function validateChannel(channel: Channel): { valid: boolean; errors: string[] }
     return validateDingtalkChannel(channel, errors);
   }
 
+  if (channel.type === 'feishu') {
+    return validateFeishuChannel(channel, errors);
+  }
+
   if (channel.type !== 'smtp') {
-    errors.push(`Unsupported channel type: "${channel.type}". Supported types: "smtp", "dingtalk".`);
+    errors.push(`Unsupported channel type: "${channel.type}". Supported types: "smtp", "dingtalk", "feishu".`);
     return { valid: false, errors };
   }
 
@@ -154,6 +159,32 @@ function validateDingtalkChannel(channel: Channel, errors: string[]): { valid: b
         errors.push('DingTalk at.atAll must be a boolean');
       }
     }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Validate Feishu channel configuration
+ */
+function validateFeishuChannel(channel: Channel, errors: string[]): { valid: boolean; errors: string[] } {
+  const config = channel.config as FeishuConfig;
+
+  // Check webhook URL
+  if (!config.webhook || !config.webhook.trim()) {
+    errors.push('Feishu webhook URL is missing');
+  } else {
+    const webhookUrl = config.webhook.trim();
+    try {
+      new URL(webhookUrl);
+    } catch {
+      errors.push(`Feishu webhook URL is invalid: "${webhookUrl}"`);
+    }
+  }
+
+  // Check secret (optional but must be non-empty string if provided)
+  if (config.secret !== undefined && typeof config.secret === 'string' && !config.secret.trim()) {
+    errors.push('Feishu secret must be a non-empty string');
   }
 
   return { valid: errors.length === 0, errors };
@@ -244,6 +275,11 @@ async function testConnection(channel: Channel): Promise<{ success: boolean; err
   // DingTalk connection test
   if (channel.type === 'dingtalk') {
     return testDingtalkConnection(channel);
+  }
+
+  // Feishu connection test
+  if (channel.type === 'feishu') {
+    return testFeishuConnection(channel);
   }
 
   // SMTP connection test (existing logic)
@@ -347,6 +383,61 @@ async function testDingtalkConnection(channel: Channel): Promise<{ success: bool
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('abort')) {
       return { success: false, error: 'DingTalk connection timed out (10s)' };
+    }
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Test Feishu webhook connection by sending a minimal text message
+ */
+async function testFeishuConnection(channel: Channel): Promise<{ success: boolean; error?: string; info?: string }> {
+  const config = channel.config as FeishuConfig;
+  const webhookUrl = config.webhook.trim();
+
+  // Build message body with signing if secret is configured
+  const body: Record<string, unknown> = {
+    msg_type: 'text',
+    content: { text: 'connection test' },
+  };
+
+  if (config.secret) {
+    // Feishu uses second-level timestamp
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const sign = await generateFeishuSign(config.secret, timestamp);
+    body.timestamp = timestamp;
+    body.sign = sign;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+
+    let result: { code?: number; msg?: string };
+    try {
+      result = (await response.json()) as { code?: number; msg?: string };
+    } catch {
+      return { success: false, error: 'Failed to parse Feishu API response' };
+    }
+
+    if (result.code !== undefined && result.code !== 0) {
+      return { success: false, error: `Feishu API error: code=${result.code}, msg=${result.msg ?? 'unknown'}` };
+    }
+
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('abort')) {
+      return { success: false, error: 'Feishu connection timed out (10s)' };
     }
     return { success: false, error: message };
   }
@@ -509,6 +600,74 @@ If you received this message, your DingTalk notification channel is configured c
 }
 
 /**
+ * Send test message via Feishu webhook
+ */
+async function sendTestFeishuMessage(channel: Channel): Promise<{ success: boolean; error?: string; messageId?: string; info?: string }> {
+  const config = channel.config as FeishuConfig;
+  const timestamp = new Date().toISOString();
+  const channelName = channel.name || 'Feishu Test';
+
+  // Use Feishu formatter to generate a properly formatted test message
+  const formatter = createFeishuFormatter(config);
+  const testBody = `This is a test message from OpenCode notification plugin.
+
+Channel: ${channelName}
+Type: ${channel.type}
+Time: ${timestamp}
+
+If you received this message, your Feishu notification channel is configured correctly.`;
+
+  const formattedMessage = formatter.format(
+    `[Test] OpenCode Notification Channel Test - ${timestamp}`,
+    testBody,
+    { eventType: 'idle', timestamp, projectName: 'test', sessionId: 'cli-test', sessionType: 'main', projectPath: process.cwd() }
+  );
+
+  // Build body with signing if secret is configured
+  const body: Record<string, unknown> = { ...formattedMessage };
+  if (config.secret) {
+    // Feishu uses second-level timestamp
+    const ts = String(Math.floor(Date.now() / 1000));
+    const sign = await generateFeishuSign(config.secret, ts);
+    body.timestamp = ts;
+    body.sign = sign;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+
+    const response = await fetch(config.webhook.trim(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+
+    let result: { code?: number; msg?: string };
+    try {
+      result = (await response.json()) as { code?: number; msg?: string };
+    } catch {
+      return { success: false, error: 'Failed to parse Feishu API response' };
+    }
+
+    if (result.code !== undefined && result.code !== 0) {
+      return { success: false, error: `Feishu API error: code=${result.code}, msg=${result.msg ?? 'unknown'}` };
+    }
+
+    return { success: true, messageId: `feishu-${timestamp}` };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('abort')) {
+      return { success: false, error: 'Feishu send timed out (10s)' };
+    }
+    return { success: false, error: message };
+  }
+}
+
+/**
  * Test a single channel
  */
 async function testChannel(channel: Channel, options: TestOptions): Promise<boolean> {
@@ -529,9 +688,13 @@ async function testChannel(channel: Channel, options: TestOptions): Promise<bool
 
   // Step 2: Test connection (type-specific output)
   const isDingtalk = channel.type === 'dingtalk';
+  const isFeishu = channel.type === 'feishu';
   if (isDingtalk) {
     const dtConfig = channel.config as DingtalkConfig;
     console.log(`\n  [2/3] Testing DingTalk webhook: ${dtConfig.webhook}...`);
+  } else if (isFeishu) {
+    const fsConfig = channel.config as FeishuConfig;
+    console.log(`\n  [2/3] Testing Feishu webhook: ${fsConfig.webhook}...`);
   } else {
     const smtpConfig = channel.config as SMTPConfig;
     console.log(`\n  [2/3] Testing SMTP connection to ${smtpConfig.host}:${smtpConfig.port}...`);
@@ -549,7 +712,7 @@ async function testChannel(channel: Channel, options: TestOptions): Promise<bool
 
   // Step 3: Send test message (if not skipped)
   if (options.noSend) {
-    const skipLabel = isDingtalk ? 'test message' : 'test email';
+    const skipLabel = isDingtalk || isFeishu ? 'test message' : 'test email';
     console.log(`\n  [3/3] Skipping ${skipLabel} (--no-send flag)`);
     console.log(`\n  [SUCCESS] Channel "${channelName}" passed all tests (connection only)`);
     return true;
@@ -570,6 +733,21 @@ async function testChannel(channel: Channel, options: TestOptions): Promise<bool
 
     console.log(`\n  [SUCCESS] Channel "${channelName}" passed all tests`);
     console.log(`  Please check your DingTalk group chat.`);
+  } else if (isFeishu) {
+    console.log(`\n  [3/3] Sending test message to Feishu...`);
+    const sendResult = await sendTestFeishuMessage(channel);
+    if (!sendResult.success) {
+      console.log(`  [FAIL] Failed to send test message: ${sendResult.error}`);
+      return false;
+    }
+    console.log(`  [OK] Test message sent successfully`);
+    if (sendResult.info) {
+      console.log(`  [INFO] ${sendResult.info}`);
+    }
+    console.log(`  Message ID: ${sendResult.messageId}`);
+
+    console.log(`\n  [SUCCESS] Channel "${channelName}" passed all tests`);
+    console.log(`  Please check your Feishu group chat.`);
   } else {
     console.log(`\n  [3/3] Sending test email...`);
     const sendResult = await sendTestEmail(channel);

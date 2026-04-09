@@ -37,7 +37,7 @@
           ▼          ▼                 ▼          ▼
     ┌──────────┐ ┌──────────┐  ┌──────────┐ ┌──────────┐
     │ email.ts │ │dingtalk.ts│  │ feishu.ts│  │ xxx.ts   │
-    │ SMTP发送  │ │ Webhook  │  │ (未实现)  │  │ (未来)   │
+    │ SMTP发送  │ │ Webhook  │  │ Webhook  │  │ (未来)   │
     └──────────┘ └──────────┘  └──────────┘ └──────────┘
 ```
 
@@ -167,7 +167,7 @@ export function getFormatter(channelType: ChannelType, channel: Channel): Channe
 |------|----------------------|------|
 | SMTP | `{ subject: string, text: string }` | 直接对应邮件主题和正文 |
 | DingTalk | `{ msgtype: "markdown", markdown: { title, text }, at? }` | 钉钉机器人 Markdown 消息体 |
-| Feishu | *(待实现)* | 飞书消息结构 |
+| Feishu | `{ msg_type: "interactive", card: { config, header, elements } }` | 飞书交互式卡片消息 |
 | 自定义 | 任意 | 由新渠道自行定义 |
 
 ---

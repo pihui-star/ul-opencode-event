@@ -6,11 +6,12 @@
  *
  * - SMTP: pass-through (subject + text body)
  * - DingTalk: Markdown formatting with escaping and truncation
- * - Feishu: not yet implemented
+ * - Feishu: Interactive card messages for Feishu bots
  */
 
-import type { ChannelType, Channel, ChannelFormatter, DingtalkConfig } from './types.js';
+import type { ChannelType, Channel, ChannelFormatter, DingtalkConfig, FeishuConfig } from './types.js';
 import { createDingTalkFormatter } from './dingtalk.js';
+import { createFeishuFormatter } from './feishu.js';
 
 // ─── Email Formatter (SMTP) ──────────────────────────────
 
@@ -48,9 +49,14 @@ export function getFormatter(channelType: ChannelType, channel: Channel): Channe
     return createDingTalkFormatter(channel.config as DingtalkConfig);
   }
 
+  if (channelType === 'feishu') {
+    return createFeishuFormatter(channel.config as FeishuConfig);
+  }
+
   return FORMATTER_REGISTRY[channelType] ?? null;
 }
 
 // ─── Re-exports ──────────────────────────────────────────
 
 export { createDingTalkFormatter } from './dingtalk.js';
+export { createFeishuFormatter } from './feishu.js';

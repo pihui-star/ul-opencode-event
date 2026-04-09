@@ -254,7 +254,41 @@ interface ChannelTemplates {
 
 > **注意**: 钉钉 Markdown 不支持表格、代码块高亮和 HTML 标签。支持的语法包括标题（`#`）、加粗（`**text**`）、引用（`>`）、列表和链接。
 
-### 6.3 部分覆盖（只自定义特定事件）
+### 6.3 自定义飞书模板（仅 body，lark_md 格式）
+
+飞书通道只使用 `body` 字段，支持 lark_md（飞书 Markdown）语法：
+
+```json
+{
+  "channels": [
+    {
+      "type": "feishu",
+      "enabled": true,
+      "name": "飞书通知",
+      "config": {
+        "webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/xxx",
+        "secret": "your-secret"
+      },
+      "events": {
+        "idle": true,
+        "error": true
+      },
+      "templates": {
+        "idle": {
+          "body": "**项目**: {{projectName}}\n**耗时**: {{duration}}\n**消息**: {{message}}\n\n> {{timestamp}}"
+        },
+        "error": {
+          "body": "**项目**: {{projectName}}\n**错误**: {{error}}\n\n> {{timestamp}}"
+        }
+      }
+    }
+  ]
+}
+```
+
+> **注意**: 飞书 lark_md 支持标准 Markdown 语法（加粗、链接、代码块等），不需要像钉钉那样转义特殊字符。
+
+### 6.4 部分覆盖（只自定义特定事件）
 
 只需覆盖想修改的事件类型，其他事件自动使用默认模板：
 
@@ -474,15 +508,15 @@ Session: {{sessionTitle}} ({{sessionId}})
 
 ## 八、通道差异说明
 
-### 8.1 SMTP vs DingTalk 模板差异
+### 8.1 通道模板差异对比
 
-| 维度 | SMTP | DingTalk |
-|------|------|----------|
-| `subject` 字段 | 使用（邮件主题） | 格式化为 `###` 标题后前置到消息正文 |
-| `body` 字段 | 纯文本 | Markdown 子集 |
-| 变量渲染 | 透传，原样输出 | 特殊字符自动转义（17 个字符） |
-| 内容截断 | 无 | body 最大 4000 字符，超长截断 |
-| 主题截断 | 无 | title 最大 100 字符 |
+| 维度 | SMTP | DingTalk | Feishu |
+|------|------|----------|--------|
+| `subject` 字段 | 使用（邮件主题） | 格式化为 `###` 标题后前置到消息正文 | 格式化为 card header title |
+| `body` 字段 | 纯文本 | Markdown 子集 | lark_md（标准 Markdown） |
+| 变量渲染 | 透传，原样输出 | 特殊字符自动转义（17 个字符） | 透传，原样输出 |
+| 内容截断 | 无 | body 最大 4000 字符，超长截断 | body 最大 4000 字符 |
+| 主题截断 | 无 | title 最大 100 字符 | 无 |
 
 ### 8.2 钉钉 Markdown 注意事项
 

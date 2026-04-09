@@ -78,10 +78,12 @@ export interface SMTPConfig {
 }
 
 /**
- * Feishu channel configuration (placeholder for future)
+ * Feishu (Lark) custom robot channel configuration
  */
 export interface FeishuConfig {
   webhook: string;
+  /** Secret for HMAC-SHA256 signature verification */
+  secret?: string;
 }
 
 /**

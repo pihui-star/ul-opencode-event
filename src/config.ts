@@ -5,7 +5,7 @@ import type { NotificationConfig, Channel, SessionType } from './types.js';
 import { DEFAULT_SESSION_TYPES } from './types.js';
 import { logger } from './logger.js';
 
-const SUPPORTED_CHANNEL_TYPES = ['smtp', 'dingtalk'] as const;
+const SUPPORTED_CHANNEL_TYPES = ['smtp', 'dingtalk', 'feishu'] as const;
 
 /**
  * Default configuration returned when no config files exist
