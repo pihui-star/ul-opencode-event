@@ -147,7 +147,9 @@ function readPluginList(directory: string): string[] {
   const results: string[] = [];
   const candidates = [
     path.join(directory, '.opencode', 'settings.json'),
+    path.join(directory, '.opencode', 'opencode.json'),
     path.join(getUserConfigDir(), 'settings.json'),
+    path.join(getUserConfigDir(), 'opencode.json'),
   ];
 
   for (const cfgPath of candidates) {
