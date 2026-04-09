@@ -336,12 +336,16 @@ function resolveWorkspaceDir(): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Execute `bun install` in the given workspace directory.
- * Uses Bun.spawn if available, otherwise falls back to child_process.spawn.
+ * Execute package install in the given workspace directory.
+ * Tries `bun install` first, falls back to `npm install` if bun is not available.
  */
 export async function runBunInstall(workspaceDir: string): Promise<boolean> {
   try {
     const { spawn } = await import('child_process');
+
+    // Detect which package manager is available
+    const pm = await detectPackageManager();
+    logger.info(`[updater] Using package manager: ${pm}`);
 
     return await new Promise<boolean>((resolve) => {
       const spawnOptions = {
@@ -350,7 +354,8 @@ export async function runBunInstall(workspaceDir: string): Promise<boolean> {
         shell: true as const,
       };
 
-      const child: ChildProcess = spawn('bun', ['install'], spawnOptions);
+      const args = pm === 'bun' ? ['install'] : ['install', '--no-fund', '--no-audit'];
+      const child: ChildProcess = spawn(pm, args, spawnOptions);
 
       let stdout = '';
       let stderr = '';
@@ -366,7 +371,7 @@ export async function runBunInstall(workspaceDir: string): Promise<boolean> {
       // Timeout guard
       const timer = setTimeout(() => {
         child.kill('SIGKILL');
-        logger.warn('[updater] bun install timed out after 60s');
+        logger.warn(`[updater] ${pm} install timed out after 60s`);
         resolve(false);
       }, BUN_INSTALL_TIMEOUT);
 
@@ -375,23 +380,63 @@ export async function runBunInstall(workspaceDir: string): Promise<boolean> {
         if (code === 0) {
           resolve(true);
         } else {
-          logger.warn(`[updater] bun install exited with code ${code}`);
-          if (stderr) logger.debug(`[updater] bun install stderr: ${stderr}`);
-          if (stdout) logger.debug(`[updater] bun install stdout: ${stdout}`);
+          logger.warn(`[updater] ${pm} install exited with code ${code}`);
+          if (stderr) logger.debug(`[updater] ${pm} install stderr: ${stderr}`);
+          if (stdout) logger.debug(`[updater] ${pm} install stdout: ${stdout}`);
           resolve(false);
         }
       });
 
       child.on('error', (err: Error) => {
         clearTimeout(timer);
-        logger.error(`[updater] bun install spawn error: ${err}`);
+        logger.error(`[updater] ${pm} install spawn error: ${err}`);
         resolve(false);
       });
     });
   } catch (err) {
-    logger.error(`[updater] bun install failed: ${err}`);
+    logger.error(`[updater] Package install failed: ${err}`);
     return false;
   }
+}
+
+/**
+ * Detect which package manager is available.
+ * Prefers bun (matches OpenCode's native package manager), falls back to npm.
+ */
+async function detectPackageManager(): Promise<string> {
+  const { execFileSync } = await import('child_process');
+
+  // Check for existing lock file as a hint
+  const packagesDir = path.join(getCacheDir(), 'packages');
+  const scopedDir = path.join(packagesDir, `${PACKAGE_NAME}@latest`);
+  for (const dir of [scopedDir, packagesDir]) {
+    if (fs.existsSync(path.join(dir, 'bun.lock')) || fs.existsSync(path.join(dir, 'bun.lockb'))) {
+      return 'bun';
+    }
+    if (fs.existsSync(path.join(dir, 'package-lock.json'))) {
+      return 'npm';
+    }
+  }
+
+  // Try bun first
+  try {
+    execFileSync('bun', ['--version'], { timeout: 3000, windowsHide: true });
+    return 'bun';
+  } catch {
+    // bun not available
+  }
+
+  // Fall back to npm
+  try {
+    execFileSync('npm', ['--version'], { timeout: 3000, windowsHide: true });
+    return 'npm';
+  } catch {
+    // npm not available either
+  }
+
+  // Last resort: assume npm
+  logger.warn('[updater] Neither bun nor npm detected, defaulting to npm');
+  return 'npm';
 }
 
 // ---------------------------------------------------------------------------

@@ -50,13 +50,18 @@ mock.module('child_process', () => ({
           setTimeout(() => fn(spawnExitCode), 0);
         }
         if (event === 'error' && spawnShouldError) {
-          setTimeout(() => fn(new Error('spawn bun ENOENT')), 0);
+          setTimeout(() => fn(new Error('spawn ENOENT')), 0);
         }
       },
       kill: mock(() => {}),
     };
 
     return fakeChild;
+  }),
+  execFileSync: mock((_command: string, _args: string[], _options: Record<string, unknown>) => {
+    // Simulate bun not found, npm available
+    if (_command === 'npm') return '10.0.0';
+    throw new Error('command not found');
   }),
 }));
 
@@ -278,14 +283,15 @@ describe('runBunInstall', () => {
     spawnShouldError = false;
   });
 
-  test('returns true when bun install succeeds (exit code 0)', async () => {
+  test('returns true when package install succeeds (exit code 0)', async () => {
     spawnExitCode = 0;
     const result = await runBunInstall('/test/workspace');
 
     expect(result).toBe(true);
     expect(spawnCapture).not.toBeNull();
-    expect(spawnCapture!.command).toBe('bun');
-    expect(spawnCapture!.args).toEqual(['install']);
+    // Mock env has no bun, so it falls back to npm
+    expect(spawnCapture!.command).toBe('npm');
+    expect(spawnCapture!.args).toEqual(['install', '--no-fund', '--no-audit']);
   });
 
   test('returns false when bun install fails (non-zero exit code)', async () => {
