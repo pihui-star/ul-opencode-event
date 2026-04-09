@@ -428,13 +428,17 @@ async function showToast(
  */
 export async function runAutoUpdate(ctx: any, autoUpdate: boolean): Promise<void> {
   try {
+    logger.info(`[updater] runAutoUpdate started, directory=${ctx.directory}, autoUpdate=${autoUpdate}`);
+
     // 1. Skip checks
     if (isLocalDevMode(ctx.directory)) {
       logger.info('[updater] Local development mode detected, skipping update check');
       return;
     }
 
-    if (isPinnedVersion(ctx.directory)) {
+    const pinned = isPinnedVersion(ctx.directory);
+    logger.info(`[updater] isPinnedVersion=${pinned}`);
+    if (pinned) {
       logger.info('[updater] Pinned version detected, skipping auto-update');
       // Still check and notify, but don't auto-install
       autoUpdate = false;
@@ -442,8 +446,9 @@ export async function runAutoUpdate(ctx: any, autoUpdate: boolean): Promise<void
 
     // 2. Get current version
     const currentVersion = getCurrentVersion();
+    logger.info(`[updater] currentVersion=${currentVersion}`);
     if (!currentVersion) {
-      logger.debug('[updater] Could not determine current version');
+      logger.warn('[updater] Could not determine current version');
       return;
     }
 
@@ -454,26 +459,31 @@ export async function runAutoUpdate(ctx: any, autoUpdate: boolean): Promise<void
       const cached = getCachedCheck();
       if (cached) {
         latestVersion = cached.latestVersion;
-        logger.debug(`[updater] Using cached version info: ${latestVersion}`);
+        logger.info(`[updater] Using cached version info: ${latestVersion}`);
       }
+    } else {
+      logger.info('[updater] Cache invalid or missing');
     }
 
     // 4. Fetch latest if no valid cache
     if (!latestVersion) {
+      logger.info('[updater] Fetching latest version from npm...');
       latestVersion = await getLatestVersion();
+      logger.info(`[updater] getLatestVersion returned: ${latestVersion}`);
       if (latestVersion) {
         setCachedCheck(latestVersion);
+        logger.info(`[updater] Cache written for ${latestVersion}`);
       }
     }
 
     if (!latestVersion) {
-      logger.debug('[updater] Could not fetch latest version');
+      logger.warn('[updater] Could not fetch latest version');
       return;
     }
 
     // 5. Compare versions (simple string equality)
     if (currentVersion === latestVersion) {
-      logger.debug(`[updater] Already on latest version: ${currentVersion}`);
+      logger.info(`[updater] Already on latest version: ${currentVersion}`);
       return;
     }
 
@@ -492,16 +502,18 @@ export async function runAutoUpdate(ctx: any, autoUpdate: boolean): Promise<void
     }
 
     // 7. Auto-update: sync -> invalidate -> resolve workspace -> bun install
-    // First, find plugin info for sync
     const plugins = readPluginList(ctx.directory);
+    logger.info(`[updater] readPluginList returned: ${JSON.stringify(plugins)}`);
     const pluginEntry = plugins.find((e) => e.includes('ul-opencode-event')) ?? PACKAGE_NAME;
     const atIndex = pluginEntry.lastIndexOf('@');
     const pinnedVersion = atIndex > 0 ? pluginEntry.slice(atIndex + 1) : null;
     const isPinned = pinnedVersion !== null && EXACT_SEMVER_RE.test(pinnedVersion);
     const pluginInfo = { entry: pluginEntry, isPinned, pinnedVersion: isPinned ? pinnedVersion : null };
+    logger.info(`[updater] pluginInfo=${JSON.stringify(pluginInfo)}`);
 
     // Sync workspace package.json to intent
     const syncResult = syncCachePackageJsonToIntent(pluginInfo);
+    logger.info(`[updater] syncResult=${JSON.stringify(syncResult)}`);
     if (syncResult.error) {
       logger.warn(`[updater] Sync failed: ${syncResult.error}, continuing with notification only`);
       await showToast(ctx, `ul-opencode-event ${latestVersion}`, `Update available: v${currentVersion} -> v${latestVersion}\nSync failed, try manual update.`, 'info', 8000);
@@ -510,10 +522,13 @@ export async function runAutoUpdate(ctx: any, autoUpdate: boolean): Promise<void
 
     // Invalidate old package
     invalidatePackage();
+    logger.info('[updater] invalidatePackage done');
 
     // Resolve workspace and install
     const workspaceDir = resolveWorkspaceDir();
+    logger.info(`[updater] workspaceDir=${workspaceDir}`);
     const success = await runBunInstall(workspaceDir);
+    logger.info(`[updater] bun install result=${success}`);
 
     if (success) {
       await showToast(
