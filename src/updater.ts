@@ -1,7 +1,7 @@
 /**
  * Auto-update module for @ulthon/ul-opencode-event.
  *
- * Checks npm registry for new versions, manages a 24h cache,
+ * Checks npm registry for new versions, manages a 1h cache,
  * and optionally runs `bun install` to auto-update.
  *
  * Zero runtime dependencies — only Node.js built-ins + project logger.
@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { logger } from './logger.js';
 import type { ChildProcess } from 'child_process';
@@ -22,14 +23,14 @@ const PACKAGE_NAME = '@ulthon/ul-opencode-event';
 const NPM_REGISTRY_URL = `https://registry.npmjs.org/-/package/${encodeURIComponent(PACKAGE_NAME)}/dist-tags`;
 const NPM_FETCH_TIMEOUT = 5000;        // 5 seconds
 const BUN_INSTALL_TIMEOUT = 60000;     // 60 seconds
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
 
 // ---------------------------------------------------------------------------
 // Helpers: cache paths
 // ---------------------------------------------------------------------------
 
 function getCacheDir(): string {
-  return process.env.OPENCODE_DATA_DIR ?? path.join(os.homedir(), '.local', 'share', 'opencode');
+  return process.env.OPENCODE_DATA_DIR ?? path.join(os.homedir(), '.cache', 'opencode');
 }
 
 function getCacheFilePath(): string {
@@ -201,8 +202,10 @@ function isPinnedVersion(directory: string): boolean {
 
 function invalidatePackage(): void {
   try {
+    const scopedFlatDir = path.join(getCacheDir(), 'packages', `${PACKAGE_NAME}@latest`);
     const dirs: string[] = [
       path.join(getCacheDir(), 'packages', 'node_modules', PACKAGE_NAME),
+      path.join(scopedFlatDir, 'node_modules', PACKAGE_NAME),
       path.join(getUserConfigDir(), 'node_modules', PACKAGE_NAME),
     ];
 
@@ -215,6 +218,16 @@ function invalidatePackage(): void {
       } catch (err) {
         logger.debug(`[updater] Could not remove ${pkgDir}: ${err}`);
       }
+    }
+
+    // Also remove the scoped flat install directory contents if present
+    try {
+      if (fs.existsSync(scopedFlatDir)) {
+        fs.rmSync(scopedFlatDir, { recursive: true, force: true });
+        logger.info(`[updater] Removed scoped flat directory ${scopedFlatDir}`);
+      }
+    } catch (err) {
+      logger.debug(`[updater] Could not remove ${scopedFlatDir}: ${err}`);
     }
 
     // Also remove bun.lock / bun.lockb from workspace dirs
@@ -241,6 +254,54 @@ function invalidatePackage(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Exported: sync cache package.json to intended version
+// ---------------------------------------------------------------------------
+
+interface PluginInfo {
+  entry: string;
+  isPinned: boolean;
+  pinnedVersion: string | null;
+}
+
+/**
+ * Sync the workspace package.json to match the intended version from config.
+ * Updates cacheDir/packages/@ulthon/ul-opencode-event@latest/package.json
+ * with the version intent (latest or pinned).
+ * Uses atomic write (write to temp + rename) to prevent corruption.
+ */
+export function syncCachePackageJsonToIntent(pluginInfo: PluginInfo): { synced: boolean; error: string | null; message?: string } {
+  const intentVersion = pluginInfo.isPinned && pluginInfo.pinnedVersion ? pluginInfo.pinnedVersion : 'latest';
+  const scopedDir = path.join(getCacheDir(), 'packages', `${PACKAGE_NAME}@latest`);
+  const pkgJsonPath = path.join(scopedDir, 'package.json');
+
+  try {
+    // Ensure directory exists
+    fs.mkdirSync(scopedDir, { recursive: true });
+
+    let pkgJson: { dependencies?: Record<string, string> } = {};
+
+    if (fs.existsSync(pkgJsonPath)) {
+      const content = fs.readFileSync(pkgJsonPath, 'utf-8');
+      pkgJson = JSON.parse(content) as { dependencies?: Record<string, string> };
+      if (pkgJson.dependencies?.[PACKAGE_NAME] === intentVersion) {
+        return { synced: false, error: null, message: `Already matches intent: ${intentVersion}` };
+      }
+    }
+
+    pkgJson.dependencies = { ...pkgJson.dependencies, [PACKAGE_NAME]: intentVersion };
+
+    // Atomic write: temp file + rename
+    const tmpPath = `${pkgJsonPath}.${crypto.randomUUID()}`;
+    fs.writeFileSync(tmpPath, JSON.stringify(pkgJson, null, 2));
+    fs.renameSync(tmpPath, pkgJsonPath);
+
+    return { synced: true, error: null, message: `Updated to ${intentVersion}` };
+  } catch (err) {
+    return { synced: false, error: String(err) };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helper: resolve workspace directory
 // ---------------------------------------------------------------------------
 
@@ -248,20 +309,24 @@ function resolveWorkspaceDir(): string {
   const configDir = getUserConfigDir();
   const packagesDir = path.join(getCacheDir(), 'packages');
 
-  // Check if installed in config dir
+  // 1. Config dir node_modules
   const configPkg = path.join(configDir, 'node_modules', PACKAGE_NAME, 'package.json');
   if (fs.existsSync(configPkg)) return configDir;
 
-  // Check packages dir (node_modules style)
+  // 2. Cache packages node_modules (traditional)
   const packagesPkg = path.join(packagesDir, 'node_modules', PACKAGE_NAME, 'package.json');
   if (fs.existsSync(packagesPkg)) return packagesDir;
 
-  // Check packages dir (flat)
+  // 3. Cache packages flat (package.json in root)
   const flatPkg = path.join(packagesDir, 'package.json');
   if (fs.existsSync(flatPkg)) return packagesDir;
 
-  // Default to config dir
-  return configDir;
+  // 4. Cache packages scoped flat (@ulthon/ul-opencode-event@latest/package.json)
+  const scopedPkg = path.join(packagesDir, `${PACKAGE_NAME}@latest`, 'package.json');
+  if (fs.existsSync(scopedPkg)) return path.join(packagesDir, `${PACKAGE_NAME}@latest`);
+
+  // Default to packages dir (let bun install create what it needs)
+  return packagesDir;
 }
 
 // ---------------------------------------------------------------------------
@@ -424,8 +489,27 @@ export async function runAutoUpdate(ctx: any, autoUpdate: boolean): Promise<void
       return;
     }
 
-    // 7. Auto-update: invalidate + bun install
+    // 7. Auto-update: sync -> invalidate -> resolve workspace -> bun install
+    // First, find plugin info for sync
+    const plugins = readPluginList(ctx.directory);
+    const pluginEntry = plugins.find((e) => e.includes('ul-opencode-event')) ?? PACKAGE_NAME;
+    const atIndex = pluginEntry.lastIndexOf('@');
+    const pinnedVersion = atIndex > 0 ? pluginEntry.slice(atIndex + 1) : null;
+    const isPinned = pinnedVersion !== null && EXACT_SEMVER_RE.test(pinnedVersion);
+    const pluginInfo = { entry: pluginEntry, isPinned, pinnedVersion: isPinned ? pinnedVersion : null };
+
+    // Sync workspace package.json to intent
+    const syncResult = syncCachePackageJsonToIntent(pluginInfo);
+    if (syncResult.error) {
+      logger.warn(`[updater] Sync failed: ${syncResult.error}, continuing with notification only`);
+      await showToast(ctx, `ul-opencode-event ${latestVersion}`, `Update available: v${currentVersion} -> v${latestVersion}\nSync failed, try manual update.`, 'info', 8000);
+      return;
+    }
+
+    // Invalidate old package
     invalidatePackage();
+
+    // Resolve workspace and install
     const workspaceDir = resolveWorkspaceDir();
     const success = await runBunInstall(workspaceDir);
 

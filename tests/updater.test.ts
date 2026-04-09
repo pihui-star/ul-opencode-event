@@ -75,6 +75,7 @@ const {
   getCachedCheck,
   setCachedCheck,
   isCacheValid,
+  syncCachePackageJsonToIntent,
   runBunInstall,
   runAutoUpdate,
 } = await import('../src/updater');
@@ -249,13 +250,13 @@ describe('cache functions', () => {
     expect(typeof cached!.timestamp).toBe('number');
   });
 
-  test('isCacheValid returns true within 24h', () => {
+  test('isCacheValid returns true within 1h', () => {
     writeCacheFile('3.0.0', Date.now());
     expect(isCacheValid()).toBe(true);
   });
 
   test('isCacheValid returns false when expired', () => {
-    const staleTimestamp = Date.now() - 25 * 60 * 60 * 1000;
+    const staleTimestamp = Date.now() - 2 * 60 * 60 * 1000;
     writeCacheFile('1.0.0', staleTimestamp);
 
     expect(isCacheValid()).toBe(false);
@@ -422,7 +423,7 @@ describe('runAutoUpdate', () => {
     cleanupTmpDir(projectDir);
   });
 
-  test('cache hit within 24h - uses cached version, skips fetch', async () => {
+  test('cache hit within 1h - uses cached version, skips fetch', async () => {
     // Write cache file directly (bypasses setCachedCheck which may use broken fs mock)
     writeCacheFileForTest(tmpDir, '88.0.0', Date.now());
 
@@ -460,5 +461,137 @@ describe('runAutoUpdate', () => {
     expect(ctx.toastCalls[0].message).toContain('Update available');
 
     cleanupTmpDir(projectDir);
+  });
+});
+
+describe('syncCachePackageJsonToIntent', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = createTmpDir();
+    savedOpencodeDataDir = process.env.OPENCODE_DATA_DIR;
+    process.env.OPENCODE_DATA_DIR = tmpDir;
+  });
+
+  afterEach(() => {
+    if (savedOpencodeDataDir !== undefined) {
+      process.env.OPENCODE_DATA_DIR = savedOpencodeDataDir;
+    } else {
+      delete process.env.OPENCODE_DATA_DIR;
+    }
+    cleanupTmpDir(tmpDir);
+  });
+
+  test('creates package.json when missing', () => {
+    const pluginInfo = { entry: '@ulthon/ul-opencode-event', isPinned: false, pinnedVersion: null };
+    const result = syncCachePackageJsonToIntent(pluginInfo);
+
+    expect(result.synced).toBe(true);
+    expect(result.error).toBeNull();
+
+    // Verify the file was created with correct content
+    const scopedDir = nodePath.join(tmpDir, 'packages', '@ulthon/ul-opencode-event@latest');
+    const pkgJsonPath = nodePath.join(scopedDir, 'package.json');
+    expect(nodeFs.existsSync(pkgJsonPath)).toBe(true);
+
+    const content = JSON.parse(nodeFs.readFileSync(pkgJsonPath, 'utf-8'));
+    expect(content.dependencies['@ulthon/ul-opencode-event']).toBe('latest');
+  });
+
+  test('updates version when different', () => {
+    const pluginInfo = { entry: '@ulthon/ul-opencode-event@1.2.3', isPinned: true, pinnedVersion: '1.2.3' };
+
+    // Pre-create with different version
+    const scopedDir = nodePath.join(tmpDir, 'packages', '@ulthon/ul-opencode-event@latest');
+    nodeFs.mkdirSync(scopedDir, { recursive: true });
+    nodeFs.writeFileSync(
+      nodePath.join(scopedDir, 'package.json'),
+      JSON.stringify({ dependencies: { '@ulthon/ul-opencode-event': 'latest' } }),
+      'utf-8',
+    );
+
+    const result = syncCachePackageJsonToIntent(pluginInfo);
+
+    expect(result.synced).toBe(true);
+    expect(result.error).toBeNull();
+
+    const content = JSON.parse(nodeFs.readFileSync(nodePath.join(scopedDir, 'package.json'), 'utf-8'));
+    expect(content.dependencies['@ulthon/ul-opencode-event']).toBe('1.2.3');
+  });
+
+  test('skips when already matching', () => {
+    const pluginInfo = { entry: '@ulthon/ul-opencode-event', isPinned: false, pinnedVersion: null };
+
+    // Pre-create with matching version
+    const scopedDir = nodePath.join(tmpDir, 'packages', '@ulthon/ul-opencode-event@latest');
+    nodeFs.mkdirSync(scopedDir, { recursive: true });
+    nodeFs.writeFileSync(
+      nodePath.join(scopedDir, 'package.json'),
+      JSON.stringify({ dependencies: { '@ulthon/ul-opencode-event': 'latest' } }),
+      'utf-8',
+    );
+
+    const result = syncCachePackageJsonToIntent(pluginInfo);
+
+    expect(result.synced).toBe(false);
+    expect(result.error).toBeNull();
+    expect(result.message).toContain('Already matches intent');
+  });
+
+  test('preserves existing dependencies when updating', () => {
+    const pluginInfo = { entry: '@ulthon/ul-opencode-event@2.0.0', isPinned: true, pinnedVersion: '2.0.0' };
+
+    const scopedDir = nodePath.join(tmpDir, 'packages', '@ulthon/ul-opencode-event@latest');
+    nodeFs.mkdirSync(scopedDir, { recursive: true });
+    nodeFs.writeFileSync(
+      nodePath.join(scopedDir, 'package.json'),
+      JSON.stringify({ dependencies: { '@ulthon/ul-opencode-event': 'latest', 'other-pkg': '^1.0.0' } }),
+      'utf-8',
+    );
+
+    const result = syncCachePackageJsonToIntent(pluginInfo);
+
+    expect(result.synced).toBe(true);
+
+    const content = JSON.parse(nodeFs.readFileSync(nodePath.join(scopedDir, 'package.json'), 'utf-8'));
+    expect(content.dependencies['@ulthon/ul-opencode-event']).toBe('2.0.0');
+    expect(content.dependencies['other-pkg']).toBe('^1.0.0');
+  });
+});
+
+describe('CACHE_TTL', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = createTmpDir();
+    savedOpencodeDataDir = process.env.OPENCODE_DATA_DIR;
+    process.env.OPENCODE_DATA_DIR = tmpDir;
+  });
+
+  afterEach(() => {
+    if (savedOpencodeDataDir !== undefined) {
+      process.env.OPENCODE_DATA_DIR = savedOpencodeDataDir;
+    } else {
+      delete process.env.OPENCODE_DATA_DIR;
+    }
+    cleanupTmpDir(tmpDir);
+  });
+
+  test('cache is invalid exactly at 1 hour boundary', () => {
+    const exactlyOneHourAgo = Date.now() - 60 * 60 * 1000;
+    const cachePath = nodePath.join(tmpDir, 'ul-opencode-event-update-cache.json');
+    nodeFs.mkdirSync(nodePath.dirname(cachePath), { recursive: true });
+    nodeFs.writeFileSync(cachePath, JSON.stringify({ latestVersion: '1.0.0', timestamp: exactlyOneHourAgo }), 'utf-8');
+
+    expect(isCacheValid()).toBe(false);
+  });
+
+  test('cache is valid just under 1 hour', () => {
+    const justUnderOneHour = Date.now() - 59 * 60 * 1000;
+    const cachePath = nodePath.join(tmpDir, 'ul-opencode-event-update-cache.json');
+    nodeFs.mkdirSync(nodePath.dirname(cachePath), { recursive: true });
+    nodeFs.writeFileSync(cachePath, JSON.stringify({ latestVersion: '1.0.0', timestamp: justUnderOneHour }), 'utf-8');
+
+    expect(isCacheValid()).toBe(true);
   });
 });
