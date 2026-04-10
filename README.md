@@ -34,7 +34,7 @@ cp node_modules/@ulthon/ul-opencode-event/examples/ul-opencode-event.json ./
 npx @ulthon/ul-opencode-event test
 ```
 
-Add to `.opencode/settings.json`:
+Add to `~/.config/opencode/opencode.json`:
 
 ```json
 { "plugin": ["@ulthon/ul-opencode-event"] }

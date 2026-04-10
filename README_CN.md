@@ -40,7 +40,7 @@ npm install -g @ulthon/ul-opencode-event
 # 4. 测试连接
 ul-opencode-event test
 
-# 5. 启用插件 -- 在 .opencode/settings.json 中添加:
+# 5. 启用插件 -- 在 ~/.config/opencode/opencode.json 中添加:
 # { "plugin": ["@ulthon/ul-opencode-event"] }
 ```
 
@@ -64,7 +64,7 @@ npm install @ulthon/ul-opencode-event
 
 ### 启用插件
 
-在 `.opencode/settings.json` 中添加：
+在 `~/.config/opencode/opencode.json` 中添加：
 
 ```json
 {
