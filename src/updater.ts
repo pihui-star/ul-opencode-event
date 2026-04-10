@@ -202,7 +202,7 @@ function isPinnedVersion(directory: string): boolean {
 // Helper: package invalidation
 // ---------------------------------------------------------------------------
 
-function invalidatePackage(): void {
+export function invalidatePackage(): void {
   try {
     const scopedFlatDir = path.join(getCacheDir(), 'packages', `${PACKAGE_NAME}@latest`);
     const dirs: string[] = [
@@ -546,7 +546,7 @@ export async function runAutoUpdate(ctx: any, autoUpdate: boolean): Promise<void
       return;
     }
 
-    // 7. Auto-update: sync -> invalidate -> resolve workspace -> bun install
+    // 7. Auto-update: invalidate -> sync -> resolve workspace -> bun install
     const plugins = readPluginList(ctx.directory);
     logger.info(`[updater] readPluginList returned: ${JSON.stringify(plugins)}`);
     const pluginEntry = plugins.find((e) => e.includes('ul-opencode-event')) ?? PACKAGE_NAME;
@@ -556,6 +556,10 @@ export async function runAutoUpdate(ctx: any, autoUpdate: boolean): Promise<void
     const pluginInfo = { entry: pluginEntry, isPinned, pinnedVersion: isPinned ? pinnedVersion : null };
     logger.info(`[updater] pluginInfo=${JSON.stringify(pluginInfo)}`);
 
+    // Invalidate old package first
+    invalidatePackage();
+    logger.info('[updater] invalidatePackage done');
+
     // Sync workspace package.json to intent
     const syncResult = syncCachePackageJsonToIntent(pluginInfo);
     logger.info(`[updater] syncResult=${JSON.stringify(syncResult)}`);
@@ -564,10 +568,6 @@ export async function runAutoUpdate(ctx: any, autoUpdate: boolean): Promise<void
       await showToast(ctx, `ul-opencode-event ${latestVersion}`, `Update available: v${currentVersion} -> v${latestVersion}\nSync failed, try manual update.`, 'info', 8000);
       return;
     }
-
-    // Invalidate old package
-    invalidatePackage();
-    logger.info('[updater] invalidatePackage done');
 
     // Resolve workspace and install
     const workspaceDir = resolveWorkspaceDir();

@@ -81,6 +81,7 @@ const {
   setCachedCheck,
   isCacheValid,
   syncCachePackageJsonToIntent,
+  invalidatePackage,
   runBunInstall,
   runAutoUpdate,
 } = await import('../src/updater');
@@ -465,6 +466,56 @@ describe('runAutoUpdate', () => {
 
     expect(ctx.toastCalls).toHaveLength(1);
     expect(ctx.toastCalls[0].message).toContain('Update available');
+
+    cleanupTmpDir(projectDir);
+  });
+
+  test('runAutoUpdate calls invalidatePackage before syncCachePackageJsonToIntent', async () => {
+    globalThis.fetch = mock(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ latest: '99.0.0' }),
+    })) as unknown as typeof globalThis.fetch;
+
+    spawnExitCode = 0;
+
+    const projectDir = createProjectDir('@ulthon/ul-opencode-event');
+    const ctx = createMockCtx({ directory: projectDir });
+
+    // Pre-create scopedDir with a package.json and a marker file
+    const scopedDir = nodePath.join(tmpDir, 'packages', '@ulthon/ul-opencode-event@latest');
+    nodeFs.mkdirSync(scopedDir, { recursive: true });
+    nodeFs.writeFileSync(
+      nodePath.join(scopedDir, 'package.json'),
+      JSON.stringify({ dependencies: { '@ulthon/ul-opencode-event': 'latest' } }),
+      'utf-8',
+    );
+    nodeFs.writeFileSync(nodePath.join(scopedDir, 'marker.txt'), 'old-cache', 'utf-8');
+
+    // Track call order via an array
+    const callOrder: string[] = [];
+
+    // We verify order by checking file system state after runAutoUpdate:
+    // - If invalidatePackage runs first, it deletes scopedDir (including marker.txt)
+    // - Then syncCachePackageJsonToIntent recreates scopedDir with new package.json
+    // - Result: package.json exists, marker.txt does NOT exist
+    // - If order were reversed (sync first, invalidate second), both would be gone
+
+    await runAutoUpdate(ctx, true);
+
+    // After correct order (invalidate -> sync):
+    // - package.json should exist (recreated by sync after invalidate deleted it)
+    // - marker.txt should NOT exist (invalidated, not recreated)
+    const pkgJsonPath = nodePath.join(scopedDir, 'package.json');
+    const markerPath = nodePath.join(scopedDir, 'marker.txt');
+
+    expect(nodeFs.existsSync(pkgJsonPath)).toBe(true);
+    expect(nodeFs.existsSync(markerPath)).toBe(false);
+
+    // Verify update actually succeeded
+    expect(ctx.toastCalls.length).toBeGreaterThanOrEqual(1);
+    const lastToast = ctx.toastCalls[ctx.toastCalls.length - 1];
+    expect(lastToast.title).toContain('Updated');
 
     cleanupTmpDir(projectDir);
   });
