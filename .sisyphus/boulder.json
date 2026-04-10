@@ -1,76 +1,45 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\feishu-channel.md",
-  "started_at": "2026-04-09T14:41:35.685Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\doc-restructure.md",
+  "started_at": "2026-04-10T00:51:37.873Z",
   "session_ids": [
-    "ses_28d7537adffeNEgTrKgT7tjmxx",
-    "ses_28d4cf7b7ffewkQz6oPYoLc71C",
-    "ses_28d4884edffefP82TjyP1efuFF",
-    "ses_28d426e1dffe143J72Aa9djcLB",
-    "ses_28d411684ffe81rb2JJwRgmyIN",
-    "ses_28d418873ffevyjjW2Q7bxYqYA",
-    "ses_28d42099affeUVLXOnzczdwrOg",
-    "ses_28d23984fffesVXH8b2hbGXczw",
-    "ses_28d204f34ffe3qY6a47QfLM2Ju",
-    "ses_28d1a23caffeT6PrAlI0z2EKvL",
-    "ses_28d18f922ffeknuQH2UOxUKrna",
-    "ses_28d196d59ffe2QxzkEYvfL8ofu",
-    "ses_28d19c43bffec4tdHDmzqhG1MJ"
+    "ses_28b6821bfffe3Ybb45FDoHOhp9",
+    "ses_28b1f4c1dffe3OiwACpuEXxE6X",
+    "ses_28b1a056cffeB5siegePOoFiiu",
+    "ses_28b1b2c67ffe2mH3tCfWolfebc",
+    "ses_28b1ad15bffeeU7aCztT73ByQ4",
+    "ses_28b1a36b0ffeqjrVbj8mNZPjYV",
+    "ses_28b1a7f63ffezDLO8cd0o37rGx",
+    "ses_28b109fc5ffeo2X075XsIouC5T",
+    "ses_28b10cb4affe5qSHoZJ92X2228"
   ],
-  "plan_name": "feishu-channel",
+  "plan_name": "doc-restructure",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "更新 FeishuConfig 类型定义",
-      "session_id": "ses_28d4cf7b7ffewkQz6oPYoLc71C",
+      "task_title": "Rewrite AGENTS.md to Reflect Current Architecture",
+      "session_id": "ses_28b1f4c1dffe3OiwACpuEXxE6X",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-09T14:45:15.342Z"
+      "updated_at": "2026-04-10T00:55:11.647Z"
     },
     "todo:2": {
       "task_key": "todo:2",
       "task_label": "2",
-      "task_title": "创建 src/feishu.ts 发送器和格式化器",
-      "session_id": "ses_28d4884edffefP82TjyP1efuFF",
+      "task_title": "Create docs/smtp-channel.md (SMTP Email Channel Documentation)",
+      "session_id": "ses_28b1b2c67ffe2mH3tCfWolfebc",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-09T14:51:37.288Z"
-    },
-    "todo:3": {
-      "task_key": "todo:3",
-      "task_label": "3",
-      "task_title": "注册飞书通道到分发器和配置系统",
-      "session_id": "ses_28d426e1dffe143J72Aa9djcLB",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-09T15:00:07.139Z"
-    },
-    "todo:7": {
-      "task_key": "todo:7",
-      "task_label": "7",
-      "task_title": "创建 docs/feishu-channel.md 文档",
-      "session_id": "ses_28d23984fffesVXH8b2hbGXczw",
-      "agent": "Sisyphus-Junior",
-      "category": "writing",
-      "updated_at": "2026-04-09T15:31:16.634Z"
-    },
-    "todo:8": {
-      "task_key": "todo:8",
-      "task_label": "8",
-      "task_title": "更新 docs/channel-development.md 和 docs/template-configuration.md",
-      "session_id": "ses_28d204f34ffe3qY6a47QfLM2Ju",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-09T15:36:44.532Z"
+      "category": "unspecified-low",
+      "updated_at": "2026-04-10T01:01:10.232Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
-      "task_title": "**Plan Compliance Audit** - `oracle`",
-      "session_id": "ses_28d1a23caffeT6PrAlI0z2EKvL",
+      "task_title": "**Plan Compliance Audit** -- `oracle`",
+      "session_id": "ses_28b10cb4affe5qSHoZJ92X2228",
       "agent": "oracle",
-      "updated_at": "2026-04-09T15:41:27.829Z"
+      "updated_at": "2026-04-10T01:11:47.606Z"
     }
   }
 }

@@ -1,1 +1,0 @@
-{"channels":[{"type":"smtp","enabled":true,"name":"Project Channel","config":{"host":"project.smtp.com","port":465,"secure":true,"auth":{"user":"project@test.com","pass":"project"}},"recipients":["project@test.com"],"events":{"idle":true,"error":true}}]}
