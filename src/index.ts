@@ -11,7 +11,7 @@ import { getDefaultTimezone } from './locales.js';
 import type { EventPayload, EventType, SessionType } from './types.js';
 import { DEFAULT_SESSION_TYPES } from './types.js';
 import { logger, DEBUG_ENABLED } from './logger.js';
-import { runAutoUpdate } from './updater.js';
+import { runAutoUpdate, getCurrentVersion } from './updater.js';
 
 /**
  * Resolve session type from SDK Session info.
@@ -226,6 +226,7 @@ function formatError(error: unknown): string {
  * Guard flag to ensure auto-update only runs once per plugin load
  */
 let hasCheckedUpdate = false;
+let hasShownStartupToast = false;
 
 /**
  * Notification Plugin for OpenCode
@@ -237,11 +238,39 @@ export const NotificationPlugin: Plugin = async (ctx) => {
     config = loadConfig();
   } catch (error) {
     logger.error(`Failed to initialize plugin config: ${error}`);
+    setTimeout(() => {
+      try {
+        ctx.client.tui.showToast({
+          body: {
+            title: 'ul-opencode-event Config Error',
+            message: `配置加载失败: ${String(error).substring(0, 100)}\n详见日志: ~/.local/share/opencode/ul-opencode-event.log`,
+            variant: 'error',
+            duration: 8000,
+          },
+        }).catch(() => {});
+      } catch {}
+      runAutoUpdate(ctx, true).catch((err: unknown) => {
+        logger.error(`Auto-update check failed: ${err}`);
+      });
+    }, 0);
     return {};
   }
   
   if (config.channels.length === 0) {
     logger.warn('Plugin loaded but no enabled channels found');
+    const version = getCurrentVersion();
+    setTimeout(() => {
+      try {
+        ctx.client.tui.showToast({
+          body: {
+            title: `ul-opencode-event ${version ? `v${version}` : ''}`,
+            message: '插件已加载但没有启用的通知通道\n请检查配置文件',
+            variant: 'warning',
+            duration: 5000,
+          },
+        }).catch(() => {});
+      } catch {}
+    }, 0);
     return {};
   }
 
@@ -276,6 +305,28 @@ export const NotificationPlugin: Plugin = async (ctx) => {
               runAutoUpdate(ctx, config.auto_update ?? true).catch((err) => {
                 logger.error(`Auto-update check failed: ${err}`);
               });
+            }, 0);
+          }
+        }
+
+        // Startup toast (version + channel count, once per process)
+        if (!hasShownStartupToast) {
+          hasShownStartupToast = true;
+          const info = event.properties.info;
+          const isCliMode = process.env.OPENCODE_CLI_RUN_MODE === 'true';
+          const isSubSession = info.parentID !== undefined && info.parentID !== '';
+          if (!isCliMode && !isSubSession) {
+            setTimeout(() => {
+              const version = getCurrentVersion();
+              const channelCount = config.channels.length;
+              const channelTypes = [...new Set(config.channels.map(c => c.type))].join(', ');
+              const title = `ul-opencode-event ${version ? `v${version}` : ''}`;
+              const message = `${channelCount} channel${channelCount !== 1 ? 's' : ''} loaded (${channelTypes})`;
+              try {
+                ctx.client.tui.showToast({
+                  body: { title, message, variant: 'success', duration: 3000 },
+                }).catch(() => {});
+              } catch {}
             }, 0);
           }
         }
@@ -332,3 +383,11 @@ export const NotificationPlugin: Plugin = async (ctx) => {
 };
 
 export default NotificationPlugin;
+
+/**
+ * Test-only: reset module-level flags so toast tests can run independently.
+ */
+export function __test_resetFlags(): void {
+  hasCheckedUpdate = false;
+  hasShownStartupToast = false;
+}

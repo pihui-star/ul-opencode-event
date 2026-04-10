@@ -45,6 +45,12 @@ mock.module('../src/email', () => ({
 // Mock the config module to provide test configuration
 let configMock: { channels: Channel[]; timezone?: string; includeSessionTypes?: SessionType[]; projectName?: string } | null = null;
 
+// Mock the updater module to prevent network calls and control version
+mock.module('../src/updater', () => ({
+  getCurrentVersion: () => '1.0.0',
+  runAutoUpdate: () => Promise.resolve(),
+}));
+
 mock.module('../src/config', () => ({
   loadConfig: () => {
     if (configMock) {
@@ -60,7 +66,7 @@ mock.module('../src/config', () => ({
 }));
 
 // Import after mocking
-import { NotificationPlugin } from '../src/index';
+import { NotificationPlugin, __test_resetFlags } from '../src/index';
 
 // Helper to create a mock SMTP channel
 function createMockChannel(overrides: Partial<Channel> = {}): Channel {
@@ -2209,6 +2215,214 @@ describe('NotificationPlugin', () => {
 
       expect(sentMessages.length).toBe(1);
       expect(sentMessages[0].text).toContain('SubAgent Task 2 Updated');
+    });
+  });
+
+  // ============================================================
+  // Toast 通知测试组
+  // ============================================================
+  describe('toast notifications', () => {
+    // Helper to create ctx with toast spy
+    function createCtxWithToast(overrides: Record<string, unknown> = {}) {
+      const showToast = mock(() => Promise.resolve());
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/toast-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {
+          tui: { showToast },
+        },
+        $: {} as any,
+        ...overrides,
+      };
+      return { ctx, showToast };
+    }
+
+    // Reset module-level flags before each toast test
+    beforeEach(() => {
+      __test_resetFlags();
+    });
+
+    afterEach(() => {
+      delete process.env.OPENCODE_CLI_RUN_MODE;
+    });
+
+    test('shows startup toast on first session.created', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Toast Startup Test' })],
+      };
+
+      const { ctx, showToast } = createCtxWithToast();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'toast-session-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Toast Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+      };
+
+      const event = createMockEvent('session.created', { info: sessionInfo });
+      await hooks.event!({ event: event as any });
+
+      // Wait for setTimeout(0) to fire
+      await new Promise(r => setTimeout(r, 10));
+
+      expect(showToast).toHaveBeenCalled();
+      const calls = showToast.mock.calls;
+      const startupCall = calls.find((c: any[]) => c[0]?.body?.variant === 'success');
+      expect(startupCall).toBeDefined();
+      expect(startupCall[0].body.title).toContain('ul-opencode-event');
+      expect(startupCall[0].body.message).toContain('1 channel');
+      expect(startupCall[0].body.message).toContain('smtp');
+    });
+
+    test('does not show startup toast twice', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Toast Twice Test' })],
+      };
+
+      const { ctx, showToast } = createCtxWithToast();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo1 = {
+        id: 'toast-session-2a',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'First Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+      };
+
+      const sessionInfo2 = {
+        id: 'toast-session-2b',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Second Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+      };
+
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo1 }) as any });
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo2 }) as any });
+
+      await new Promise(r => setTimeout(r, 10));
+
+      // Only ONE startup toast (variant=success), not two
+      const startupCalls = showToast.mock.calls.filter((c: any[]) => c[0]?.body?.variant === 'success');
+      expect(startupCalls.length).toBe(1);
+    });
+
+    test('shows error toast when loadConfig fails', async () => {
+      // Override configMock to throw for this test
+      mock.module('../src/config', () => ({
+        loadConfig: () => {
+          throw new Error('Config file not found: ENOENT');
+        },
+      }));
+
+      // Re-import to pick up the new mock
+      const { NotificationPlugin: FreshPlugin, __test_resetFlags: FreshReset } = await import('../src/index');
+      FreshReset();
+
+      const { ctx, showToast } = createCtxWithToast();
+      const hooks = await FreshPlugin(ctx);
+
+      await new Promise(r => setTimeout(r, 10));
+
+      expect(showToast).toHaveBeenCalled();
+      const errorCall = showToast.mock.calls.find((c: any[]) => c[0]?.body?.variant === 'error');
+      expect(errorCall).toBeDefined();
+      expect(errorCall[0].body.title).toContain('Error');
+      expect(errorCall[0].body.message).toContain('日志');
+
+      // Restore original config mock (must reference live configMock variable)
+      mock.module('../src/config', () => ({
+        loadConfig: () => {
+          if (configMock) {
+            return {
+              channels: configMock.channels,
+              timezone: configMock.timezone,
+              includeSessionTypes: configMock.includeSessionTypes,
+              projectName: configMock.projectName,
+            };
+          }
+          return { channels: [] };
+        },
+      }));
+    });
+
+    test('shows warning toast when no channels configured', async () => {
+      configMock = { channels: [] };
+
+      const { ctx, showToast } = createCtxWithToast();
+      const hooks = await NotificationPlugin(ctx);
+
+      await new Promise(r => setTimeout(r, 10));
+
+      expect(showToast).toHaveBeenCalled();
+      const warningCall = showToast.mock.calls.find((c: any[]) => c[0]?.body?.variant === 'warning');
+      expect(warningCall).toBeDefined();
+      expect(warningCall[0].body.message).toContain('通道');
+    });
+
+    test('skips startup toast in CLI mode', async () => {
+      process.env.OPENCODE_CLI_RUN_MODE = 'true';
+      configMock = {
+        channels: [createMockChannel({ name: 'CLI Toast Test' })],
+      };
+
+      const { ctx, showToast } = createCtxWithToast();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'cli-toast-session',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'CLI Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+      };
+
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      await new Promise(r => setTimeout(r, 10));
+
+      // No startup toast (success variant) should be shown
+      const startupCalls = showToast.mock.calls.filter((c: any[]) =>
+        c[0]?.body?.variant === 'success' && c[0]?.body?.title?.includes('ul-opencode-event'),
+      );
+      expect(startupCalls.length).toBe(0);
+    });
+
+    test('skips startup toast for sub-sessions', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Sub Toast Test' })],
+      };
+
+      const { ctx, showToast } = createCtxWithToast();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'sub-toast-session',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Sub Session',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+        parentID: 'parent-session-001',
+      };
+
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      await new Promise(r => setTimeout(r, 10));
+
+      // No startup toast (success variant) for sub-sessions
+      const startupCalls = showToast.mock.calls.filter((c: any[]) =>
+        c[0]?.body?.variant === 'success' && c[0]?.body?.title?.includes('ul-opencode-event'),
+      );
+      expect(startupCalls.length).toBe(0);
     });
   });
 });
