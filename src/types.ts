@@ -48,7 +48,6 @@ export interface Channel {
 
 /**
  * Supported channel types
- * Phase 1: Only SMTP is implemented
  */
 export type ChannelType = 'smtp' | 'feishu' | 'dingtalk';
 

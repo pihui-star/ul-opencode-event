@@ -32,7 +32,7 @@ export const emailFormatter: ChannelFormatter = {
 /** Built-in formatter lookup by channel type (excluding dingtalk which needs config) */
 const FORMATTER_REGISTRY: Record<string, ChannelFormatter> = {
   smtp: emailFormatter,
-  // feishu: not implemented -> returns null via getFormatter fallback
+  // dingtalk and feishu formatters created dynamically via getFormatter
 };
 
 // ─── Public API ──────────────────────────────────────────
