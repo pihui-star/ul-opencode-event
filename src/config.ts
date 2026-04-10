@@ -37,17 +37,20 @@ function loadConfigFile(filePath: string): NotificationConfig | null {
 }
 
 /**
- * Validate that all channel types are supported
- * @throws Error if any channel has an unsupported type
+ * Validate channel types and filter out unsupported ones
+ * Warns for unknown types, returns only supported channels
+ * @returns Filtered array containing only channels with supported types
  */
-function validateChannelTypes(channels: Channel[]): void {
-  for (const channel of channels) {
+function validateAndFilterChannels(channels: Channel[]): Channel[] {
+  return channels.filter((channel) => {
     if (!SUPPORTED_CHANNEL_TYPES.includes(channel.type as typeof SUPPORTED_CHANNEL_TYPES[number])) {
-      throw new Error(
-        `Unsupported channel type: "${channel.type}". Supported types: ${SUPPORTED_CHANNEL_TYPES.join(', ')}`
+      logger.warn(
+        `Unknown channel type: "${channel.type}" in channel "${channel.name}". Supported types: ${SUPPORTED_CHANNEL_TYPES.join(', ')}. Skipping.`
       );
+      return false;
     }
-  }
+    return true;
+  });
 }
 
 /**
@@ -180,11 +183,9 @@ function getProjectConfigPath(): string | null {
  * - Channels with enabled: false are excluded
  * 
  * Validation:
- * - Channel type must be 'smtp' or 'dingtalk' (supported types)
- * - Throws clear error for unsupported channel types
+ * - Unknown channel types are warned and filtered out (not an error)
  * 
  * @returns Merged and filtered configuration, or default config if no files exist
- * @throws Error if any channel has an unsupported type
  */
 export function loadConfig(): NotificationConfig {
   // Load global config
@@ -207,11 +208,11 @@ export function loadConfig(): NotificationConfig {
     projectConfig?.channels
   );
   
-  // Validate channel types
-  validateChannelTypes(mergedChannels);
-  
   // Filter enabled channels
   const enabledChannels = filterEnabledChannels(mergedChannels);
+  
+  // Validate and filter supported channel types
+  const channels = validateAndFilterChannels(enabledChannels);
   
   // Merge top-level fields (language, timezone) — project config takes priority
   const mergedLanguage = projectConfig?.language ?? globalConfig?.language;
@@ -231,7 +232,7 @@ export function loadConfig(): NotificationConfig {
   }
 
   return {
-    channels: enabledChannels,
+    channels: channels,
     ...(mergedLanguage !== undefined && { language: mergedLanguage }),
     ...(mergedTimezone !== undefined && { timezone: mergedTimezone }),
     ...(mergedAutoUpdate !== undefined ? { auto_update: mergedAutoUpdate } : { auto_update: true }),

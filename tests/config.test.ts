@@ -355,58 +355,99 @@ describe('loadConfig', () => {
   });
 
   describe('validation', () => {
-    test('throws error for unsupported channel type', () => {
-      const config = {
-        channels: [
-          {
-            type: 'slack',
-            enabled: true,
-            name: 'Slack Channel',
-            config: {
-              webhook: 'https://slack.com/webhook',
+    test('filters out unsupported channel type and warns', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        const config = {
+          channels: [
+            {
+              type: 'slack',
+              enabled: true,
+              name: 'Slack Channel',
+              config: {
+                webhook: 'https://slack.com/webhook',
+              },
+              events: { created: true },
             },
-            events: { created: true },
-          },
-        ],
-      };
+          ],
+        };
 
-      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
-      
-      mockFs.existsSync.mockImplementation((p: string) => {
-        return p === projectPath;
-      });
-      mockFs.readFileSync.mockImplementation((p: string) => {
-        if (p === projectPath) return JSON.stringify(config);
-        throw new Error('File not found');
-      });
+        const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+        
+        mockFs.existsSync.mockImplementation((p: string) => {
+          return p === projectPath;
+        });
+        mockFs.readFileSync.mockImplementation((p: string) => {
+          if (p === projectPath) return JSON.stringify(config);
+          throw new Error('File not found');
+        });
 
-      expect(() => loadConfig()).toThrow('Unsupported channel type: "slack". Supported types: smtp, dingtalk, feishu');
+        const result = loadConfig();
+
+        expect(result.channels).toHaveLength(0);
+        expect(warnSpy).toHaveBeenCalled();
+        const warnMsg = warnSpy.mock.calls[0][0] as string;
+        expect(warnMsg).toContain('Unknown channel type: "slack"');
+        expect(warnMsg).toContain('Slack Channel');
+        expect(warnMsg).toContain('smtp, dingtalk, feishu');
+      } finally {
+        console.warn = origWarn;
+      }
     });
 
-    test('throws error for invalid channel type', () => {
-      const config = {
-        channels: [
-          {
-            type: 'invalid',
-            enabled: true,
-            name: 'Invalid Channel',
-            config: {},
-            events: { created: true },
-          },
-        ],
-      };
+    test('returns only valid channels when mixed with unsupported type', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
 
-      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
-      
-      mockFs.existsSync.mockImplementation((p: string) => {
-        return p === projectPath;
-      });
-      mockFs.readFileSync.mockImplementation((p: string) => {
-        if (p === projectPath) return JSON.stringify(config);
-        throw new Error('File not found');
-      });
+      try {
+        const config = {
+          channels: [
+            {
+              type: 'smtp',
+              enabled: true,
+              name: 'Valid Email',
+              config: {
+                host: 'smtp.valid.com',
+                port: 465,
+                auth: { user: 'valid@test.com', pass: 'pass' },
+              },
+              recipients: ['admin@valid.com'],
+              events: { created: true },
+            },
+            {
+              type: 'invalid',
+              enabled: true,
+              name: 'Invalid Channel',
+              config: {},
+              events: { created: true },
+            },
+          ],
+        };
 
-      expect(() => loadConfig()).toThrow('Unsupported channel type: "invalid". Supported types: smtp, dingtalk');
+        const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+        
+        mockFs.existsSync.mockImplementation((p: string) => {
+          return p === projectPath;
+        });
+        mockFs.readFileSync.mockImplementation((p: string) => {
+          if (p === projectPath) return JSON.stringify(config);
+          throw new Error('File not found');
+        });
+
+        const result = loadConfig();
+
+        expect(result.channels).toHaveLength(1);
+        expect(result.channels[0].name).toBe('Valid Email');
+        expect(warnSpy).toHaveBeenCalled();
+        const warnMsg = warnSpy.mock.calls[0][0] as string;
+        expect(warnMsg).toContain('Unknown channel type: "invalid"');
+      } finally {
+        console.warn = origWarn;
+      }
     });
   });
 
@@ -469,28 +510,43 @@ describe('loadConfig', () => {
       expect(() => loadConfig()).not.toThrow();
     });
 
-    test('type "slack" still throws "Unsupported channel type" error', () => {
-      const config = {
-        channels: [
-          {
-            type: 'slack',
-            enabled: true,
-            name: 'Slack Bot',
-            config: { webhook: 'https://hooks.slack.com/webhook' },
-            events: { created: true },
-          },
-        ],
-      };
+    test('disabled unsupported channel type does not produce warn', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
 
-      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+      try {
+        const config = {
+          channels: [
+            {
+              type: 'slack',
+              enabled: false,
+              name: 'Disabled Slack',
+              config: { webhook: 'https://hooks.slack.com/webhook' },
+              events: { created: true },
+            },
+          ],
+        };
 
-      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
-      mockFs.readFileSync.mockImplementation((p: string) => {
-        if (p === projectPath) return JSON.stringify(config);
-        throw new Error('File not found');
-      });
+        const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
 
-      expect(() => loadConfig()).toThrow(/Unsupported channel type: "slack"/);
+        mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+        mockFs.readFileSync.mockImplementation((p: string) => {
+          if (p === projectPath) return JSON.stringify(config);
+          throw new Error('File not found');
+        });
+
+        const result = loadConfig();
+
+        expect(result.channels).toHaveLength(0);
+        // No warn about unsupported type because disabled channels are filtered first
+        const unsupportedWarns = warnSpy.mock.calls.filter(
+          (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('Unknown channel type')
+        );
+        expect(unsupportedWarns).toHaveLength(0);
+      } finally {
+        console.warn = origWarn;
+      }
     });
 
     test('global + project dingtalk config merges by name (project overrides)', () => {
