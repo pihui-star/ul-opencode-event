@@ -128,6 +128,27 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
           sessionType: payload.sessionType,
           parentSessionId: payload.parentSessionId,
           projectPath: payload.projectPath,
+          // 费用与 Token 用量
+          sessionCost: payload.sessionCost != null ? String(payload.sessionCost) : undefined,
+          sessionCostFormatted: payload.costFormatted,
+          sessionTokensInput: payload.sessionTokens?.input != null ? String(payload.sessionTokens.input) : undefined,
+          sessionTokensOutput: payload.sessionTokens?.output != null ? String(payload.sessionTokens.output) : undefined,
+          sessionTokensReasoning: payload.sessionTokens?.reasoning != null ? String(payload.sessionTokens.reasoning) : undefined,
+          sessionTokensCacheRead: payload.sessionTokens?.cacheRead != null ? String(payload.sessionTokens.cacheRead) : undefined,
+          sessionTokensCacheWrite: payload.sessionTokens?.cacheWrite != null ? String(payload.sessionTokens.cacheWrite) : undefined,
+          sessionTokensTotal: payload.sessionTokens?.total != null ? String(payload.sessionTokens.total) : undefined,
+          totalCost: payload.totalCost != null ? String(payload.totalCost) : undefined,
+          totalCostFormatted: payload.totalCostFormatted,
+          totalTokensInput: payload.totalTokens?.input != null ? String(payload.totalTokens.input) : undefined,
+          totalTokensOutput: payload.totalTokens?.output != null ? String(payload.totalTokens.output) : undefined,
+          totalTokensReasoning: payload.totalTokens?.reasoning != null ? String(payload.totalTokens.reasoning) : undefined,
+          totalTokensCacheRead: payload.totalTokens?.cacheRead != null ? String(payload.totalTokens.cacheRead) : undefined,
+          totalTokensCacheWrite: payload.totalTokens?.cacheWrite != null ? String(payload.totalTokens.cacheWrite) : undefined,
+          totalTokensTotal: payload.totalTokens?.total != null ? String(payload.totalTokens.total) : undefined,
+          modelID: payload.modelID,
+          providerID: payload.providerID,
+          mode: payload.mode,
+          currency: payload.currency,
         };
 
         // Render templates

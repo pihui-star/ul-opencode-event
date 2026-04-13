@@ -556,3 +556,264 @@ describe('EmailSender Integration', () => {
     expect(sender).toBeNull();
   });
 });
+
+describe('Token Tracking Integration Tests', () => {
+  beforeEach(() => {
+    capturedMessages = [];
+    mockSendBehavior = null;
+  });
+
+  afterEach(() => {
+    capturedMessages = [];
+    mockSendBehavior = null;
+  });
+
+  test('full flow: session.created -> message.updated -> session.idle with token data', async () => {
+    const config: NotificationConfig = {
+      channels: [createMockChannel({ name: 'Token Flow Test' })],
+    };
+    const handler = createEventHandler(config);
+
+    // Step 1: session.created
+    await handler.handle('created', createPayload('created', {
+      sessionId: 'sess-token-001',
+      sessionTitle: 'Token Test Session',
+    }));
+
+    // Step 2: session.idle with token data (as if accumulated by index.ts from message.updated)
+    await handler.handle('idle', createPayload('idle', {
+      sessionId: 'sess-token-001',
+      sessionTitle: 'Token Test Session',
+      message: 'Task done with token usage',
+      duration: '30s',
+      sessionCost: 0.05,
+      sessionTokens: {
+        input: 100,
+        output: 200,
+        reasoning: 50,
+        cacheRead: 30,
+        cacheWrite: 40,
+        total: 420,
+      },
+      totalCost: 0.05,
+      totalTokens: {
+        input: 100,
+        output: 200,
+        reasoning: 50,
+        cacheRead: 30,
+        cacheWrite: 40,
+        total: 420,
+      },
+      modelID: 'claude-sonnet-4',
+      providerID: 'anthropic',
+      mode: 'build',
+      costFormatted: '$0.0500',
+      totalCostFormatted: '$0.0500',
+      currency: 'USD',
+    }));
+
+    // Verify: 2 notifications sent (created + idle)
+    expect(capturedMessages).toHaveLength(2);
+
+    // Verify idle notification contains token data
+    const idleMsg = capturedMessages[1];
+    expect(idleMsg.subject).toContain('Completed');
+    expect(idleMsg.text).toContain('100');       // input tokens
+    expect(idleMsg.text).toContain('200');       // output tokens
+    expect(idleMsg.text).toContain('50');        // reasoning tokens
+    expect(idleMsg.text).toContain('30');        // cacheRead tokens
+    expect(idleMsg.text).toContain('40');        // cacheWrite tokens
+    expect(idleMsg.text).toContain('420');       // total tokens
+    expect(idleMsg.text).toContain('$0.0500');   // formatted cost
+    expect(idleMsg.text).toContain('claude-sonnet-4'); // model ID
+    expect(idleMsg.text).toContain('anthropic');       // provider ID
+  });
+
+  test('multi-message accumulation: 2 AssistantMessages aggregated into idle', async () => {
+    const config: NotificationConfig = {
+      channels: [createMockChannel({ name: 'Accumulation Test' })],
+    };
+    const handler = createEventHandler(config);
+
+    // Simulate idle with accumulated data from 2 messages (msg-1: cost=0.05, msg-2: cost=0.10)
+    await handler.handle('idle', createPayload('idle', {
+      sessionId: 'sess-accum-001',
+      sessionTitle: 'Multi-Message Session',
+      message: 'Done with accumulation',
+      duration: '2m',
+      sessionCost: 0.15,   // 0.05 + 0.10
+      sessionTokens: {
+        input: 300,        // 100 + 200
+        output: 400,       // 200 + 200
+        reasoning: 100,    // 50 + 50
+        cacheRead: 60,     // 30 + 30
+        cacheWrite: 80,    // 40 + 40
+        total: 940,
+      },
+      totalCost: 0.15,
+      totalTokens: {
+        input: 300,
+        output: 400,
+        reasoning: 100,
+        cacheRead: 60,
+        cacheWrite: 80,
+        total: 940,
+      },
+      modelID: 'gpt-4o',
+      providerID: 'openai',
+      mode: 'build',
+      costFormatted: '$0.1500',
+      totalCostFormatted: '$0.1500',
+    }));
+
+    expect(capturedMessages).toHaveLength(1);
+    const msg = capturedMessages[0];
+    // Verify accumulated token values appear in notification
+    expect(msg.text).toContain('300');        // accumulated input
+    expect(msg.text).toContain('400');        // accumulated output
+    expect(msg.text).toContain('100');        // accumulated reasoning
+    expect(msg.text).toContain('940');        // accumulated total
+    expect(msg.text).toContain('$0.1500');    // accumulated cost
+    expect(msg.text).toContain('gpt-4o');     // last model used
+  });
+
+  test('sub-session merge: main idle includes sub-session totalCost', async () => {
+    const config: NotificationConfig = {
+      channels: [createMockChannel({ name: 'SubSession Test' })],
+    };
+    const handler = createEventHandler(config);
+
+    // Simulate main session idle with sub-session costs merged
+    // Main session: cost=0.05, sub-session: cost=0.07 => total=0.12
+    await handler.handle('idle', createPayload('idle', {
+      sessionId: 'sess-main-001',
+      sessionTitle: 'Main Session',
+      message: 'Done with sub-sessions',
+      duration: '5m',
+      sessionCost: 0.05,         // main session only
+      sessionTokens: {
+        input: 100,
+        output: 200,
+        reasoning: 50,
+        cacheRead: 30,
+        cacheWrite: 40,
+        total: 420,
+      },
+      totalCost: 0.12,           // main (0.05) + sub (0.07)
+      totalTokens: {
+        input: 250,              // 100 + 150 (sub)
+        output: 500,             // 200 + 300 (sub)
+        reasoning: 100,          // 50 + 50 (sub)
+        cacheRead: 60,           // 30 + 30 (sub)
+        cacheWrite: 80,          // 40 + 40 (sub)
+        total: 990,
+      },
+      modelID: 'claude-sonnet-4',
+      providerID: 'anthropic',
+      mode: 'build',
+      costFormatted: '$0.0500',
+      totalCostFormatted: '$0.1200',
+      currency: 'USD',
+    }));
+
+    expect(capturedMessages).toHaveLength(1);
+    const msg = capturedMessages[0];
+    // totalCostFormatted includes sub-session cost
+    expect(msg.text).toContain('$0.1200');
+    // Should contain the aggregated total token count
+    expect(msg.text).toContain('990');
+  });
+
+  test('currency formatting: zh locale uses Y symbol, en locale uses $ symbol', async () => {
+    // Test zh locale with CNY
+    const zhConfig: NotificationConfig = {
+      language: 'zh',
+      channels: [createMockChannel({ name: 'Zh Currency' })],
+    };
+    const zhHandler = createEventHandler(zhConfig);
+
+    await zhHandler.handle('idle', createPayload('idle', {
+      sessionId: 'sess-zh-001',
+      sessionTitle: 'Chinese Session',
+      message: '任务完成',
+      duration: '1m',
+      totalCostFormatted: '\u00a50.3625',
+      totalTokens: {
+        input: 100,
+        output: 200,
+        reasoning: 50,
+        cacheRead: 30,
+        cacheWrite: 40,
+        total: 420,
+      },
+      modelID: 'claude-sonnet-4',
+      providerID: 'anthropic',
+    }));
+
+    expect(capturedMessages).toHaveLength(1);
+    expect(capturedMessages[0].text).toContain('\u00a5'); // ¥ symbol
+    expect(capturedMessages[0].subject).toContain('已完成'); // zh template
+
+    capturedMessages.length = 0;
+
+    // Test en locale with USD
+    const enConfig: NotificationConfig = {
+      language: 'en',
+      channels: [createMockChannel({ name: 'En Currency' })],
+    };
+    const enHandler = createEventHandler(enConfig);
+
+    await enHandler.handle('idle', createPayload('idle', {
+      sessionId: 'sess-en-001',
+      sessionTitle: 'English Session',
+      message: 'Task done',
+      duration: '1m',
+      totalCostFormatted: '$0.0500',
+      totalTokens: {
+        input: 100,
+        output: 200,
+        reasoning: 50,
+        cacheRead: 30,
+        cacheWrite: 40,
+        total: 420,
+      },
+      modelID: 'claude-sonnet-4',
+      providerID: 'anthropic',
+    }));
+
+    expect(capturedMessages).toHaveLength(1);
+    expect(capturedMessages[0].text).toContain('$'); // $ symbol
+    expect(capturedMessages[0].subject).toContain('Completed'); // en template
+  });
+
+  test('zero cost: idle without message.updated produces no NaN or undefined', async () => {
+    const config: NotificationConfig = {
+      channels: [createMockChannel({ name: 'Zero Cost Test' })],
+    };
+    const handler = createEventHandler(config);
+
+    // Idle event without any token data (no message.updated was received)
+    await handler.handle('idle', createPayload('idle', {
+      sessionId: 'sess-zero-001',
+      sessionTitle: 'Zero Cost Session',
+      message: 'Quick task',
+      duration: '1s',
+    }));
+
+    expect(capturedMessages).toHaveLength(1);
+    const msg = capturedMessages[0];
+
+    // Should not contain NaN
+    expect(msg.subject).not.toContain('NaN');
+    expect(msg.text).not.toContain('NaN');
+
+    // Should not contain undefined
+    expect(msg.subject).not.toContain('undefined');
+    expect(msg.text).not.toContain('undefined');
+
+    // Should still contain basic info
+    expect(msg.subject).toContain('Test Project');
+    expect(msg.text).toContain('Quick task');
+    expect(msg.text).toContain('1s');
+  });
+});

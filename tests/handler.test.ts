@@ -695,6 +695,200 @@ describe('Multi-Channel: SMTP + DingTalk', () => {
     expect(text).toContain('\\`code\\`');
   });
 
+  // ============================================================
+  // Token/Cost Template Variable Tests
+  // ============================================================
+
+  test('token cost variables render sessionCost and costFormatted in templates', async () => {
+    const config: NotificationConfig = {
+      channels: [
+        createMockChannel({
+          name: 'Cost Test',
+          templates: {
+            idle: {
+              subject: '[{{projectName}}] Cost: {{sessionCostFormatted}}',
+              body: 'Session cost: {{sessionCost}}, Total cost: {{totalCost}}, Total formatted: {{totalCostFormatted}}, Currency: {{currency}}',
+            },
+          },
+        }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+    await handler.handle('idle', createPayload('idle', {
+      message: 'Done',
+      duration: '5m',
+      sessionCost: 0.0234,
+      costFormatted: '$0.0234',
+      totalCost: 1.5678,
+      totalCostFormatted: '$1.5678',
+      currency: 'USD',
+    }));
+
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].subject).toBe('[test-project] Cost: $0.0234');
+    expect(sentMessages[0].text).toBe('Session cost: 0.0234, Total cost: 1.5678, Total formatted: $1.5678, Currency: USD');
+  });
+
+  test('token breakdown variables render all session token fields', async () => {
+    const config: NotificationConfig = {
+      channels: [
+        createMockChannel({
+          name: 'Token Test',
+          templates: {
+            idle: {
+              subject: 'Tokens',
+              body: 'Input: {{sessionTokensInput}}, Output: {{sessionTokensOutput}}, Reasoning: {{sessionTokensReasoning}}, CacheRead: {{sessionTokensCacheRead}}, CacheWrite: {{sessionTokensCacheWrite}}, Total: {{sessionTokensTotal}}',
+            },
+          },
+        }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+    await handler.handle('idle', createPayload('idle', {
+      message: 'Done',
+      duration: '5m',
+      sessionTokens: {
+        input: 1000,
+        output: 500,
+        reasoning: 200,
+        cacheRead: 300,
+        cacheWrite: 100,
+        total: 2100,
+      },
+    }));
+
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].text).toBe('Input: 1000, Output: 500, Reasoning: 200, CacheRead: 300, CacheWrite: 100, Total: 2100');
+  });
+
+  test('total token breakdown variables render all total token fields', async () => {
+    const config: NotificationConfig = {
+      channels: [
+        createMockChannel({
+          name: 'Total Token Test',
+          templates: {
+            idle: {
+              subject: 'Total Tokens',
+              body: 'Input: {{totalTokensInput}}, Output: {{totalTokensOutput}}, Reasoning: {{totalTokensReasoning}}, CacheRead: {{totalTokensCacheRead}}, CacheWrite: {{totalTokensCacheWrite}}, Total: {{totalTokensTotal}}',
+            },
+          },
+        }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+    await handler.handle('idle', createPayload('idle', {
+      message: 'Done',
+      duration: '5m',
+      totalTokens: {
+        input: 50000,
+        output: 25000,
+        reasoning: 10000,
+        cacheRead: 15000,
+        cacheWrite: 5000,
+        total: 105000,
+      },
+    }));
+
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].text).toBe('Input: 50000, Output: 25000, Reasoning: 10000, CacheRead: 15000, CacheWrite: 5000, Total: 105000');
+  });
+
+  test('modelID, providerID, and mode render in templates', async () => {
+    const config: NotificationConfig = {
+      channels: [
+        createMockChannel({
+          name: 'Model Test',
+          templates: {
+            idle: {
+              subject: '[{{projectName}}] by {{modelID}}',
+              body: 'Model: {{modelID}}, Provider: {{providerID}}, Mode: {{mode}}',
+            },
+          },
+        }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+    await handler.handle('idle', createPayload('idle', {
+      message: 'Done',
+      duration: '5m',
+      modelID: 'claude-sonnet-4-20250514',
+      providerID: 'anthropic',
+      mode: 'code',
+    }));
+
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].subject).toBe('[test-project] by claude-sonnet-4-20250514');
+    expect(sentMessages[0].text).toBe('Model: claude-sonnet-4-20250514, Provider: anthropic, Mode: code');
+  });
+
+  test('undefined token/cost variables render as empty string without error', async () => {
+    const config: NotificationConfig = {
+      channels: [
+        createMockChannel({
+          name: 'Undefined Test',
+          templates: {
+            idle: {
+              subject: 'Cost={{sessionCostFormatted}} Tokens={{sessionTokensTotal}}',
+              body: 'Model={{modelID}} Provider={{providerID}} Mode={{mode}} Total={{totalCostFormatted}} Currency={{currency}} TI={{totalTokensInput}} TO={{totalTokensOutput}}',
+            },
+          },
+        }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+    // No token/cost data in payload - all new fields are undefined
+    await handler.handle('idle', createPayload('idle', {
+      message: 'Done',
+      duration: '5m',
+    }));
+
+    expect(sentMessages.length).toBe(1);
+    // renderTemplate replaces undefined with empty string
+    expect(sentMessages[0].subject).toBe('Cost= Tokens=');
+    expect(sentMessages[0].text).toBe('Model= Provider= Mode= Total= Currency= TI= TO=');
+  });
+
+  test('all token/cost variables combined render correctly', async () => {
+    const config: NotificationConfig = {
+      channels: [
+        createMockChannel({
+          name: 'Full Data Test',
+          templates: {
+            idle: {
+              subject: '{{projectName}} - ${{sessionCost}} / {{sessionTokensTotal}} tokens',
+              body: 'Session: {{sessionCost}} ({{sessionCostFormatted}}), Total: {{totalCost}} ({{totalCostFormatted}}), Model: {{modelID}}/{{providerID}}/{{mode}}, Currency: {{currency}}',
+            },
+          },
+        }),
+      ],
+    };
+
+    const handler = createEventHandler(config);
+    await handler.handle('idle', createPayload('idle', {
+      message: 'Done',
+      duration: '5m',
+      sessionCost: 0.05,
+      costFormatted: '$0.0500',
+      sessionTokens: { input: 2000, output: 800, reasoning: 300, cacheRead: 500, cacheWrite: 150, total: 3750 },
+      totalCost: 2.5,
+      totalCostFormatted: '$2.5000',
+      totalTokens: { input: 100000, output: 40000, reasoning: 15000, cacheRead: 25000, cacheWrite: 7500, total: 187500 },
+      modelID: 'gpt-4o',
+      providerID: 'openai',
+      mode: 'ask',
+      currency: 'USD',
+    }));
+
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].subject).toBe('test-project - $0.05 / 3750 tokens');
+    expect(sentMessages[0].text).toBe('Session: 0.05 ($0.0500), Total: 2.5 ($2.5000), Model: gpt-4o/openai/ask, Currency: USD');
+  });
+
   test('DingTalk formatter truncates long content at 4000 chars', async () => {
     const { createDingTalkFormatter } = await import('../src/formatters');
 

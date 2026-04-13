@@ -137,3 +137,89 @@ describe('getDefaultTimezone', () => {
     expect(getDefaultTimezone('fr')).toBeUndefined();
   });
 });
+
+describe('Token/Cost/Model template variables', () => {
+  const otherEventTypes: EventType[] = [
+    'question', 'permission', 'status', 'command', 'fileEdited', 'todo',
+  ];
+
+  test('zh idle template contains cost, tokens, and model variables', () => {
+    const templates = getDefaultTemplates('zh');
+    const body = templates.idle.body ?? '';
+    expect(body).toContain('{{totalCostFormatted}}');
+    expect(body).toContain('{{totalTokensInput}}');
+    expect(body).toContain('{{totalTokensOutput}}');
+    expect(body).toContain('{{totalTokensReasoning}}');
+    expect(body).toContain('{{totalTokensCacheRead}}');
+    expect(body).toContain('{{totalTokensCacheWrite}}');
+    expect(body).toContain('{{totalTokensTotal}}');
+    expect(body).toContain('{{modelID}}');
+    expect(body).toContain('{{providerID}}');
+  });
+
+  test('en idle template contains cost, tokens, and model variables', () => {
+    const templates = getDefaultTemplates('en');
+    const body = templates.idle.body ?? '';
+    expect(body).toContain('{{totalCostFormatted}}');
+    expect(body).toContain('{{totalTokensInput}}');
+    expect(body).toContain('{{totalTokensOutput}}');
+    expect(body).toContain('{{totalTokensReasoning}}');
+    expect(body).toContain('{{totalTokensCacheRead}}');
+    expect(body).toContain('{{totalTokensCacheWrite}}');
+    expect(body).toContain('{{totalTokensTotal}}');
+    expect(body).toContain('{{modelID}}');
+    expect(body).toContain('{{providerID}}');
+  });
+
+  test('zh error template contains cost and model variables', () => {
+    const templates = getDefaultTemplates('zh');
+    const body = templates.error.body ?? '';
+    expect(body).toContain('{{totalCostFormatted}}');
+    expect(body).toContain('{{modelID}}');
+    expect(body).toContain('{{providerID}}');
+  });
+
+  test('en error template contains cost and model variables', () => {
+    const templates = getDefaultTemplates('en');
+    const body = templates.error.body ?? '';
+    expect(body).toContain('{{totalCostFormatted}}');
+    expect(body).toContain('{{modelID}}');
+    expect(body).toContain('{{providerID}}');
+  });
+
+  test('created templates do NOT contain cost or sessionCost variables', () => {
+    for (const locale of ['zh', 'en']) {
+      const templates = getDefaultTemplates(locale);
+      const body = templates.created.body ?? '';
+      expect(body).not.toContain('{{totalCostFormatted}}');
+      expect(body).not.toContain('{{sessionCostFormatted}}');
+    }
+  });
+
+  test('other event templates contain sessionCostFormatted', () => {
+    for (const locale of ['zh', 'en']) {
+      const templates = getDefaultTemplates(locale);
+      for (const event of otherEventTypes) {
+        const body = templates[event].body ?? '';
+        expect(body).toContain('{{sessionCostFormatted}}');
+      }
+    }
+  });
+
+  test('other event templates do NOT contain detailed token variables', () => {
+    const tokenVars = [
+      '{{totalTokensInput}}', '{{totalTokensOutput}}',
+      '{{totalTokensReasoning}}', '{{totalTokensCacheRead}}',
+      '{{totalTokensCacheWrite}}', '{{totalTokensTotal}}',
+    ];
+    for (const locale of ['zh', 'en']) {
+      const templates = getDefaultTemplates(locale);
+      for (const event of otherEventTypes) {
+        const body = templates[event].body ?? '';
+        for (const v of tokenVars) {
+          expect(body).not.toContain(v);
+        }
+      }
+    }
+  });
+});

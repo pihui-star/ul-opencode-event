@@ -43,7 +43,7 @@ mock.module('../src/email', () => ({
 }));
 
 // Mock the config module to provide test configuration
-let configMock: { channels: Channel[]; timezone?: string; includeSessionTypes?: SessionType[]; projectName?: string } | null = null;
+let configMock: { channels: Channel[]; timezone?: string; includeSessionTypes?: SessionType[]; projectName?: string; cost?: any } | null = null;
 
 // Mock the updater module to prevent network calls and control version
 mock.module('../src/updater', () => ({
@@ -59,6 +59,7 @@ mock.module('../src/config', () => ({
         timezone: configMock.timezone,
         includeSessionTypes: configMock.includeSessionTypes,
         projectName: configMock.projectName,
+        cost: configMock.cost,
       };
     }
     return { channels: [] };
@@ -66,7 +67,7 @@ mock.module('../src/config', () => ({
 }));
 
 // Import after mocking
-import { NotificationPlugin, __test_resetFlags } from '../src/index';
+import { NotificationPlugin, __test_resetFlags, __test_payloads } from '../src/index';
 
 // Helper to create a mock SMTP channel
 function createMockChannel(overrides: Partial<Channel> = {}): Channel {
@@ -95,11 +96,13 @@ describe('NotificationPlugin', () => {
   beforeEach(() => {
     sentMessages.length = 0;
     configMock = null;
+    __test_payloads.length = 0;
   });
 
   afterEach(() => {
     sentMessages.length = 0;
     configMock = null;
+    __test_payloads.length = 0;
   });
 
   test('plugin loads without error', async () => {
@@ -2348,6 +2351,7 @@ describe('NotificationPlugin', () => {
               timezone: configMock.timezone,
               includeSessionTypes: configMock.includeSessionTypes,
               projectName: configMock.projectName,
+              cost: configMock.cost,
             };
           }
           return { channels: [] };
@@ -2423,6 +2427,506 @@ describe('NotificationPlugin', () => {
         c[0]?.body?.variant === 'success' && c[0]?.body?.title?.includes('ul-opencode-event'),
       );
       expect(startupCalls.length).toBe(0);
+    });
+  });
+
+  // ============================================================
+  // message.updated - token 数据累积 测试组
+  // ============================================================
+  describe('message.updated - token accumulation', () => {
+    // Helper: create a mock assistant message.updated event
+    function createMockAssistantMessage(overrides: {
+      id: string;
+      sessionID: string;
+      cost?: number;
+      tokens?: { input?: number; output?: number; reasoning?: number; cacheRead?: number; cacheWrite?: number };
+      modelID?: string;
+      providerID?: string;
+      mode?: string;
+    }) {
+      return createMockEvent('message.updated', {
+        info: {
+          id: overrides.id,
+          sessionID: overrides.sessionID,
+          role: 'assistant',
+          time: { created: Date.now() },
+          cost: overrides.cost ?? 0,
+          tokens: {
+            input: overrides.tokens?.input ?? 0,
+            output: overrides.tokens?.output ?? 0,
+            reasoning: overrides.tokens?.reasoning ?? 0,
+            cache: {
+              read: overrides.tokens?.cacheRead ?? 0,
+              write: overrides.tokens?.cacheWrite ?? 0,
+            },
+          },
+          modelID: overrides.modelID ?? 'test-model',
+          providerID: overrides.providerID ?? 'test-provider',
+          mode: overrides.mode ?? 'build',
+          parentID: '',
+          path: { cwd: '/', root: '/' },
+        },
+      });
+    }
+
+    // Helper: create a mock user message.updated event
+    function createMockUserMessage(id: string, sessionID: string) {
+      return createMockEvent('message.updated', {
+        info: {
+          id,
+          sessionID,
+          role: 'user',
+          time: { created: Date.now() },
+          parentID: '',
+          path: { cwd: '/', root: '/' },
+        },
+      });
+    }
+
+    // Helper: create standard ctx
+    function createTestCtx(overrides: Record<string, unknown> = {}) {
+      return {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/token-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+        ...overrides,
+      };
+    }
+
+    test('single AssistantMessage token data is correctly accumulated in sessionCost/sessionTokens', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token Accum Test' })],
+      };
+
+      const ctx = createTestCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      // Create session
+      const sessionInfo = {
+        id: 'token-session-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Token Test Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      __test_payloads.length = 0;
+
+      // Send assistant message
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'msg-1',
+          sessionID: 'token-session-1',
+          cost: 0.05,
+          tokens: { input: 100, output: 200, reasoning: 50, cacheRead: 30, cacheWrite: 10 },
+          modelID: 'claude-sonnet-4',
+          providerID: 'anthropic',
+          mode: 'build',
+        }) as any,
+      });
+
+      // Trigger idle - verify token data in payload
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'token-session-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(__test_payloads.length).toBe(1);
+      const payload = __test_payloads[0];
+      expect(payload.sessionCost).toBe(0.05);
+      expect(payload.sessionTokens).toBeDefined();
+      expect(payload.sessionTokens!.input).toBe(100);
+      expect(payload.sessionTokens!.output).toBe(200);
+      expect(payload.sessionTokens!.reasoning).toBe(50);
+      expect(payload.sessionTokens!.cacheRead).toBe(30);
+      expect(payload.sessionTokens!.cacheWrite).toBe(10);
+      expect(payload.modelID).toBe('claude-sonnet-4');
+      expect(payload.providerID).toBe('anthropic');
+      expect(payload.mode).toBe('build');
+    });
+
+    test('same message.id updated multiple times does not duplicate cost (overwrites instead)', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token Dedup Test' })],
+      };
+
+      const ctx = createTestCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'token-session-2',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Dedup Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      __test_payloads.length = 0;
+
+      // First update for msg-1 with cost 0.03
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'msg-dup-1',
+          sessionID: 'token-session-2',
+          cost: 0.03,
+          tokens: { input: 50, output: 100 },
+        }) as any,
+      });
+
+      // Second update for same msg-1 with cost 0.05 (overwrites)
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'msg-dup-1',
+          sessionID: 'token-session-2',
+          cost: 0.05,
+          tokens: { input: 80, output: 150 },
+        }) as any,
+      });
+
+      // Trigger idle
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'token-session-2' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(__test_payloads.length).toBe(1);
+      // Should have 0.05 (not 0.08)
+      expect(__test_payloads[0].sessionCost).toBe(0.05);
+      expect(__test_payloads[0].sessionTokens!.input).toBe(80);
+      expect(__test_payloads[0].sessionTokens!.output).toBe(150);
+    });
+
+    test('different message.ids in same session accumulate costs', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token MultiMsg Test' })],
+      };
+
+      const ctx = createTestCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'token-session-3',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Multi Message Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      __test_payloads.length = 0;
+
+      // First message
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'msg-multi-1',
+          sessionID: 'token-session-3',
+          cost: 0.03,
+          tokens: { input: 50, output: 100 },
+        }) as any,
+      });
+
+      // Second message
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'msg-multi-2',
+          sessionID: 'token-session-3',
+          cost: 0.04,
+          tokens: { input: 60, output: 120 },
+        }) as any,
+      });
+
+      // Trigger idle
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'token-session-3' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(__test_payloads.length).toBe(1);
+      // Should have 0.07 (0.03 + 0.04)
+      expect(__test_payloads[0].sessionCost).toBeCloseTo(0.07, 10);
+      expect(__test_payloads[0].sessionTokens!.input).toBe(110);
+      expect(__test_payloads[0].sessionTokens!.output).toBe(220);
+    });
+
+    test('UserMessage is silently skipped (role !== assistant)', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token UserMsg Test' })],
+      };
+
+      const ctx = createTestCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'token-session-4',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'User Msg Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      __test_payloads.length = 0;
+
+      // User message - should be skipped
+      await hooks.event!({
+        event: createMockUserMessage('user-msg-1', 'token-session-4') as any,
+      });
+
+      // Assistant message - should be tracked
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'asst-msg-1',
+          sessionID: 'token-session-4',
+          cost: 0.05,
+          tokens: { input: 100, output: 200 },
+        }) as any,
+      });
+
+      // Trigger idle
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'token-session-4' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(__test_payloads.length).toBe(1);
+      // Should have 0.05 (user message did not affect)
+      expect(__test_payloads[0].sessionCost).toBe(0.05);
+    });
+
+    test('sub-session token data merges into totalCost/totalTokens', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token SubAgg Test' })],
+        includeSessionTypes: ['main', 'subagent'],
+      };
+
+      const ctx = createTestCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      // Main session
+      const mainSession = {
+        id: 'token-main-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Main Session',
+        version: '1.0',
+        time: { created: Date.now() - 120000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: mainSession }) as any });
+      __test_payloads.length = 0;
+
+      // Sub session
+      const subSession = {
+        id: 'token-sub-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Sub Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+        parentID: 'token-main-1',
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: subSession }) as any });
+
+      // Sub session message
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'sub-msg-1',
+          sessionID: 'token-sub-1',
+          cost: 0.03,
+          tokens: { input: 50, output: 100 },
+        }) as any,
+      });
+
+      // Main session message
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'main-msg-1',
+          sessionID: 'token-main-1',
+          cost: 0.05,
+          tokens: { input: 100, output: 200 },
+        }) as any,
+      });
+
+      // Trigger main session idle
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'token-main-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      // Should have at least 1 payload (the idle)
+      expect(__test_payloads.length).toBeGreaterThanOrEqual(1);
+      const idlePayload = __test_payloads.find(p => p.eventType === 'idle' && p.sessionId === 'token-main-1');
+      expect(idlePayload).toBeDefined();
+      // sessionCost = 0.05 (main only)
+      expect(idlePayload!.sessionCost).toBe(0.05);
+      // totalCost = 0.08 (main + sub)
+      expect(idlePayload!.totalCost).toBeCloseTo(0.08, 10);
+    });
+
+    test('tokenDataMap entry is cleaned up after session.idle', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token Cleanup Test' })],
+      };
+
+      const ctx = createTestCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'token-cleanup-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Cleanup Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      __test_payloads.length = 0;
+
+      // Send message
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'cleanup-msg-1',
+          sessionID: 'token-cleanup-1',
+          cost: 0.05,
+          tokens: { input: 100, output: 200 },
+        }) as any,
+      });
+
+      // First idle - should have data
+      const idleEvent1 = createMockEvent('session.idle', { sessionID: 'token-cleanup-1' });
+      await hooks.event!({ event: idleEvent1 as any });
+      expect(__test_payloads.length).toBe(1);
+      expect(__test_payloads[0].sessionCost).toBe(0.05);
+
+      // Second idle for same session - token data should be cleaned up
+      __test_payloads.length = 0;
+      const idleEvent2 = createMockEvent('session.idle', { sessionID: 'token-cleanup-1' });
+      await hooks.event!({ event: idleEvent2 as any });
+      expect(__test_payloads.length).toBe(1);
+      // Should NOT have token data anymore (cleaned up)
+      expect(__test_payloads[0].sessionCost).toBeUndefined();
+    });
+
+    test('no token data - payload fields are undefined/empty', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token NoData Test' })],
+      };
+
+      const ctx = createTestCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'token-nodata-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'No Data Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      __test_payloads.length = 0;
+
+      // No message.updated events - go straight to idle
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'token-nodata-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(__test_payloads.length).toBe(1);
+      const payload = __test_payloads[0];
+      expect(payload.sessionCost).toBeUndefined();
+      expect(payload.totalCost).toBeUndefined();
+      expect(payload.sessionTokens).toBeUndefined();
+      expect(payload.modelID).toBeUndefined();
+      expect(payload.costFormatted).toBeUndefined();
+    });
+
+    test('costFormatted and totalCostFormatted are correctly formatted', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token Format Test' })],
+        cost: { currency: 'USD', decimalPlaces: 4 },
+      };
+
+      const ctx = createTestCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'token-format-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Format Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      __test_payloads.length = 0;
+
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'format-msg-1',
+          sessionID: 'token-format-1',
+          cost: 0.0423,
+          tokens: { input: 100, output: 200 },
+        }) as any,
+      });
+
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'token-format-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(__test_payloads.length).toBe(1);
+      expect(__test_payloads[0].costFormatted).toBe('$0.0423');
+      expect(__test_payloads[0].totalCostFormatted).toBe('$0.0423');
+      expect(__test_payloads[0].currency).toBe('USD');
+    });
+
+    test('modelID/providerID/mode take values from the last message', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token LastMsg Test' })],
+      };
+
+      const ctx = createTestCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'token-lastmsg-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Last Message Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      __test_payloads.length = 0;
+
+      // First message
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'lastmsg-1',
+          sessionID: 'token-lastmsg-1',
+          cost: 0.01,
+          tokens: { input: 50 },
+          modelID: 'model-first',
+          providerID: 'provider-first',
+          mode: 'plan',
+        }) as any,
+      });
+
+      // Second (last) message
+      await hooks.event!({
+        event: createMockAssistantMessage({
+          id: 'lastmsg-2',
+          sessionID: 'token-lastmsg-1',
+          cost: 0.02,
+          tokens: { input: 100 },
+          modelID: 'model-last',
+          providerID: 'provider-last',
+          mode: 'build',
+        }) as any,
+      });
+
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'token-lastmsg-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(__test_payloads.length).toBe(1);
+      const payload = __test_payloads[0];
+      // Should contain last message's values
+      expect(payload.modelID).toBe('model-last');
+      expect(payload.providerID).toBe('provider-last');
+      expect(payload.mode).toBe('build');
+      // Cost should be accumulated
+      expect(payload.sessionCost).toBeCloseTo(0.03, 10);
     });
   });
 });

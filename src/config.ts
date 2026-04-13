@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { NotificationConfig, Channel, SessionType } from './types.js';
-import { DEFAULT_SESSION_TYPES } from './types.js';
+import type { NotificationConfig, Channel, SessionType, CostConfig } from './types.js';
+import { DEFAULT_SESSION_TYPES, SUPPORTED_CURRENCIES } from './types.js';
 import { logger } from './logger.js';
 
 const SUPPORTED_CHANNEL_TYPES = ['smtp', 'dingtalk', 'feishu'] as const;
@@ -167,6 +167,76 @@ function getProjectConfigPath(): string | null {
 }
 
 /**
+ * Currency symbol mapping
+ */
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  CNY: '\u00a5',
+};
+
+const DEFAULT_EXCHANGE_RATE = 7.25;
+const DEFAULT_DECIMAL_PLACES = 4;
+
+/**
+ * Resolve cost config with defaults and validation.
+ * Warns on invalid values and falls back to defaults (never throws).
+ */
+function resolveCostConfig(
+  merged: {
+    currency?: string;
+    exchangeRate?: number;
+    decimalPlaces?: number;
+    enableOnlineRate?: boolean;
+  },
+  language?: string,
+): CostConfig {
+  // 1. Resolve currency: explicit > inferred from language > USD
+  let currency = merged.currency;
+  if (!currency) {
+    currency = language === 'zh' ? 'CNY' : 'USD';
+  }
+  if (!(SUPPORTED_CURRENCIES as readonly string[]).includes(currency)) {
+    logger.warn(
+      `Unsupported currency "${merged.currency}". Supported: ${(SUPPORTED_CURRENCIES as readonly string[]).join(', ')}. Defaulting to USD.`,
+    );
+    currency = 'USD';
+  }
+
+  // 2. Resolve exchangeRate
+  let exchangeRate = merged.exchangeRate ?? DEFAULT_EXCHANGE_RATE;
+  if (typeof exchangeRate !== 'number' || exchangeRate <= 0 || !Number.isFinite(exchangeRate)) {
+    logger.warn(
+      `Invalid exchangeRate "${merged.exchangeRate}". Must be a positive number. Defaulting to ${DEFAULT_EXCHANGE_RATE}.`,
+    );
+    exchangeRate = DEFAULT_EXCHANGE_RATE;
+  }
+
+  // 3. Resolve decimalPlaces
+  let decimalPlaces = merged.decimalPlaces ?? DEFAULT_DECIMAL_PLACES;
+  if (
+    typeof decimalPlaces !== 'number' ||
+    decimalPlaces < 1 ||
+    decimalPlaces > 8 ||
+    !Number.isInteger(decimalPlaces)
+  ) {
+    logger.warn(
+      `Invalid decimalPlaces "${merged.decimalPlaces}". Must be integer 1-8. Defaulting to ${DEFAULT_DECIMAL_PLACES}.`,
+    );
+    decimalPlaces = DEFAULT_DECIMAL_PLACES;
+  }
+
+  // 4. enableOnlineRate defaults to false
+  const enableOnlineRate = merged.enableOnlineRate ?? false;
+
+  return {
+    currency: currency as CostConfig['currency'],
+    exchangeRate,
+    decimalPlaces,
+    enableOnlineRate,
+  };
+}
+
+/**
  * Load and merge notification configuration
  * 
  * Config locations (in order of priority):
@@ -222,6 +292,14 @@ export function loadConfig(): NotificationConfig {
   // Merge includeSessionTypes — project overrides global
   const rawIncludeSessionTypes = projectConfig?.includeSessionTypes ?? globalConfig?.includeSessionTypes;
 
+  // Merge cost config — project overrides global field-by-field
+  const mergedCostRaw = {
+    currency: projectConfig?.cost?.currency ?? globalConfig?.cost?.currency,
+    exchangeRate: projectConfig?.cost?.exchangeRate ?? globalConfig?.cost?.exchangeRate,
+    decimalPlaces: projectConfig?.cost?.decimalPlaces ?? globalConfig?.cost?.decimalPlaces,
+    enableOnlineRate: projectConfig?.cost?.enableOnlineRate ?? globalConfig?.cost?.enableOnlineRate,
+  };
+
   // Deprecation warning for old field
   for (const rawConfig of [globalConfig, projectConfig] as Array<typeof globalConfig>) {
     if (rawConfig && 'includeSubagentEvents' in rawConfig) {
@@ -237,5 +315,6 @@ export function loadConfig(): NotificationConfig {
     ...(mergedTimezone !== undefined && { timezone: mergedTimezone }),
     ...(mergedAutoUpdate !== undefined ? { auto_update: mergedAutoUpdate } : { auto_update: true }),
     includeSessionTypes: validateIncludeSessionTypes(rawIncludeSessionTypes),
+    cost: resolveCostConfig(mergedCostRaw, mergedLanguage),
   };
 }

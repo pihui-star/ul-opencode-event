@@ -20,6 +20,53 @@ import { generateFeishuSign, createFeishuFormatter } from './feishu.js';
 const CLI_PREFIX = '[ul-opencode-event-cli]';
 const LOOKUP_TIMEOUT_MS = 1200;
 
+/** Mock token data for CLI test messages */
+const MOCK_TOKEN_DATA = {
+  sessionCost: 0.05,
+  sessionTokens: { input: 15000, output: 2500, reasoning: 800, cacheRead: 12000, cacheWrite: 3000, total: 20500 },
+  totalCost: 0.05,
+  totalTokens: { input: 15000, output: 2500, reasoning: 800, cacheRead: 12000, cacheWrite: 3000, total: 20500 },
+  modelID: 'test-model',
+  providerID: 'test-provider',
+  mode: 'build',
+  costFormatted: '$0.0500',
+  totalCostFormatted: '$0.0500',
+  currency: 'USD',
+};
+
+/** Build common EventPayload fields for test messages */
+function buildTestPayload(timestamp: string) {
+  return {
+    eventType: 'idle' as const,
+    timestamp,
+    projectName: 'test',
+    sessionId: 'cli-test',
+    sessionType: 'main' as const,
+    projectPath: process.cwd(),
+    ...MOCK_TOKEN_DATA,
+  };
+}
+
+/** Format token info as readable text for test messages */
+function formatTokenInfo(): string {
+  return `
+Token Usage:
+  Input: ${MOCK_TOKEN_DATA.sessionTokens.input.toLocaleString()}
+  Output: ${MOCK_TOKEN_DATA.sessionTokens.output.toLocaleString()}
+  Reasoning: ${MOCK_TOKEN_DATA.sessionTokens.reasoning.toLocaleString()}
+  Cache Read: ${MOCK_TOKEN_DATA.sessionTokens.cacheRead.toLocaleString()}
+  Cache Write: ${MOCK_TOKEN_DATA.sessionTokens.cacheWrite.toLocaleString()}
+  Total: ${MOCK_TOKEN_DATA.sessionTokens.total.toLocaleString()}
+
+Cost:
+  Session Cost: ${MOCK_TOKEN_DATA.costFormatted}
+  Total Cost: ${MOCK_TOKEN_DATA.totalCostFormatted}
+  Currency: ${MOCK_TOKEN_DATA.currency}
+  Model: ${MOCK_TOKEN_DATA.modelID}
+  Provider: ${MOCK_TOKEN_DATA.providerID}
+  Mode: ${MOCK_TOKEN_DATA.mode}`;
+}
+
 interface TestOptions {
   channelName?: string;
   noSend: boolean;
@@ -459,6 +506,7 @@ async function sendTestEmail(channel: Channel): Promise<{ success: boolean; erro
 Channel: ${channel.name || 'unnamed'}
 Type: ${channel.type}
 Time: ${timestamp}
+${formatTokenInfo()}
 
 If you received this email, your notification channel is configured correctly.`,
     html: `
@@ -469,6 +517,24 @@ If you received this email, your notification channel is configured correctly.`,
           <li><strong>Channel:</strong> ${channel.name || 'unnamed'}</li>
           <li><strong>Type:</strong> ${channel.type}</li>
           <li><strong>Time:</strong> ${timestamp}</li>
+        </ul>
+        <h3>Token Usage</h3>
+        <ul>
+          <li><strong>Input:</strong> ${MOCK_TOKEN_DATA.sessionTokens.input.toLocaleString()}</li>
+          <li><strong>Output:</strong> ${MOCK_TOKEN_DATA.sessionTokens.output.toLocaleString()}</li>
+          <li><strong>Reasoning:</strong> ${MOCK_TOKEN_DATA.sessionTokens.reasoning.toLocaleString()}</li>
+          <li><strong>Cache Read:</strong> ${MOCK_TOKEN_DATA.sessionTokens.cacheRead.toLocaleString()}</li>
+          <li><strong>Cache Write:</strong> ${MOCK_TOKEN_DATA.sessionTokens.cacheWrite.toLocaleString()}</li>
+          <li><strong>Total:</strong> ${MOCK_TOKEN_DATA.sessionTokens.total.toLocaleString()}</li>
+        </ul>
+        <h3>Cost</h3>
+        <ul>
+          <li><strong>Session Cost:</strong> ${MOCK_TOKEN_DATA.costFormatted}</li>
+          <li><strong>Total Cost:</strong> ${MOCK_TOKEN_DATA.totalCostFormatted}</li>
+          <li><strong>Currency:</strong> ${MOCK_TOKEN_DATA.currency}</li>
+          <li><strong>Model:</strong> ${MOCK_TOKEN_DATA.modelID}</li>
+          <li><strong>Provider:</strong> ${MOCK_TOKEN_DATA.providerID}</li>
+          <li><strong>Mode:</strong> ${MOCK_TOKEN_DATA.mode}</li>
         </ul>
         <hr>
         <p style="color: green;">If you received this email, your notification channel is configured correctly.</p>
@@ -547,13 +613,14 @@ async function sendTestDingTalkMessage(channel: Channel): Promise<{ success: boo
 Channel: ${channelName}
 Type: ${channel.type}
 Time: ${timestamp}
+${formatTokenInfo()}
 
 If you received this message, your DingTalk notification channel is configured correctly.`;
 
   const formattedMessage = formatter.format(
     `[Test] OpenCode Notification Channel Test - ${timestamp}`,
     testBody,
-    { eventType: 'idle', timestamp, projectName: 'test', sessionId: 'cli-test', sessionType: 'main', projectPath: process.cwd() }
+    buildTestPayload(timestamp)
   );
 
   // Build URL with signing if secret is configured
@@ -614,13 +681,14 @@ async function sendTestFeishuMessage(channel: Channel): Promise<{ success: boole
 Channel: ${channelName}
 Type: ${channel.type}
 Time: ${timestamp}
+${formatTokenInfo()}
 
 If you received this message, your Feishu notification channel is configured correctly.`;
 
   const formattedMessage = formatter.format(
     `[Test] OpenCode Notification Channel Test - ${timestamp}`,
     testBody,
-    { eventType: 'idle', timestamp, projectName: 'test', sessionId: 'cli-test', sessionType: 'main', projectPath: process.cwd() }
+    buildTestPayload(timestamp)
   );
 
   // Build body with signing if secret is configured

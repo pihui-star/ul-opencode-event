@@ -8,10 +8,11 @@ import * as path from 'path';
 import { loadConfig } from './config.js';
 import { createEventHandler, type EventHandler } from './handler.js';
 import { getDefaultTimezone } from './locales.js';
-import type { EventPayload, EventType, SessionType } from './types.js';
+import type { EventPayload, EventType, SessionType, SessionTokenData, TokenData, TokenBreakdown } from './types.js';
 import { DEFAULT_SESSION_TYPES } from './types.js';
 import { logger, DEBUG_ENABLED } from './logger.js';
 import { runAutoUpdate, getCurrentVersion } from './updater.js';
+// cost.js imported lazily inside NotificationPlugin to follow lazy-import convention
 
 /**
  * Resolve session type from SDK Session info.
@@ -26,9 +27,54 @@ function resolveSessionType(sessionInfo?: Session): SessionType {
 }
 
 /**
+ * Aggregate token data for a session from its SessionTokenData.
+ * Sums cost and all token fields across messages (each message.id counted once).
+ */
+function aggregateSessionTokens(sessionData: SessionTokenData): { cost: number; tokens: TokenBreakdown } {
+  let cost = 0;
+  let input = 0;
+  let output = 0;
+  let reasoning = 0;
+  let cacheRead = 0;
+  let cacheWrite = 0;
+
+  for (const td of sessionData.messages.values()) {
+    cost += td.cost;
+    input += td.tokens.input;
+    output += td.tokens.output;
+    reasoning += td.tokens.reasoning;
+    cacheRead += td.tokens.cacheRead;
+    cacheWrite += td.tokens.cacheWrite;
+  }
+
+  return {
+    cost,
+    tokens: {
+      input,
+      output,
+      reasoning,
+      cacheRead,
+      cacheWrite,
+      total: input + output + reasoning + cacheRead + cacheWrite,
+    },
+  };
+}
+
+/**
  * Convert SDK Event to internal EventPayload
  */
-function eventToPayload(event: Event, projectName: string, sessionInfo?: Session, timezone?: string, projectPath?: string): EventPayload | null {
+function eventToPayload(
+  event: Event,
+  projectName: string,
+  sessionInfo: Session | undefined,
+  timezone: string | undefined,
+  projectPath: string | undefined,
+  tokenDataMap: Map<string, SessionTokenData> | undefined,
+  configLanguage: string | undefined,
+  configCost: import('./types.js').CostConfig | undefined,
+  resolveCostConfigFn: typeof import('./cost.js').resolveCostConfig,
+  formatCostFn: typeof import('./cost.js').formatCost,
+): EventPayload | null {
   const basePayload = {
     timestamp: formatTimestamp(new Date().toISOString(), timezone),
     projectName,
@@ -48,7 +94,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         parentSessionId: event.properties.info.parentID ?? undefined,
       };
     case 'session.idle': {
-      return {
+      const idlePayload: EventPayload = {
         ...basePayload,
         eventType: 'idle' as EventType,
         sessionId: event.properties.sessionID,
@@ -58,11 +104,13 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         sessionType: resolveSessionType(sessionInfo),
         parentSessionId: sessionInfo?.parentID ?? undefined,
       };
+      fillTokenData(idlePayload, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
+      return idlePayload;
     }
     case 'session.error': {
       const errorObj = event.properties.error;
       const sessionId = event.properties.sessionID;
-      return {
+      const errorPayload: EventPayload = {
         ...basePayload,
         eventType: 'error' as EventType,
         sessionId: sessionId ?? '',
@@ -71,6 +119,8 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         sessionType: resolveSessionType(sessionInfo),
         parentSessionId: sessionInfo?.parentID ?? undefined,
       };
+      fillTokenData(errorPayload, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
+      return errorPayload;
     }
 
     default: {
@@ -82,7 +132,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
       if (rawType === 'question.asked') {
         const questions = rawProps.questions as Array<Record<string, unknown>> | undefined;
         const firstQ = questions?.[0];
-        return {
+        const p: EventPayload = {
           ...basePayload,
           eventType: 'question' as EventType,
           sessionId: (rawProps.sessionID as string) || '',
@@ -93,12 +143,14 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
+        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
+        return p;
       }
 
       // permission.updated -- 权限确认请求（默认开启）
       if (rawType === 'permission.updated') {
         const perm = rawProps as { sessionID?: string; title?: string; type?: string };
-        return {
+        const p: EventPayload = {
           ...basePayload,
           eventType: 'permission' as EventType,
           sessionId: perm.sessionID || '',
@@ -108,12 +160,14 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
+        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
+        return p;
       }
 
       // session.status -- 会话状态变化（默认关闭）
       if (rawType === 'session.status') {
         const statusEvent = rawProps as { sessionID?: string; status?: { type?: string } };
-        return {
+        const p: EventPayload = {
           ...basePayload,
           eventType: 'status' as EventType,
           sessionId: statusEvent.sessionID || '',
@@ -122,12 +176,14 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
+        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
+        return p;
       }
 
       // command.executed -- shell 命令执行完毕（默认关闭）
       if (rawType === 'command.executed') {
         const cmd = rawProps as { name?: string; arguments?: string; sessionID?: string };
-        return {
+        const p: EventPayload = {
           ...basePayload,
           eventType: 'command' as EventType,
           sessionId: cmd.sessionID || '',
@@ -137,18 +193,22 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
+        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
+        return p;
       }
 
       // file.edited -- 文件被编辑（默认关闭）
       if (rawType === 'file.edited') {
         const fileEvt = rawProps as { file?: string };
-        return {
+        const p: EventPayload = {
           ...basePayload,
           eventType: 'fileEdited' as EventType,
           filePath: fileEvt.file,
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
+        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
+        return p;
       }
 
       // todo.updated -- Todo 列表更新（默认关闭）
@@ -156,7 +216,7 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
         const todoEvt = rawProps as { todos?: Array<{ content: string; status: string }> | undefined; sessionID?: string };
         const summary = todoEvt.todos
           ?.map(t => `[${t.status}] ${t.content}`).join('\n');
-        return {
+        const p: EventPayload = {
           ...basePayload,
           eventType: 'todo' as EventType,
           sessionId: todoEvt.sessionID || '',
@@ -165,10 +225,108 @@ function eventToPayload(event: Event, projectName: string, sessionInfo?: Session
           sessionType: resolveSessionType(sessionInfo),
           parentSessionId: sessionInfo?.parentID ?? undefined,
         };
+        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
+        return p;
       }
 
       return null;
     }
+  }
+}
+
+/**
+ * Fill token/cost data into an EventPayload from tokenDataMap.
+ * Computes sessionCost and formatted strings.
+ * Skips session.created events (no token data at creation time).
+ */
+function fillTokenData(
+  payload: EventPayload,
+  tokenDataMap?: Map<string, SessionTokenData>,
+  configLanguage?: string,
+  configCost?: import('./types.js').CostConfig,
+  resolveCostConfigFn?: typeof import('./cost.js').resolveCostConfig,
+  formatCostFn?: typeof import('./cost.js').formatCost,
+): void {
+  if (!tokenDataMap) return;
+  if (payload.eventType === 'created') return;
+
+  const sessionId = payload.sessionId;
+  const sessionData = tokenDataMap.get(sessionId);
+  if (!sessionData || sessionData.messages.size === 0) return;
+
+  // Session-level aggregation
+  const sessionAgg = aggregateSessionTokens(sessionData);
+  payload.sessionCost = sessionAgg.cost;
+  payload.sessionTokens = sessionAgg.tokens;
+  payload.modelID = sessionData.lastModelID;
+  payload.providerID = sessionData.lastProviderID;
+  payload.mode = sessionData.lastMode;
+
+  // Initially total = session only (sub-sessions added later by aggregateSubSessions)
+  payload.totalCost = sessionAgg.cost;
+  payload.totalTokens = { ...sessionAgg.tokens };
+
+  // Cost formatting
+  if (resolveCostConfigFn && formatCostFn) {
+    const resolved = resolveCostConfigFn(configLanguage, configCost);
+    payload.costFormatted = formatCostFn(sessionAgg.cost, resolved.currency, resolved.decimalPlaces, resolved.exchangeRate);
+    payload.totalCostFormatted = payload.costFormatted;
+    payload.currency = resolved.currency;
+  }
+}
+
+/**
+ * Aggregate sub-session token data into a payload's total fields.
+ * Scans tokenDataMap for all sessions whose parentID matches the current session.
+ */
+function aggregateSubSessions(
+  payload: EventPayload,
+  tokenDataMap: Map<string, SessionTokenData>,
+  sessionMap: Map<string, Session>,
+  configLanguage?: string,
+  configCost?: import('./types.js').CostConfig,
+  resolveCostConfigFn?: typeof import('./cost.js').resolveCostConfig,
+  formatCostFn?: typeof import('./cost.js').formatCost,
+): void {
+  const sessionId = payload.sessionId;
+  if (payload.sessionCost === undefined) return;
+
+  let totalCost = payload.sessionCost;
+  const st = payload.sessionTokens!;
+  let totalInput = st.input;
+  let totalOutput = st.output;
+  let totalReasoning = st.reasoning;
+  let totalCacheRead = st.cacheRead;
+  let totalCacheWrite = st.cacheWrite;
+
+  for (const [sid, sData] of tokenDataMap) {
+    if (sid === sessionId) continue;
+    const sInfo = sessionMap.get(sid);
+    if (sInfo?.parentID === sessionId) {
+      const agg = aggregateSessionTokens(sData);
+      totalCost += agg.cost;
+      totalInput += agg.tokens.input;
+      totalOutput += agg.tokens.output;
+      totalReasoning += agg.tokens.reasoning;
+      totalCacheRead += agg.tokens.cacheRead;
+      totalCacheWrite += agg.tokens.cacheWrite;
+    }
+  }
+
+  payload.totalCost = totalCost;
+  payload.totalTokens = {
+    input: totalInput,
+    output: totalOutput,
+    reasoning: totalReasoning,
+    cacheRead: totalCacheRead,
+    cacheWrite: totalCacheWrite,
+    total: totalInput + totalOutput + totalReasoning + totalCacheRead + totalCacheWrite,
+  };
+
+  // Re-format totalCostFormatted with the aggregated total
+  if (resolveCostConfigFn && formatCostFn) {
+    const resolved = resolveCostConfigFn(configLanguage, configCost);
+    payload.totalCostFormatted = formatCostFn(totalCost, resolved.currency, resolved.decimalPlaces, resolved.exchangeRate);
   }
 }
 
@@ -229,6 +387,12 @@ let hasCheckedUpdate = false;
 let hasShownStartupToast = false;
 
 /**
+ * Test-only: captured payloads for verification in tests.
+ * Cleared in __test_resetFlags().
+ */
+export const __test_payloads: EventPayload[] = [];
+
+/**
  * Notification Plugin for OpenCode
  * Listens for session events and sends notifications via configured channels
  */
@@ -274,8 +438,11 @@ export const NotificationPlugin: Plugin = async (ctx) => {
     return {};
   }
 
+  const { resolveCostConfig, formatCost } = await import('./cost.js');
+
   const eventHandler: EventHandler = createEventHandler(config);
   const sessionMap = new Map<string, Session>();
+  const tokenDataMap = new Map<string, SessionTokenData>();
   if (DEBUG_ENABLED) {
     logger.debug(`Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
   }
@@ -332,6 +499,49 @@ export const NotificationPlugin: Plugin = async (ctx) => {
         }
       } else if (event.type === 'session.updated') {
         sessionMap.set(event.properties.info.id, event.properties.info);
+      } else if (event.type === 'message.updated') {
+        // Handle assistant message token data accumulation
+        const msgInfo = (event.properties as { info: Record<string, unknown> }).info;
+        if (msgInfo?.role === 'assistant') {
+          const sessionId = msgInfo.sessionID as string | undefined;
+          const messageId = msgInfo.id as string | undefined;
+          if (sessionId && messageId) {
+            let sessionData = tokenDataMap.get(sessionId);
+            if (!sessionData) {
+              sessionData = {
+                messages: new Map(),
+                lastModelID: '',
+                lastProviderID: '',
+                lastMode: '',
+              };
+              tokenDataMap.set(sessionId, sessionData);
+            }
+
+            const sdkTokens = msgInfo.tokens as { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } | undefined;
+            const tokenData: TokenData = {
+              cost: (msgInfo.cost as number) ?? 0,
+              tokens: {
+                input: sdkTokens?.input ?? 0,
+                output: sdkTokens?.output ?? 0,
+                reasoning: sdkTokens?.reasoning ?? 0,
+                cacheRead: sdkTokens?.cache?.read ?? 0,
+                cacheWrite: sdkTokens?.cache?.write ?? 0,
+                total: (sdkTokens?.input ?? 0) + (sdkTokens?.output ?? 0) + (sdkTokens?.reasoning ?? 0) + (sdkTokens?.cache?.read ?? 0) + (sdkTokens?.cache?.write ?? 0),
+              },
+              modelID: (msgInfo.modelID as string) ?? '',
+              providerID: (msgInfo.providerID as string) ?? '',
+              mode: (msgInfo.mode as string) ?? '',
+            };
+
+            // Overwrite (not accumulate) for same message ID
+            sessionData.messages.set(messageId, tokenData);
+            sessionData.lastModelID = tokenData.modelID;
+            sessionData.lastProviderID = tokenData.providerID;
+            sessionData.lastMode = tokenData.mode;
+          }
+        }
+        // message.updated does not produce a notification
+        return;
       }
 
       let sessionInfo: Session | undefined;
@@ -350,11 +560,14 @@ export const NotificationPlugin: Plugin = async (ctx) => {
         logger.debug(`[RESOLVED] MISS sessionID=${(event.properties as Record<string, unknown>).sessionID} - sessionMap has no entry`);
       }
       const resolvedProjectName = config.projectName || path.basename(ctx.directory) || 'unknown-project';
-      const payload = eventToPayload(event, resolvedProjectName, sessionInfo, resolvedTimezone, ctx.directory);
+      const payload = eventToPayload(event, resolvedProjectName, sessionInfo, resolvedTimezone, ctx.directory, tokenDataMap, config.language, config.cost, resolveCostConfig, formatCost);
       
       if (!payload) {
         return;
       }
+
+      // Aggregate sub-session token data into total fields
+      aggregateSubSessions(payload, tokenDataMap, sessionMap, config.language, config.cost, resolveCostConfig, formatCost);
 
       // Filter by session type whitelist (default: only 'main' sessions)
       const allowedTypes = config.includeSessionTypes ?? DEFAULT_SESSION_TYPES;
@@ -373,10 +586,22 @@ export const NotificationPlugin: Plugin = async (ctx) => {
       if (DEBUG_ENABLED) {
         logger.debug(`Handling event ${payload.eventType} for session ${payload.sessionId}`);
       }
+
+      // Test-only: capture payload for verification
+      __test_payloads.push(payload);
+
       try {
         await eventHandler.handle(payload.eventType, payload);
       } catch (error) {
         logger.error(`Failed to handle event ${payload.eventType}: ${error}`);
+      }
+
+      // Clean up tokenDataMap after session.idle or session.error
+      if (event.type === 'session.idle' || event.type === 'session.error') {
+        const sid = (event.properties as Record<string, unknown>).sessionID as string | undefined;
+        if (sid) {
+          tokenDataMap.delete(sid);
+        }
       }
     },
   };
@@ -390,4 +615,5 @@ export default NotificationPlugin;
 export function __test_resetFlags(): void {
   hasCheckedUpdate = false;
   hasShownStartupToast = false;
+  __test_payloads.length = 0;
 }

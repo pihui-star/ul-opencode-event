@@ -1104,4 +1104,184 @@ describe('loadConfig', () => {
       }
     });
   });
+
+  describe('cost config', () => {
+    // Helper: set up a single project config file
+    function setupProjectConfig(config: Record<string, unknown>): void {
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === projectPath) return JSON.stringify(config);
+        throw new Error('File not found');
+      });
+    }
+
+    // Helper: set up global + project config files
+    function setupGlobalAndProject(globalCfg: Record<string, unknown>, projectCfg: Record<string, unknown>): void {
+      const globalPath = path.join(os.homedir(), '.config', 'opencode', 'ul-opencode-event.json');
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+      mockFs.existsSync.mockImplementation((p: string) => p === globalPath || p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === globalPath) return JSON.stringify(globalCfg);
+        if (p === projectPath) return JSON.stringify(projectCfg);
+        throw new Error('File not found');
+      });
+    }
+
+    // 1. language=zh -> currency defaults to CNY
+    test('defaults currency to CNY when language=zh and no cost config', () => {
+      setupProjectConfig({ channels: [], language: 'zh' });
+
+      const config = loadConfig();
+
+      expect(config.cost?.currency).toBe('CNY');
+    });
+
+    // 2. language=en -> currency defaults to USD
+    test('defaults currency to USD when language=en and no cost config', () => {
+      setupProjectConfig({ channels: [], language: 'en' });
+
+      const config = loadConfig();
+
+      expect(config.cost?.currency).toBe('USD');
+    });
+
+    // 3. explicit currency overrides language inference
+    test('explicit currency overrides language inference', () => {
+      setupProjectConfig({ channels: [], language: 'zh', cost: { currency: 'USD' } });
+
+      const config = loadConfig();
+
+      expect(config.cost?.currency).toBe('USD');
+    });
+
+    // 4. project-level cost overrides global-level
+    test('project-level cost fields override global-level', () => {
+      setupGlobalAndProject(
+        { channels: [], cost: { currency: 'CNY', exchangeRate: 7.0 } },
+        { channels: [], cost: { exchangeRate: 7.5 } },
+      );
+
+      const config = loadConfig();
+
+      // currency from global (project doesn't set it)
+      expect(config.cost?.currency).toBe('CNY');
+      // exchangeRate from project (overrides global)
+      expect(config.cost?.exchangeRate).toBe(7.5);
+    });
+
+    // 5. exchangeRate defaults to 7.25
+    test('exchangeRate defaults to 7.25 when not set', () => {
+      setupProjectConfig({ channels: [], cost: { currency: 'USD' } });
+
+      const config = loadConfig();
+
+      expect(config.cost?.exchangeRate).toBe(7.25);
+    });
+
+    // 6. decimalPlaces defaults to 4
+    test('decimalPlaces defaults to 4 when not set', () => {
+      setupProjectConfig({ channels: [] });
+
+      const config = loadConfig();
+
+      expect(config.cost?.decimalPlaces).toBe(4);
+    });
+
+    // 7. invalid currency -> default + warn
+    test('invalid currency uses default and warns', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        setupProjectConfig({ channels: [], cost: { currency: 'EUR' } });
+
+        const config = loadConfig();
+
+        expect(config.cost?.currency).toBe('USD');
+        const warnMsg = warnSpy.mock.calls
+          .map((c: unknown[]) => c[0] as string)
+          .find((m: string) => m.includes('Unsupported currency'));
+        expect(warnMsg).toBeDefined();
+        expect(warnMsg).toContain('EUR');
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+
+    // 8. exchangeRate <= 0 -> default + warn
+    test('exchangeRate <= 0 uses default and warns', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        setupProjectConfig({ channels: [], cost: { exchangeRate: -1 } });
+
+        const config = loadConfig();
+
+        expect(config.cost?.exchangeRate).toBe(7.25);
+        const warnMsg = warnSpy.mock.calls
+          .map((c: unknown[]) => c[0] as string)
+          .find((m: string) => m.includes('exchangeRate'));
+        expect(warnMsg).toBeDefined();
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+
+    // 9a. decimalPlaces < 1 -> default + warn
+    test('decimalPlaces < 1 uses default and warns', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        setupProjectConfig({ channels: [], cost: { decimalPlaces: 0 } });
+
+        const config = loadConfig();
+
+        expect(config.cost?.decimalPlaces).toBe(4);
+        const warnMsg = warnSpy.mock.calls
+          .map((c: unknown[]) => c[0] as string)
+          .find((m: string) => m.includes('decimalPlaces'));
+        expect(warnMsg).toBeDefined();
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+
+    // 9b. decimalPlaces > 8 -> default + warn
+    test('decimalPlaces > 8 uses default and warns', () => {
+      const warnSpy = mock(() => {});
+      const origWarn = console.warn;
+      console.warn = warnSpy;
+
+      try {
+        setupProjectConfig({ channels: [], cost: { decimalPlaces: 10 } });
+
+        const config = loadConfig();
+
+        expect(config.cost?.decimalPlaces).toBe(4);
+        const warnMsg = warnSpy.mock.calls
+          .map((c: unknown[]) => c[0] as string)
+          .find((m: string) => m.includes('decimalPlaces'));
+        expect(warnMsg).toBeDefined();
+      } finally {
+        console.warn = origWarn;
+      }
+    });
+
+    // 10. completely no cost config -> all defaults
+    test('no cost config at all uses all defaults', () => {
+      setupProjectConfig({ channels: [] });
+
+      const config = loadConfig();
+
+      expect(config.cost?.currency).toBe('USD');
+      expect(config.cost?.exchangeRate).toBe(7.25);
+      expect(config.cost?.decimalPlaces).toBe(4);
+    });
+  });
 });

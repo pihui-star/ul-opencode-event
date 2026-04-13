@@ -31,6 +31,8 @@ export interface NotificationConfig {
   includeSessionTypes?: SessionType[]; // 包含的会话类型 (默认 ['main'])
   /** 自动更新开关（默认 true） */
   auto_update?: boolean;
+  /** 费用计算配置 */
+  cost?: CostConfig;
 }
 
 /**
@@ -165,6 +167,26 @@ export interface EventPayload {
   parentSessionId?: string; // 父会话ID（子代理事件时提供）
   /** 会话标题（来自 SDK Session.title） */
   sessionTitle?: string;
+  /** 本次会话累计费用（美元原始值） */
+  sessionCost?: number;
+  /** 本次会话累计 Token 用量 */
+  sessionTokens?: TokenBreakdown;
+  /** 所有会话累计总费用（美元原始值） */
+  totalCost?: number;
+  /** 所有会话累计总 Token 用量 */
+  totalTokens?: TokenBreakdown;
+  /** 最后使用的模型 ID */
+  modelID?: string;
+  /** 最后使用的提供商 ID */
+  providerID?: string;
+  /** 最后使用的模式 */
+  mode?: string;
+  /** 本次会话费用格式化字符串（含货币符号） */
+  costFormatted?: string;
+  /** 总费用格式化字符串（含货币符号） */
+  totalCostFormatted?: string;
+  /** 货币代码（如 USD、CNY） */
+  currency?: string;
 }
 
 /**
@@ -202,3 +224,77 @@ export interface EmailSender {
   send(subject: string, body: string): Promise<void>;
   close(): Promise<void>;
 }
+
+/**
+ * Token usage breakdown - flattened from SDK AssistantMessage.tokens
+ * (cache.read -> cacheRead, cache.write -> cacheWrite for template convenience)
+ */
+export interface TokenBreakdown {
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+}
+
+/**
+ * Token and cost data for a single assistant message
+ */
+export interface TokenData {
+  /** 消息费用（美元） */
+  cost: number;
+  /** Token 用量明细 */
+  tokens: TokenBreakdown;
+  /** 模型 ID */
+  modelID: string;
+  /** 提供商 ID */
+  providerID: string;
+  /** 模式 */
+  mode: string;
+}
+
+/**
+ * Token and cost data aggregated for a session
+ */
+export interface SessionTokenData {
+  /** 消息级 Token 数据（key 为 message ID） */
+  messages: Map<string, TokenData>;
+  /** 最后使用的模型 ID */
+  lastModelID: string;
+  /** 最后使用的提供商 ID */
+  lastProviderID: string;
+  /** 最后使用的模式 */
+  lastMode: string;
+}
+
+/**
+ * 费用计算配置（用户可配置）
+ */
+export interface CostConfig {
+  /** 货币类型 */
+  currency?: 'USD' | 'CNY';
+  /** 汇率（1 USD = X CNY） */
+  exchangeRate?: number;
+  /** 小数位数（默认 4） */
+  decimalPlaces?: number;
+  /** 是否启用在线汇率获取（默认 false） */
+  enableOnlineRate?: boolean;
+}
+
+/**
+ * 解析后的费用配置（运行时使用，所有字段必填）
+ */
+export interface ResolvedCostConfig {
+  /** 货币代码 */
+  currency: string;
+  /** 汇率 */
+  exchangeRate: number;
+  /** 小数位数 */
+  decimalPlaces: number;
+  /** 货币符号 */
+  currencySymbol: string;
+}
+
+/** 支持的货币类型列表 */
+export const SUPPORTED_CURRENCIES = ['USD', 'CNY'] as const;

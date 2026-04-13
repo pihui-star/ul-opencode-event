@@ -36,42 +36,42 @@ const localeTemplates: Record<LocaleType, Record<EventType, TemplateConfig>> = {
     idle: {
       subject: '[{{projectName}}] Task Completed',
       body:
-        'Task completed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nMessage: {{message}}\nDuration: {{duration}}',
+        'Task completed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nMessage: {{message}}\nDuration: {{duration}}\n\nCost: {{totalCostFormatted}}\nTokens: Input {{totalTokensInput}} / Output {{totalTokensOutput}} / Reasoning {{totalTokensReasoning}}\nCache: Read {{totalTokensCacheRead}} / Write {{totalTokensCacheWrite}}\nTotal: {{totalTokensTotal}}\nModel: {{modelID}} ({{providerID}})',
     },
     error: {
       subject: '[{{projectName}}] Task Error',
       body:
-        'Error at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nError: {{error}}',
+        'Error at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nError: {{error}}\nCost: {{totalCostFormatted}}\nModel: {{modelID}} ({{providerID}})',
     },
     question: {
       subject: '[{{projectName}}] Question',
       body:
-        'OpenCode has a question at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nQuestion: {{title}}\n{{questionText}}',
+        'OpenCode has a question at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nQuestion: {{title}}\n{{questionText}}\n{{sessionCostFormatted}}',
     },
     permission: {
       subject: '[{{projectName}}] Permission Required',
       body:
-        'Permission needed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\n{{title}} ({{permissionType}})',
+        'Permission needed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\n{{title}} ({{permissionType}})\n{{sessionCostFormatted}}',
     },
     status: {
       subject: '[{{projectName}}] Status Change',
       body:
-        'Session status changed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nStatus: {{statusType}}',
+        'Session status changed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nStatus: {{statusType}}\n{{sessionCostFormatted}}',
     },
     command: {
       subject: '[{{projectName}}] Command Executed',
       body:
-        'Command executed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nCommand: {{commandName}} {{arguments}}',
+        'Command executed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nCommand: {{commandName}} {{arguments}}\n{{sessionCostFormatted}}',
     },
     fileEdited: {
       subject: '[{{projectName}}] File Edited',
       body:
-        'File edited at {{timestamp}}\nFile: {{filePath}}',
+        'File edited at {{timestamp}}\nFile: {{filePath}}\n{{sessionCostFormatted}}',
     },
     todo: {
       subject: '[{{projectName}}] Todos Updated',
       body:
-        'Todos updated at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\n{{todoSummary}}',
+        'Todos updated at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\n{{todoSummary}}\n{{sessionCostFormatted}}',
     },
   },
 
@@ -84,42 +84,42 @@ const localeTemplates: Record<LocaleType, Record<EventType, TemplateConfig>> = {
     idle: {
       subject: '[{{projectName}}] 任务已完成',
       body:
-        '任务完成时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n消息: {{message}}\n耗时: {{duration}}',
+        '任务完成时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n消息: {{message}}\n耗时: {{duration}}\n\n费用: {{totalCostFormatted}}\nToken: 输入 {{totalTokensInput}} / 输出 {{totalTokensOutput}} / 推理 {{totalTokensReasoning}}\n缓存: 读取 {{totalTokensCacheRead}} / 写入 {{totalTokensCacheWrite}}\n合计: {{totalTokensTotal}}\n模型: {{modelID}} ({{providerID}})',
     },
     error: {
       subject: '[{{projectName}}] 任务出错',
       body:
-        '错误发生时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n错误信息: {{error}}',
+        '错误发生时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n错误信息: {{error}}\n费用: {{totalCostFormatted}}\n模型: {{modelID}} ({{providerID}})',
     },
     question: {
       subject: '[{{projectName}}] AI 提问',
       body:
-        'OpenCode 在 {{timestamp}} 向您提问\n会话: {{sessionTitle}} ({{sessionId}})\n问题: {{title}}\n{{questionText}}',
+        'OpenCode 在 {{timestamp}} 向您提问\n会话: {{sessionTitle}} ({{sessionId}})\n问题: {{title}}\n{{questionText}}\n{{sessionCostFormatted}}',
     },
     permission: {
       subject: '[{{projectName}}] 需要权限确认',
       body:
-        '{{timestamp}} 需要权限确认\n会话: {{sessionTitle}} ({{sessionId}})\n{{title}} ({{permissionType}})',
+        '{{timestamp}} 需要权限确认\n会话: {{sessionTitle}} ({{sessionId}})\n{{title}} ({{permissionType}})\n{{sessionCostFormatted}}',
     },
     status: {
       subject: '[{{projectName}}] 状态变更',
       body:
-        '会话状态变更时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n状态: {{statusType}}',
+        '会话状态变更时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n状态: {{statusType}}\n{{sessionCostFormatted}}',
     },
     command: {
       subject: '[{{projectName}}] 命令已执行',
       body:
-        '命令执行时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n命令: {{commandName}} {{arguments}}',
+        '命令执行时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n命令: {{commandName}} {{arguments}}\n{{sessionCostFormatted}}',
     },
     fileEdited: {
       subject: '[{{projectName}}] 文件已编辑',
       body:
-        '文件编辑时间: {{timestamp}}\n文件: {{filePath}}',
+        '文件编辑时间: {{timestamp}}\n文件: {{filePath}}\n{{sessionCostFormatted}}',
     },
     todo: {
       subject: '[{{projectName}}] Todo 已更新',
       body:
-        'Todo 更新时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n{{todoSummary}}',
+        'Todo 更新时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n{{todoSummary}}\n{{sessionCostFormatted}}',
     },
   },
 };
