@@ -397,6 +397,18 @@ const __test_payloads: EventPayload[] = [];
  * Listens for session events and sends notifications via configured channels
  */
 export const NotificationPlugin: Plugin = async (ctx) => {
+  try {
+    return await NotificationPluginImpl(ctx);
+  } catch (error) {
+    logger.error(`NotificationPlugin fatal error: ${error}`);
+    return {};
+  }
+};
+
+/**
+ * Actual plugin implementation, wrapped by NotificationPlugin for top-level error safety.
+ */
+async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<ReturnType<Plugin>> {
   let config;
   try {
     config = loadConfig();
