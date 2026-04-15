@@ -607,7 +607,15 @@ export const NotificationPlugin: Plugin = async (ctx) => {
   };
 };
 
-export default NotificationPlugin;
+/**
+ * V1 Plugin Module format (required by OpenCode >= 1.3).
+ * readV1Plugin() checks mod.default for { server: Plugin } shape.
+ * Legacy format (export default fn) triggers getLegacyPlugins() which
+ * iterates ALL exports and breaks on non-function exports like __test.
+ */
+export default {
+  server: NotificationPlugin,
+};
 
 /**
  * Test-only: reset module-level flags so toast tests can run independently.
