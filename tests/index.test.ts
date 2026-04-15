@@ -67,7 +67,7 @@ mock.module('../src/config', () => ({
 }));
 
 // Import after mocking
-import { NotificationPlugin, __test_resetFlags, __test_payloads } from '../src/index';
+import { NotificationPlugin, __test } from '../src/index';
 
 // Helper to create a mock SMTP channel
 function createMockChannel(overrides: Partial<Channel> = {}): Channel {
@@ -96,13 +96,13 @@ describe('NotificationPlugin', () => {
   beforeEach(() => {
     sentMessages.length = 0;
     configMock = null;
-    __test_payloads.length = 0;
+    __test.payloads.length = 0;
   });
 
   afterEach(() => {
     sentMessages.length = 0;
     configMock = null;
-    __test_payloads.length = 0;
+    __test.payloads.length = 0;
   });
 
   test('plugin loads without error', async () => {
@@ -2244,7 +2244,7 @@ describe('NotificationPlugin', () => {
 
     // Reset module-level flags before each toast test
     beforeEach(() => {
-      __test_resetFlags();
+      __test.resetFlags();
     });
 
     afterEach(() => {
@@ -2328,8 +2328,8 @@ describe('NotificationPlugin', () => {
       }));
 
       // Re-import to pick up the new mock
-      const { NotificationPlugin: FreshPlugin, __test_resetFlags: FreshReset } = await import('../src/index');
-      FreshReset();
+      const { NotificationPlugin: FreshPlugin, __test: FreshTest } = await import('../src/index');
+      FreshTest.resetFlags();
 
       const { ctx, showToast } = createCtxWithToast();
       const hooks = await FreshPlugin(ctx);
@@ -2514,7 +2514,7 @@ describe('NotificationPlugin', () => {
         time: { created: Date.now() - 60000, updated: Date.now() },
       };
       await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
-      __test_payloads.length = 0;
+      __test.payloads.length = 0;
 
       // Send assistant message
       await hooks.event!({
@@ -2533,8 +2533,8 @@ describe('NotificationPlugin', () => {
       const idleEvent = createMockEvent('session.idle', { sessionID: 'token-session-1' });
       await hooks.event!({ event: idleEvent as any });
 
-      expect(__test_payloads.length).toBe(1);
-      const payload = __test_payloads[0];
+      expect(__test.payloads.length).toBe(1);
+      const payload = __test.payloads[0];
       expect(payload.sessionCost).toBe(0.05);
       expect(payload.sessionTokens).toBeDefined();
       expect(payload.sessionTokens!.input).toBe(100);
@@ -2564,7 +2564,7 @@ describe('NotificationPlugin', () => {
         time: { created: Date.now() - 60000, updated: Date.now() },
       };
       await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
-      __test_payloads.length = 0;
+      __test.payloads.length = 0;
 
       // First update for msg-1 with cost 0.03
       await hooks.event!({
@@ -2590,11 +2590,11 @@ describe('NotificationPlugin', () => {
       const idleEvent = createMockEvent('session.idle', { sessionID: 'token-session-2' });
       await hooks.event!({ event: idleEvent as any });
 
-      expect(__test_payloads.length).toBe(1);
+      expect(__test.payloads.length).toBe(1);
       // Should have 0.05 (not 0.08)
-      expect(__test_payloads[0].sessionCost).toBe(0.05);
-      expect(__test_payloads[0].sessionTokens!.input).toBe(80);
-      expect(__test_payloads[0].sessionTokens!.output).toBe(150);
+      expect(__test.payloads[0].sessionCost).toBe(0.05);
+      expect(__test.payloads[0].sessionTokens!.input).toBe(80);
+      expect(__test.payloads[0].sessionTokens!.output).toBe(150);
     });
 
     test('different message.ids in same session accumulate costs', async () => {
@@ -2614,7 +2614,7 @@ describe('NotificationPlugin', () => {
         time: { created: Date.now() - 60000, updated: Date.now() },
       };
       await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
-      __test_payloads.length = 0;
+      __test.payloads.length = 0;
 
       // First message
       await hooks.event!({
@@ -2640,11 +2640,11 @@ describe('NotificationPlugin', () => {
       const idleEvent = createMockEvent('session.idle', { sessionID: 'token-session-3' });
       await hooks.event!({ event: idleEvent as any });
 
-      expect(__test_payloads.length).toBe(1);
+      expect(__test.payloads.length).toBe(1);
       // Should have 0.07 (0.03 + 0.04)
-      expect(__test_payloads[0].sessionCost).toBeCloseTo(0.07, 10);
-      expect(__test_payloads[0].sessionTokens!.input).toBe(110);
-      expect(__test_payloads[0].sessionTokens!.output).toBe(220);
+      expect(__test.payloads[0].sessionCost).toBeCloseTo(0.07, 10);
+      expect(__test.payloads[0].sessionTokens!.input).toBe(110);
+      expect(__test.payloads[0].sessionTokens!.output).toBe(220);
     });
 
     test('UserMessage is silently skipped (role !== assistant)', async () => {
@@ -2664,7 +2664,7 @@ describe('NotificationPlugin', () => {
         time: { created: Date.now() - 60000, updated: Date.now() },
       };
       await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
-      __test_payloads.length = 0;
+      __test.payloads.length = 0;
 
       // User message - should be skipped
       await hooks.event!({
@@ -2685,9 +2685,9 @@ describe('NotificationPlugin', () => {
       const idleEvent = createMockEvent('session.idle', { sessionID: 'token-session-4' });
       await hooks.event!({ event: idleEvent as any });
 
-      expect(__test_payloads.length).toBe(1);
+      expect(__test.payloads.length).toBe(1);
       // Should have 0.05 (user message did not affect)
-      expect(__test_payloads[0].sessionCost).toBe(0.05);
+      expect(__test.payloads[0].sessionCost).toBe(0.05);
     });
 
     test('sub-session token data merges into totalCost/totalTokens', async () => {
@@ -2709,7 +2709,7 @@ describe('NotificationPlugin', () => {
         time: { created: Date.now() - 120000, updated: Date.now() },
       };
       await hooks.event!({ event: createMockEvent('session.created', { info: mainSession }) as any });
-      __test_payloads.length = 0;
+      __test.payloads.length = 0;
 
       // Sub session
       const subSession = {
@@ -2748,8 +2748,8 @@ describe('NotificationPlugin', () => {
       await hooks.event!({ event: idleEvent as any });
 
       // Should have at least 1 payload (the idle)
-      expect(__test_payloads.length).toBeGreaterThanOrEqual(1);
-      const idlePayload = __test_payloads.find(p => p.eventType === 'idle' && p.sessionId === 'token-main-1');
+      expect(__test.payloads.length).toBeGreaterThanOrEqual(1);
+      const idlePayload = __test.payloads.find(p => p.eventType === 'idle' && p.sessionId === 'token-main-1');
       expect(idlePayload).toBeDefined();
       // sessionCost = 0.05 (main only)
       expect(idlePayload!.sessionCost).toBe(0.05);
@@ -2774,7 +2774,7 @@ describe('NotificationPlugin', () => {
         time: { created: Date.now() - 60000, updated: Date.now() },
       };
       await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
-      __test_payloads.length = 0;
+      __test.payloads.length = 0;
 
       // Send message
       await hooks.event!({
@@ -2789,16 +2789,16 @@ describe('NotificationPlugin', () => {
       // First idle - should have data
       const idleEvent1 = createMockEvent('session.idle', { sessionID: 'token-cleanup-1' });
       await hooks.event!({ event: idleEvent1 as any });
-      expect(__test_payloads.length).toBe(1);
-      expect(__test_payloads[0].sessionCost).toBe(0.05);
+      expect(__test.payloads.length).toBe(1);
+      expect(__test.payloads[0].sessionCost).toBe(0.05);
 
       // Second idle for same session - token data should be cleaned up
-      __test_payloads.length = 0;
+      __test.payloads.length = 0;
       const idleEvent2 = createMockEvent('session.idle', { sessionID: 'token-cleanup-1' });
       await hooks.event!({ event: idleEvent2 as any });
-      expect(__test_payloads.length).toBe(1);
+      expect(__test.payloads.length).toBe(1);
       // Should NOT have token data anymore (cleaned up)
-      expect(__test_payloads[0].sessionCost).toBeUndefined();
+      expect(__test.payloads[0].sessionCost).toBeUndefined();
     });
 
     test('no token data - payload fields are undefined/empty', async () => {
@@ -2818,14 +2818,14 @@ describe('NotificationPlugin', () => {
         time: { created: Date.now() - 60000, updated: Date.now() },
       };
       await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
-      __test_payloads.length = 0;
+      __test.payloads.length = 0;
 
       // No message.updated events - go straight to idle
       const idleEvent = createMockEvent('session.idle', { sessionID: 'token-nodata-1' });
       await hooks.event!({ event: idleEvent as any });
 
-      expect(__test_payloads.length).toBe(1);
-      const payload = __test_payloads[0];
+      expect(__test.payloads.length).toBe(1);
+      const payload = __test.payloads[0];
       expect(payload.sessionCost).toBeUndefined();
       expect(payload.totalCost).toBeUndefined();
       expect(payload.sessionTokens).toBeUndefined();
@@ -2851,7 +2851,7 @@ describe('NotificationPlugin', () => {
         time: { created: Date.now() - 60000, updated: Date.now() },
       };
       await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
-      __test_payloads.length = 0;
+      __test.payloads.length = 0;
 
       await hooks.event!({
         event: createMockAssistantMessage({
@@ -2865,10 +2865,10 @@ describe('NotificationPlugin', () => {
       const idleEvent = createMockEvent('session.idle', { sessionID: 'token-format-1' });
       await hooks.event!({ event: idleEvent as any });
 
-      expect(__test_payloads.length).toBe(1);
-      expect(__test_payloads[0].costFormatted).toBe('$0.0423');
-      expect(__test_payloads[0].totalCostFormatted).toBe('$0.0423');
-      expect(__test_payloads[0].currency).toBe('USD');
+      expect(__test.payloads.length).toBe(1);
+      expect(__test.payloads[0].costFormatted).toBe('$0.0423');
+      expect(__test.payloads[0].totalCostFormatted).toBe('$0.0423');
+      expect(__test.payloads[0].currency).toBe('USD');
     });
 
     test('modelID/providerID/mode take values from the last message', async () => {
@@ -2888,7 +2888,7 @@ describe('NotificationPlugin', () => {
         time: { created: Date.now() - 60000, updated: Date.now() },
       };
       await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
-      __test_payloads.length = 0;
+      __test.payloads.length = 0;
 
       // First message
       await hooks.event!({
@@ -2919,8 +2919,8 @@ describe('NotificationPlugin', () => {
       const idleEvent = createMockEvent('session.idle', { sessionID: 'token-lastmsg-1' });
       await hooks.event!({ event: idleEvent as any });
 
-      expect(__test_payloads.length).toBe(1);
-      const payload = __test_payloads[0];
+      expect(__test.payloads.length).toBe(1);
+      const payload = __test.payloads[0];
       // Should contain last message's values
       expect(payload.modelID).toBe('model-last');
       expect(payload.providerID).toBe('provider-last');

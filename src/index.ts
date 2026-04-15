@@ -390,7 +390,7 @@ let hasShownStartupToast = false;
  * Test-only: captured payloads for verification in tests.
  * Cleared in __test_resetFlags().
  */
-export const __test_payloads: EventPayload[] = [];
+const __test_payloads: EventPayload[] = [];
 
 /**
  * Notification Plugin for OpenCode
@@ -612,8 +612,18 @@ export default NotificationPlugin;
 /**
  * Test-only: reset module-level flags so toast tests can run independently.
  */
-export function __test_resetFlags(): void {
+function __test_resetFlags(): void {
   hasCheckedUpdate = false;
   hasShownStartupToast = false;
   __test_payloads.length = 0;
 }
+
+/**
+ * Test-only helpers namespace.
+ * Exported as a plain object (not a function) so OpenCode's plugin loader
+ * does not mistake it for a Plugin entry point and call it.
+ */
+export const __test = {
+  payloads: __test_payloads,
+  resetFlags: __test_resetFlags,
+};
