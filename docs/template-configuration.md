@@ -158,7 +158,50 @@ interface ChannelTemplates {
 
 无特有变量，仅使用通用变量。
 
-### 5.3 变量速查表
+### 5.3 Token 与费用变量（所有事件类型可用）
+
+以下变量用于展示 Token 用量、费用和模型信息。在自定义模板中可以按需使用。
+
+#### 会话级别（当前会话的数据）
+
+| 变量 | 说明 | 示例值 |
+|------|------|--------|
+| `{{sessionTokensTotal}}` | 会话合计 Token 数 | `420` |
+| `{{sessionTokensInput}}` | 会话输入 Token 数 | `100` |
+| `{{sessionTokensOutput}}` | 会话输出 Token 数 | `200` |
+| `{{sessionTokensReasoning}}` | 会话推理 Token 数 | `50` |
+| `{{sessionTokensCacheRead}}` | 会话缓存读取 Token 数 | `30` |
+| `{{sessionTokensCacheWrite}}` | 会话缓存写入 Token 数 | `40` |
+| `{{sessionCost}}` | 会话费用（原始数值） | `0.05` |
+| `{{sessionCostFormatted}}` | 会话费用（格式化，含货币符号） | `$0.0500` |
+
+#### 全部级别（包含所有子会话的汇总数据）
+
+| 变量 | 说明 | 示例值 |
+|------|------|--------|
+| `{{totalTokensTotal}}` | 全部合计 Token 数 | `990` |
+| `{{totalTokensInput}}` | 全部输入 Token 数 | `300` |
+| `{{totalTokensOutput}}` | 全部输出 Token 数 | `400` |
+| `{{totalTokensReasoning}}` | 全部推理 Token 数 | `100` |
+| `{{totalTokensCacheRead}}` | 全部缓存读取 Token 数 | `60` |
+| `{{totalTokensCacheWrite}}` | 全部缓存写入 Token 数 | `130` |
+| `{{totalCost}}` | 全部费用（原始数值） | `0.12` |
+| `{{totalCostFormatted}}` | 全部费用（格式化，含货币符号） | `$0.1200` |
+
+#### 模型与配置
+
+| 变量 | 说明 | 示例值 |
+|------|------|--------|
+| `{{modelID}}` | 当前使用的模型标识 | `claude-sonnet-4`、`gpt-4o` |
+| `{{providerID}}` | 模型提供商标识 | `anthropic`、`openai` |
+| `{{mode}}` | 运行模式 | `plan`、`code` |
+| `{{currency}}` | 货币符号 | `$`、`¥` |
+
+> **关于会话级别与全部级别的区别**：`session*` 变量仅统计当前会话自身的用量，`total*` 变量统计当前会话及所有子会话的汇总用量。对于没有子会话的场景，两者数值相同。
+>
+> **关于费用格式化**：`sessionCostFormatted` 和 `totalCostFormatted` 根据 `currency` 变量自动选择货币符号和格式。中文环境（`language: "zh"`）使用 `¥`，英文环境使用 `$`。
+
+### 5.4 变量速查表
 
 | 事件类型 | 可用变量 |
 |---------|---------|
@@ -340,6 +383,8 @@ Body:
 会话: {{sessionTitle}} ({{sessionId}})
 消息: {{message}}
 耗时: {{duration}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### error - 任务出错
@@ -350,6 +395,8 @@ Body:
 错误发生时间: {{timestamp}}
 会话: {{sessionTitle}} ({{sessionId}})
 错误信息: {{error}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### question - AI 提问
@@ -361,6 +408,8 @@ OpenCode 在 {{timestamp}} 向您提问
 会话: {{sessionTitle}} ({{sessionId}})
 问题: {{title}}
 {{questionText}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### permission - 权限确认
@@ -371,6 +420,8 @@ Body:
 {{timestamp}} 需要权限确认
 会话: {{sessionTitle}} ({{sessionId}})
 {{title}} ({{permissionType}})
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### status - 状态变更
@@ -381,6 +432,8 @@ Body:
 会话状态变更时间: {{timestamp}}
 会话: {{sessionTitle}} ({{sessionId}})
 状态: {{statusType}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### command - 命令执行
@@ -391,6 +444,8 @@ Body:
 命令执行时间: {{timestamp}}
 会话: {{sessionTitle}} ({{sessionId}})
 命令: {{commandName}} {{arguments}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### fileEdited - 文件编辑
@@ -400,6 +455,8 @@ Subject: [{{projectName}}] 文件已编辑
 Body:
 文件编辑时间: {{timestamp}}
 文件: {{filePath}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### todo - Todo 更新
@@ -410,6 +467,8 @@ Body:
 Todo 更新时间: {{timestamp}}
 会话: {{sessionTitle}} ({{sessionId}})
 {{todoSummary}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 ### 7.2 英文默认模板（`language: "en"`）
@@ -432,6 +491,8 @@ Task completed at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Message: {{message}}
 Duration: {{duration}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### error - Task Error
@@ -442,6 +503,8 @@ Body:
 Error at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Error: {{error}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### question - Question
@@ -453,6 +516,8 @@ OpenCode has a question at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Question: {{title}}
 {{questionText}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### permission - Permission Required
@@ -463,6 +528,8 @@ Body:
 Permission needed at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 {{title}} ({{permissionType}})
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### status - Status Change
@@ -473,6 +540,8 @@ Body:
 Session status changed at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Status: {{statusType}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### command - Command Executed
@@ -483,6 +552,8 @@ Body:
 Command executed at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Command: {{commandName}} {{arguments}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### fileEdited - File Edited
@@ -492,6 +563,8 @@ Subject: [{{projectName}}] File Edited
 Body:
 File edited at {{timestamp}}
 File: {{filePath}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 #### todo - Todos Updated
@@ -502,6 +575,8 @@ Body:
 Todos updated at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 {{todoSummary}}
+
+Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
 ```
 
 ---
