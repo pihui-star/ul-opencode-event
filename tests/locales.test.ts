@@ -143,65 +143,78 @@ describe('Token/Cost/Model template variables', () => {
     'question', 'permission', 'status', 'command', 'fileEdited', 'todo',
   ];
 
-  test('zh idle template contains cost, tokens, and model variables', () => {
+  test('zh idle template contains session tokens, total tokens, and model', () => {
     const templates = getDefaultTemplates('zh');
     const body = templates.idle.body ?? '';
-    expect(body).toContain('{{totalCostFormatted}}');
-    expect(body).toContain('{{totalTokensInput}}');
-    expect(body).toContain('{{totalTokensOutput}}');
-    expect(body).toContain('{{totalTokensReasoning}}');
-    expect(body).toContain('{{totalTokensCacheRead}}');
-    expect(body).toContain('{{totalTokensCacheWrite}}');
+    expect(body).toContain('{{sessionTokensTotal}}');
     expect(body).toContain('{{totalTokensTotal}}');
     expect(body).toContain('{{modelID}}');
-    expect(body).toContain('{{providerID}}');
+    expect(body).not.toContain('{{totalTokensInput}}');
+    expect(body).not.toContain('{{totalTokensOutput}}');
+    expect(body).not.toContain('{{totalTokensReasoning}}');
+    expect(body).not.toContain('{{totalTokensCacheRead}}');
+    expect(body).not.toContain('{{totalTokensCacheWrite}}');
+    expect(body).not.toContain('{{providerID}}');
+    expect(body).not.toContain('{{totalCostFormatted}}');
+    expect(body).not.toContain('{{sessionCostFormatted}}');
   });
 
-  test('en idle template contains cost, tokens, and model variables', () => {
+  test('en idle template contains session tokens, total tokens, and model', () => {
     const templates = getDefaultTemplates('en');
     const body = templates.idle.body ?? '';
-    expect(body).toContain('{{totalCostFormatted}}');
-    expect(body).toContain('{{totalTokensInput}}');
-    expect(body).toContain('{{totalTokensOutput}}');
-    expect(body).toContain('{{totalTokensReasoning}}');
-    expect(body).toContain('{{totalTokensCacheRead}}');
-    expect(body).toContain('{{totalTokensCacheWrite}}');
+    expect(body).toContain('{{sessionTokensTotal}}');
     expect(body).toContain('{{totalTokensTotal}}');
     expect(body).toContain('{{modelID}}');
-    expect(body).toContain('{{providerID}}');
+    expect(body).not.toContain('{{totalTokensInput}}');
+    expect(body).not.toContain('{{totalTokensOutput}}');
+    expect(body).not.toContain('{{totalTokensReasoning}}');
+    expect(body).not.toContain('{{totalTokensCacheRead}}');
+    expect(body).not.toContain('{{totalTokensCacheWrite}}');
+    expect(body).not.toContain('{{providerID}}');
+    expect(body).not.toContain('{{totalCostFormatted}}');
+    expect(body).not.toContain('{{sessionCostFormatted}}');
   });
 
-  test('zh error template contains cost and model variables', () => {
+  test('zh error template contains session tokens, total tokens, and model', () => {
     const templates = getDefaultTemplates('zh');
     const body = templates.error.body ?? '';
-    expect(body).toContain('{{totalCostFormatted}}');
+    expect(body).toContain('{{sessionTokensTotal}}');
+    expect(body).toContain('{{totalTokensTotal}}');
     expect(body).toContain('{{modelID}}');
-    expect(body).toContain('{{providerID}}');
+    expect(body).not.toContain('{{providerID}}');
+    expect(body).not.toContain('{{totalCostFormatted}}');
   });
 
-  test('en error template contains cost and model variables', () => {
+  test('en error template contains session tokens, total tokens, and model', () => {
     const templates = getDefaultTemplates('en');
     const body = templates.error.body ?? '';
-    expect(body).toContain('{{totalCostFormatted}}');
+    expect(body).toContain('{{sessionTokensTotal}}');
+    expect(body).toContain('{{totalTokensTotal}}');
     expect(body).toContain('{{modelID}}');
-    expect(body).toContain('{{providerID}}');
+    expect(body).not.toContain('{{providerID}}');
+    expect(body).not.toContain('{{totalCostFormatted}}');
   });
 
-  test('created templates do NOT contain cost or sessionCost variables', () => {
+  test('created templates do NOT contain cost, sessionCost, token, or model variables', () => {
     for (const locale of ['zh', 'en']) {
       const templates = getDefaultTemplates(locale);
       const body = templates.created.body ?? '';
       expect(body).not.toContain('{{totalCostFormatted}}');
       expect(body).not.toContain('{{sessionCostFormatted}}');
+      expect(body).not.toContain('{{sessionTokensTotal}}');
+      expect(body).not.toContain('{{totalTokensTotal}}');
+      expect(body).not.toContain('{{modelID}}');
     }
   });
 
-  test('other event templates contain sessionCostFormatted', () => {
+  test('other event templates contain sessionTokens, totalTokens, and model', () => {
     for (const locale of ['zh', 'en']) {
       const templates = getDefaultTemplates(locale);
       for (const event of otherEventTypes) {
         const body = templates[event].body ?? '';
-        expect(body).toContain('{{sessionCostFormatted}}');
+        expect(body).toContain('{{sessionTokensTotal}}');
+        expect(body).toContain('{{totalTokensTotal}}');
+        expect(body).toContain('{{modelID}}');
       }
     }
   });
@@ -210,7 +223,8 @@ describe('Token/Cost/Model template variables', () => {
     const tokenVars = [
       '{{totalTokensInput}}', '{{totalTokensOutput}}',
       '{{totalTokensReasoning}}', '{{totalTokensCacheRead}}',
-      '{{totalTokensCacheWrite}}', '{{totalTokensTotal}}',
+      '{{totalTokensCacheWrite}}',
+      '{{providerID}}', '{{totalCostFormatted}}', '{{sessionCostFormatted}}',
     ];
     for (const locale of ['zh', 'en']) {
       const templates = getDefaultTemplates(locale);

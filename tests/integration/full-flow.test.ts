@@ -615,18 +615,14 @@ describe('Token Tracking Integration Tests', () => {
     // Verify: 2 notifications sent (created + idle)
     expect(capturedMessages).toHaveLength(2);
 
-    // Verify idle notification contains token data
+    // Verify idle notification contains token data in simplified format
     const idleMsg = capturedMessages[1];
     expect(idleMsg.subject).toContain('Completed');
-    expect(idleMsg.text).toContain('100');       // input tokens
-    expect(idleMsg.text).toContain('200');       // output tokens
-    expect(idleMsg.text).toContain('50');        // reasoning tokens
-    expect(idleMsg.text).toContain('30');        // cacheRead tokens
-    expect(idleMsg.text).toContain('40');        // cacheWrite tokens
-    expect(idleMsg.text).toContain('420');       // total tokens
-    expect(idleMsg.text).toContain('$0.0500');   // formatted cost
-    expect(idleMsg.text).toContain('claude-sonnet-4'); // model ID
-    expect(idleMsg.text).toContain('anthropic');       // provider ID
+    expect(idleMsg.text).toContain('420');              // total tokens (session and total are same here)
+    expect(idleMsg.text).toContain('claude-sonnet-4');  // model ID
+    expect(idleMsg.text).not.toContain('anthropic');    // provider ID not in new format
+    expect(idleMsg.text).not.toContain('$0.0500');      // cost not in new format
+    expect(idleMsg.text).not.toContain('Input');        // detailed breakdown not in new format
   });
 
   test('multi-message accumulation: 2 AssistantMessages aggregated into idle', async () => {
@@ -668,13 +664,10 @@ describe('Token Tracking Integration Tests', () => {
 
     expect(capturedMessages).toHaveLength(1);
     const msg = capturedMessages[0];
-    // Verify accumulated token values appear in notification
-    expect(msg.text).toContain('300');        // accumulated input
-    expect(msg.text).toContain('400');        // accumulated output
-    expect(msg.text).toContain('100');        // accumulated reasoning
-    expect(msg.text).toContain('940');        // accumulated total
-    expect(msg.text).toContain('$0.1500');    // accumulated cost
+    // Verify accumulated total token value appears in notification
+    expect(msg.text).toContain('940');        // accumulated total tokens
     expect(msg.text).toContain('gpt-4o');     // last model used
+    expect(msg.text).not.toContain('$0.1500'); // cost not in new format
   });
 
   test('sub-session merge: main idle includes sub-session totalCost', async () => {
@@ -718,14 +711,14 @@ describe('Token Tracking Integration Tests', () => {
 
     expect(capturedMessages).toHaveLength(1);
     const msg = capturedMessages[0];
-    // totalCostFormatted includes sub-session cost
-    expect(msg.text).toContain('$0.1200');
-    // Should contain the aggregated total token count
-    expect(msg.text).toContain('990');
+    // Token format shows session(420)/total(990) tokens and model
+    expect(msg.text).toContain('420/990');
+    expect(msg.text).toContain('claude-sonnet-4');
+    expect(msg.text).not.toContain('$0.1200'); // cost not in new format
   });
 
-  test('currency formatting: zh locale uses Y symbol, en locale uses $ symbol', async () => {
-    // Test zh locale with CNY
+  test('locale templates: zh uses zh body, en uses en body', async () => {
+    // Test zh locale
     const zhConfig: NotificationConfig = {
       language: 'zh',
       channels: [createMockChannel({ name: 'Zh Currency' })],
@@ -737,7 +730,6 @@ describe('Token Tracking Integration Tests', () => {
       sessionTitle: 'Chinese Session',
       message: '任务完成',
       duration: '1m',
-      totalCostFormatted: '\u00a50.3625',
       totalTokens: {
         input: 100,
         output: 200,
@@ -751,12 +743,12 @@ describe('Token Tracking Integration Tests', () => {
     }));
 
     expect(capturedMessages).toHaveLength(1);
-    expect(capturedMessages[0].text).toContain('\u00a5'); // ¥ symbol
+    expect(capturedMessages[0].text).toContain('420');
     expect(capturedMessages[0].subject).toContain('已完成'); // zh template
 
     capturedMessages.length = 0;
 
-    // Test en locale with USD
+    // Test en locale
     const enConfig: NotificationConfig = {
       language: 'en',
       channels: [createMockChannel({ name: 'En Currency' })],
@@ -768,7 +760,6 @@ describe('Token Tracking Integration Tests', () => {
       sessionTitle: 'English Session',
       message: 'Task done',
       duration: '1m',
-      totalCostFormatted: '$0.0500',
       totalTokens: {
         input: 100,
         output: 200,
@@ -782,7 +773,7 @@ describe('Token Tracking Integration Tests', () => {
     }));
 
     expect(capturedMessages).toHaveLength(1);
-    expect(capturedMessages[0].text).toContain('$'); // $ symbol
+    expect(capturedMessages[0].text).toContain('420');
     expect(capturedMessages[0].subject).toContain('Completed'); // en template
   });
 

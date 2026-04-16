@@ -1,80 +1,33 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\token-consumption-tracking.md",
-  "started_at": "2026-04-12T03:21:05.479Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\simplify-token-template.md",
+  "started_at": "2026-04-16T12:29:32.850Z",
   "session_ids": [
-    "ses_280865131ffeiocc3aV6730opm",
-    "ses_2804854a0ffepbn0OUYwtzooF4",
-    "ses_28040a3c3ffeex20fD2G8AzvuP",
-    "ses_2804129c4ffeJA1dBH1BDIU3fZ",
-    "ses_28035888effebnhBlVNHt4pZWx",
-    "ses_2801dd3f8ffex9cYnVKc1qmZfe",
-    "ses_2801e2532ffegnqPoW5N6OCzOl",
-    "ses_28013c5d7ffeiuXaswZ70gjHN2",
-    "ses_28013f8ceffeDRWLqgkjy53k3o",
-    "ses_2800e5299ffeDKQ2B9ru9YMmpy",
-    "ses_2800dfa18ffeW5AT9wCDbdHDeM",
-    "ses_2800e1d32ffel8zATGE45FOi0y",
-    "ses_2800e39b5ffeHv82oF3VaKQiu1",
-    "ses_280051fccffeTDWf74JPUaqqgs",
-    "ses_27ffec5e5ffeQv8enGY8PJ0zLD",
-    "ses_27ffe8b36ffehWD6qPkR2KJ8Hx"
+    "ses_269d30a98ffenYrlzGtYzxvpem",
+    "ses_269b9964effequH0zORdTuovXU",
+    "ses_269adfcc6ffeaUx7Jgoi16eprO",
+    "ses_269ae231bffejYAe6TxZVAHkAU",
+    "ses_269adb749ffebiVre5sWQD04U5",
+    "ses_269adda31ffe3PXcr1NPJH7NAe"
   ],
-  "plan_name": "token-consumption-tracking",
+  "plan_name": "simplify-token-template",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "扩展 types.ts - TokenData/CostConfig 类型 + EventPayload 新字段",
-      "session_id": "ses_2804854a0ffepbn0OUYwtzooF4",
+      "task_title": "Simplify token display in default templates + update tests",
+      "session_id": "ses_269b9964effequH0zORdTuovXU",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-12T03:28:09.299Z"
-    },
-    "todo:2": {
-      "task_key": "todo:2",
-      "task_label": "2",
-      "task_title": "扩展 config.ts - 货币/汇率/精度配置加载与合并",
-      "session_id": "ses_2804129c4ffeJA1dBH1BDIU3fZ",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-12T03:42:01.659Z"
-    },
-    "todo:4": {
-      "task_key": "todo:4",
-      "task_label": "4",
-      "task_title": "index.ts - message.updated 事件处理 + tokenDataMap 累积 (TDD)",
-      "session_id": "ses_28035888effebnhBlVNHt4pZWx",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-12T04:08:11.188Z"
-    },
-    "todo:5": {
-      "task_key": "todo:5",
-      "task_label": "5",
-      "task_title": "handler.ts - 新模板变量映射 (TDD)",
-      "session_id": "ses_2801e2532ffegnqPoW5N6OCzOl",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-12T04:18:39.435Z"
-    },
-    "todo:7": {
-      "task_key": "todo:7",
-      "task_label": "7",
-      "task_title": "集成测试 - 端到端 message.updated -> idle 通知含 token 数据 (TDD)",
-      "session_id": "ses_28013f8ceffeDRWLqgkjy53k3o",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-12T04:25:58.505Z"
+      "updated_at": "2026-04-16T12:35:54.266Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
-      "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_27ffe8b36ffehWD6qPkR2KJ8Hx",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-12T04:47:30.431Z"
+      "task_title": "**Plan Compliance Audit** -- `oracle`",
+      "session_id": "ses_269adda31ffe3PXcr1NPJH7NAe",
+      "agent": "explore",
+      "updated_at": "2026-04-16T12:47:14.021Z"
     }
   }
 }

@@ -1313,8 +1313,8 @@ describe('NotificationPlugin', () => {
 
       expect(sentMessages.length).toBe(1);
       expect(sentMessages[0].text).toContain('[in_progress] Only one task');
-      // Single item should not contain newline separator issues
-      expect(sentMessages[0].text).not.toContain('\n\n');
+      // Single item should not contain triple newline (only \n\n before Token line is expected)
+      expect(sentMessages[0].text).not.toContain('\n\n\n');
     });
   });
 
