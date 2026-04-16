@@ -388,10 +388,31 @@ let hasShownStartupToast = false;
 
 /**
  * Test-only: captured payloads for verification in tests.
- * Cleared in __test_resetFlags().
+ * Exposed via globalThis (not module export) to avoid OpenCode's getLegacyPlugins
+ * iterating over non-plugin exports and causing duplicate plugin invocations.
  */
 const __test_payloads: EventPayload[] = [];
 
+/**
+ * Test-only: reset module-level flags so toast tests can run independently.
+ */
+function __test_resetFlags(): void {
+  hasCheckedUpdate = false;
+  hasShownStartupToast = false;
+  __test_payloads.length = 0;
+}
+
+// Expose test helpers via globalThis (safe for production - only used in tests)
+declare module globalThis {
+  var __ul_opencode_event_test: {
+    payloads: EventPayload[];
+    resetFlags: () => void;
+  };
+}
+globalThis.__ul_opencode_event_test = {
+  payloads: __test_payloads,
+  resetFlags: __test_resetFlags,
+};
 /**
  * Notification Plugin for OpenCode
  * Listens for session events and sends notifications via configured channels
@@ -628,25 +649,4 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
  */
 export default NotificationPlugin;
 
-/**
- * Test-only: reset module-level flags so toast tests can run independently.
- */
-function __test_resetFlags(): void {
-  hasCheckedUpdate = false;
-  hasShownStartupToast = false;
-  __test_payloads.length = 0;
-}
 
-/**
- * Test-only helpers namespace.
- * Includes a `server` property pointing to NotificationPlugin so that
- * OpenCode's getServerPlugin() correctly identifies it (returns the server fn)
- * instead of returning undefined and causing getLegacyPlugins to throw.
- * The `seen` Set in getLegacyPlugins deduplicates, so NotificationPlugin
- * is only called once despite appearing in both `default` and `__test.server`.
- */
-export const __test = {
-  payloads: __test_payloads,
-  resetFlags: __test_resetFlags,
-  server: NotificationPlugin,
-};
