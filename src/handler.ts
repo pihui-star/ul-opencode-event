@@ -33,6 +33,19 @@ export interface EventHandler {
 }
 
 /**
+ * Format a token count as a human-readable string with K/M/B suffix.
+ * Examples: 0 → "0", 127100 → "127.1K", 1500000 → "1.5M", 1000000000 → "1.0B"
+ */
+export function formatTokenCount(n: number): string {
+  if (!Number.isFinite(n)) return '0';
+  const abs = Math.floor(Math.abs(n));
+  if (abs < 1000) return String(abs);
+  if (abs < 1_000_000) return (abs / 1000).toFixed(1) + 'K';
+  if (abs < 1_000_000_000) return (abs / 1_000_000).toFixed(1) + 'M';
+  return (abs / 1_000_000_000).toFixed(1) + 'B';
+}
+
+/**
  * Creates an event handler that dispatches notifications to all enabled channels.
  * Senders are created lazily on first handle() call to avoid importing nodemailer at plugin load time.
  */
@@ -149,6 +162,19 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
           providerID: payload.providerID,
           mode: payload.mode,
           currency: payload.currency,
+          // Token 用量（人类可读格式）
+          sessionTokensInputHuman: payload.sessionTokens?.input != null ? formatTokenCount(payload.sessionTokens.input) : undefined,
+          sessionTokensOutputHuman: payload.sessionTokens?.output != null ? formatTokenCount(payload.sessionTokens.output) : undefined,
+          sessionTokensReasoningHuman: payload.sessionTokens?.reasoning != null ? formatTokenCount(payload.sessionTokens.reasoning) : undefined,
+          sessionTokensCacheReadHuman: payload.sessionTokens?.cacheRead != null ? formatTokenCount(payload.sessionTokens.cacheRead) : undefined,
+          sessionTokensCacheWriteHuman: payload.sessionTokens?.cacheWrite != null ? formatTokenCount(payload.sessionTokens.cacheWrite) : undefined,
+          sessionTokensTotalHuman: payload.sessionTokens?.total != null ? formatTokenCount(payload.sessionTokens.total) : undefined,
+          totalTokensInputHuman: payload.totalTokens?.input != null ? formatTokenCount(payload.totalTokens.input) : undefined,
+          totalTokensOutputHuman: payload.totalTokens?.output != null ? formatTokenCount(payload.totalTokens.output) : undefined,
+          totalTokensReasoningHuman: payload.totalTokens?.reasoning != null ? formatTokenCount(payload.totalTokens.reasoning) : undefined,
+          totalTokensCacheReadHuman: payload.totalTokens?.cacheRead != null ? formatTokenCount(payload.totalTokens.cacheRead) : undefined,
+          totalTokensCacheWriteHuman: payload.totalTokens?.cacheWrite != null ? formatTokenCount(payload.totalTokens.cacheWrite) : undefined,
+          totalTokensTotalHuman: payload.totalTokens?.total != null ? formatTokenCount(payload.totalTokens.total) : undefined,
         };
 
         // Render templates

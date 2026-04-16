@@ -43,7 +43,7 @@ mock.module('../src/email', () => ({
 }));
 
 // Import handler AFTER mocking email module
-import { createEventHandler } from '../src/handler';
+import { createEventHandler, formatTokenCount } from '../src/handler';
 
 // Helper to create a mock SMTP channel
 function createMockChannel(overrides: Partial<Channel> = {}): Channel {
@@ -904,5 +904,132 @@ describe('Multi-Channel: SMTP + DingTalk', () => {
     // Should be truncated
     expect(text.length).toBeLessThanOrEqual(4000);
     expect(text).toContain('... (truncated)');
+  });
+
+  // ============================================================
+  // formatTokenCount Unit Tests
+  // ============================================================
+
+  describe('formatTokenCount', () => {
+    test('0 → "0"', () => {
+      expect(formatTokenCount(0)).toBe('0');
+    });
+
+    test('1 → "1"', () => {
+      expect(formatTokenCount(1)).toBe('1');
+    });
+
+    test('999 → "999"', () => {
+      expect(formatTokenCount(999)).toBe('999');
+    });
+
+    test('1000 → "1.0K"', () => {
+      expect(formatTokenCount(1000)).toBe('1.0K');
+    });
+
+    test('127100 → "127.1K"', () => {
+      expect(formatTokenCount(127100)).toBe('127.1K');
+    });
+
+    test('999999 → "1000.0K"', () => {
+      expect(formatTokenCount(999999)).toBe('1000.0K');
+    });
+
+    test('1500000 → "1.5M"', () => {
+      expect(formatTokenCount(1500000)).toBe('1.5M');
+    });
+
+    test('1000000000 → "1.0B"', () => {
+      expect(formatTokenCount(1000000000)).toBe('1.0B');
+    });
+
+    test('1500000000 → "1.5B"', () => {
+      expect(formatTokenCount(1500000000)).toBe('1.5B');
+    });
+
+    test('NaN → "0"', () => {
+      expect(formatTokenCount(NaN)).toBe('0');
+    });
+
+    test('Infinity → "0"', () => {
+      expect(formatTokenCount(Infinity)).toBe('0');
+    });
+  });
+
+  // ============================================================
+  // Human Token Variables Integration Tests
+  // ============================================================
+
+  describe('Human token variables', () => {
+    test('Human variables render formatted token counts in templates', async () => {
+      const config: NotificationConfig = {
+        channels: [
+          createMockChannel({
+            name: 'Human Token Test',
+            templates: {
+              idle: {
+                subject: 'Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+                body: 'Input: {{sessionTokensInputHuman}}, Output: {{sessionTokensOutputHuman}}, Reasoning: {{sessionTokensReasoningHuman}}, CacheRead: {{sessionTokensCacheReadHuman}}, CacheWrite: {{sessionTokensCacheWriteHuman}}, Total: {{sessionTokensTotalHuman}}',
+              },
+            },
+          }),
+        ],
+      };
+
+      const handler = createEventHandler(config);
+      await handler.handle('idle', createPayload('idle', {
+        message: 'Done',
+        duration: '5m',
+        sessionTokens: {
+          input: 30100,
+          output: 60000,
+          reasoning: 5000,
+          cacheRead: 10000,
+          cacheWrite: 22000,
+          total: 127100,
+        },
+        totalTokens: {
+          input: 100000,
+          output: 200000,
+          reasoning: 50000,
+          cacheRead: 60000,
+          cacheWrite: 130000,
+          total: 990000,
+        },
+        modelID: 'claude-sonnet-4-20250514',
+      }));
+
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].subject).toBe('Token(127.1K/990.0K) claude-sonnet-4-20250514');
+      expect(sentMessages[0].text).toBe('Input: 30.1K, Output: 60.0K, Reasoning: 5.0K, CacheRead: 10.0K, CacheWrite: 22.0K, Total: 127.1K');
+    });
+
+    test('Human variables render as empty when no token data present', async () => {
+      const config: NotificationConfig = {
+        channels: [
+          createMockChannel({
+            name: 'Human Undefined Test',
+            templates: {
+              idle: {
+                subject: 'S={{sessionTokensTotalHuman}} T={{totalTokensTotalHuman}}',
+                body: 'SI={{sessionTokensInputHuman}} SO={{sessionTokensOutputHuman}} TI={{totalTokensInputHuman}} TO={{totalTokensOutputHuman}}',
+              },
+            },
+          }),
+        ],
+      };
+
+      const handler = createEventHandler(config);
+      // No token data - sessionTokens/totalTokens undefined
+      await handler.handle('idle', createPayload('idle', {
+        message: 'Done',
+        duration: '5m',
+      }));
+
+      expect(sentMessages.length).toBe(1);
+      // renderTemplate replaces undefined with empty string
+      expect(sentMessages[0].subject).toBe('S= T=');
+      expect(sentMessages[0].text).toBe('SI= SO= TI= TO=');
+    });
   });
 });
