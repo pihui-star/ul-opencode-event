@@ -1,21 +1,54 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\token-human-variables.md",
-  "started_at": "2026-04-16T13:29:51.972Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\token-tracking-fix.md",
+  "started_at": "2026-04-16T15:14:01.575Z",
   "session_ids": [
-    "ses_269d30a98ffenYrlzGtYzxvpem",
-    "ses_26982f175ffeRL2yNPXOXG4aMP"
+    "ses_26948b8b6ffejnvhxNaV3Gg0bp",
+    "ses_26922ff98ffetPqKMx36GEz6WP",
+    "ses_2691ac4efffeU6ItYIoi2kS4jk",
+    "ses_2691098cdffekIaKfq35K4WRB2",
+    "ses_2690c6ffaffe15IantTIZBwb0i",
+    "ses_2690c2973ffea7C7y7By2j0qzt",
+    "ses_2690be1ceffeL1SY9oRqrOcnu7",
+    "ses_2690b8e10ffe84db2cfZaFZBqC"
   ],
-  "plan_name": "token-human-variables",
+  "plan_name": "token-tracking-fix",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "Add formatTokenCount utility + 12 Human variables + tests",
-      "session_id": "ses_26982f175ffeRL2yNPXOXG4aMP",
+      "task_title": "编写失败测试用例 - 多 idle 场景 token 单调递增",
+      "session_id": "ses_26922ff98ffetPqKMx36GEz6WP",
       "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-16T13:34:39.505Z"
+      "category": "quick",
+      "updated_at": "2026-04-16T15:22:24.377Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "修复子会话聚合 + 嵌套递归",
+      "session_id": "ses_2691ac4efffeU6ItYIoi2kS4jk",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-16T15:33:21.374Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Number()||0 安全模式 + sessionMap 清理策略",
+      "session_id": "ses_2691098cdffekIaKfq35K4WRB2",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-16T15:38:54.230Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** -- `oracle`",
+      "session_id": "ses_2690b8e10ffe84db2cfZaFZBqC",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-16T15:43:27.422Z"
     }
   }
 }

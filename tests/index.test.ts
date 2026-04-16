@@ -2762,19 +2762,19 @@ describe('NotificationPlugin', () => {
       expect(idlePayload!.totalCost).toBeCloseTo(0.08, 10);
     });
 
-    test('tokenDataMap entry is cleaned up after session.idle', async () => {
+    test('token data persists across multiple idle events for same session', async () => {
       configMock = {
-        channels: [createMockChannel({ name: 'Token Cleanup Test' })],
+        channels: [createMockChannel({ name: 'Token Persist Test' })],
       };
 
       const ctx = createTestCtx();
       const hooks = await NotificationPlugin(ctx);
 
       const sessionInfo = {
-        id: 'token-cleanup-1',
+        id: 'token-persist-1',
         projectID: 'test-project',
         directory: '/test/directory',
-        title: 'Cleanup Session',
+        title: 'Persist Session',
         version: '1.0',
         time: { created: Date.now() - 60000, updated: Date.now() },
       };
@@ -2784,26 +2784,26 @@ describe('NotificationPlugin', () => {
       // Send message
       await hooks.event!({
         event: createMockAssistantMessage({
-          id: 'cleanup-msg-1',
-          sessionID: 'token-cleanup-1',
+          id: 'persist-msg-1',
+          sessionID: 'token-persist-1',
           cost: 0.05,
           tokens: { input: 100, output: 200 },
         }) as any,
       });
 
       // First idle - should have data
-      const idleEvent1 = createMockEvent('session.idle', { sessionID: 'token-cleanup-1' });
+      const idleEvent1 = createMockEvent('session.idle', { sessionID: 'token-persist-1' });
       await hooks.event!({ event: idleEvent1 as any });
       expect(getTestHelpers().payloads.length).toBe(1);
       expect(getTestHelpers().payloads[0].sessionCost).toBe(0.05);
 
-      // Second idle for same session - token data should be cleaned up
+      // Second idle for same session - token data should still be available (not cleaned up)
       getTestHelpers().payloads.length = 0;
-      const idleEvent2 = createMockEvent('session.idle', { sessionID: 'token-cleanup-1' });
+      const idleEvent2 = createMockEvent('session.idle', { sessionID: 'token-persist-1' });
       await hooks.event!({ event: idleEvent2 as any });
       expect(getTestHelpers().payloads.length).toBe(1);
-      // Should NOT have token data anymore (cleaned up)
-      expect(getTestHelpers().payloads[0].sessionCost).toBeUndefined();
+      // Token data persists - should still have the cost
+      expect(getTestHelpers().payloads[0].sessionCost).toBe(0.05);
     });
 
     test('no token data - payload fields are undefined/empty', async () => {
@@ -2932,6 +2932,592 @@ describe('NotificationPlugin', () => {
       expect(payload.mode).toBe('build');
       // Cost should be accumulated
       expect(payload.sessionCost).toBeCloseTo(0.03, 10);
+    });
+  });
+
+  // ============================================================
+  // token tracking across multiple idle events 测试组
+  // ============================================================
+  describe('token tracking across multiple idle events', () => {
+    // Helper: create a mock assistant message.updated event
+    function createMsgEvent(overrides: {
+      id: string;
+      sessionID: string;
+      cost?: number;
+      tokens?: { input?: number; output?: number; reasoning?: number; cacheRead?: number; cacheWrite?: number };
+      modelID?: string;
+      providerID?: string;
+      mode?: string;
+    }) {
+      return createMockEvent('message.updated', {
+        info: {
+          id: overrides.id,
+          sessionID: overrides.sessionID,
+          role: 'assistant',
+          time: { created: Date.now() },
+          cost: overrides.cost ?? 0,
+          tokens: {
+            input: overrides.tokens?.input ?? 0,
+            output: overrides.tokens?.output ?? 0,
+            reasoning: overrides.tokens?.reasoning ?? 0,
+            cache: {
+              read: overrides.tokens?.cacheRead ?? 0,
+              write: overrides.tokens?.cacheWrite ?? 0,
+            },
+          },
+          modelID: overrides.modelID ?? 'test-model',
+          providerID: overrides.providerID ?? 'test-provider',
+          mode: overrides.mode ?? 'test-mode',
+          parentID: '',
+          path: { cwd: '/', root: '/' },
+        },
+      });
+    }
+
+    test('tokens increase monotonically across multiple idle events', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token Test' })],
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/token-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Create main session
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'session-token-test',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'Token Monotonic Test',
+            version: '1.0',
+            time: { created: Date.now() - 120000, updated: Date.now() },
+          },
+        }) as any,
+      });
+      getTestHelpers().payloads.length = 0;
+
+      // Send 3 message.updated events
+      for (let i = 1; i <= 3; i++) {
+        await hooks.event!({
+          event: createMsgEvent({
+            id: `msg-${i}`,
+            sessionID: 'session-token-test',
+            cost: 0.05,
+            tokens: { input: 5000, output: 1000, reasoning: 500, cacheRead: 2000, cacheWrite: 500 },
+            modelID: 'test-model',
+            providerID: 'test-provider',
+            mode: 'test-mode',
+          }) as any,
+        });
+      }
+
+      // Fire first session.idle
+      await hooks.event!({
+        event: createMockEvent('session.idle', { sessionID: 'session-token-test' }) as any,
+      });
+
+      const payloads = getTestHelpers().payloads;
+      expect(payloads.length).toBe(1);
+      const firstSessionCost = payloads[0].sessionCost!;
+      const firstTotalCost = payloads[0].totalCost!;
+      const firstSessionTotal = payloads[0].sessionTokens!.total;
+
+      // Send 2 MORE message.updated events
+      for (let i = 4; i <= 5; i++) {
+        await hooks.event!({
+          event: createMsgEvent({
+            id: `msg-${i}`,
+            sessionID: 'session-token-test',
+            cost: 0.05,
+            tokens: { input: 3000, output: 500, reasoning: 200, cacheRead: 1000, cacheWrite: 300 },
+          }) as any,
+        });
+      }
+
+      // Fire second session.idle
+      getTestHelpers().payloads.length = 0;
+      await hooks.event!({
+        event: createMockEvent('session.idle', { sessionID: 'session-token-test' }) as any,
+      });
+
+      expect(getTestHelpers().payloads.length).toBe(1);
+      const secondPayload = getTestHelpers().payloads[0];
+
+      // session cost should have increased (5 messages * 0.05 = 0.25 > 3 * 0.05 = 0.15)
+      expect(secondPayload.sessionCost!).toBeGreaterThan(firstSessionCost);
+      // total cost should have increased
+      expect(secondPayload.totalCost!).toBeGreaterThan(firstTotalCost);
+      // session tokens total should have increased
+      expect(secondPayload.sessionTokens!.total).toBeGreaterThan(firstSessionTotal);
+    });
+
+    test('sub-session tokens are aggregated into parent total', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token Test' })],
+        includeSessionTypes: ['main', 'subagent'],
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/token-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Create main session
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'session-parent-agg',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'Parent Agg Session',
+            version: '1.0',
+            time: { created: Date.now() - 120000, updated: Date.now() },
+          },
+        }) as any,
+      });
+
+      // Create child session
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'session-child-agg',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'Child Agg Session',
+            version: '1.0',
+            time: { created: Date.now() - 60000, updated: Date.now() },
+            parentID: 'session-parent-agg',
+          },
+        }) as any,
+      });
+
+      getTestHelpers().payloads.length = 0;
+
+      // Send message.updated for main session
+      await hooks.event!({
+        event: createMsgEvent({
+          id: 'main-agg-msg-1',
+          sessionID: 'session-parent-agg',
+          cost: 0.05,
+          tokens: { input: 5000 },
+        }) as any,
+      });
+
+      // Send message.updated for child session
+      await hooks.event!({
+        event: createMsgEvent({
+          id: 'child-agg-msg-1',
+          sessionID: 'session-child-agg',
+          cost: 0.03,
+          tokens: { input: 3000 },
+        }) as any,
+      });
+
+      // Fire main session's idle
+      await hooks.event!({
+        event: createMockEvent('session.idle', { sessionID: 'session-parent-agg' }) as any,
+      });
+
+      const payloads = getTestHelpers().payloads;
+      const idlePayload = payloads.find(p => p.eventType === 'idle' && p.sessionId === 'session-parent-agg');
+      expect(idlePayload).toBeDefined();
+
+      // totalCost > sessionCost (proves sub-session included)
+      expect(idlePayload!.totalCost!).toBeGreaterThan(idlePayload!.sessionCost!);
+      // totalTokens > sessionTokens (child's tokens aggregated)
+      expect(idlePayload!.totalTokens!.input).toBeGreaterThan(idlePayload!.sessionTokens!.input);
+      // totalTokens includes child session contribution (>= 5000 + 3000 = 8000)
+      expect(idlePayload!.totalTokens!.input).toBeGreaterThanOrEqual(8000);
+    });
+
+    test('sub-session idle does not lose its token data for parent aggregation', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token Test' })],
+        includeSessionTypes: ['main', 'subagent'],
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/token-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Create main session
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'session-parent-persist',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'Parent Persist Session',
+            version: '1.0',
+            time: { created: Date.now() - 120000, updated: Date.now() },
+          },
+        }) as any,
+      });
+
+      // Create child session
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'session-child-persist',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'Child Persist Session',
+            version: '1.0',
+            time: { created: Date.now() - 60000, updated: Date.now() },
+            parentID: 'session-parent-persist',
+          },
+        }) as any,
+      });
+
+      getTestHelpers().payloads.length = 0;
+
+      // Send message.updated for child session with tokens
+      await hooks.event!({
+        event: createMsgEvent({
+          id: 'child-persist-msg-1',
+          sessionID: 'session-child-persist',
+          cost: 0.02,
+          tokens: { input: 2000, output: 1000 },
+        }) as any,
+      });
+
+      // Fire child session's session.idle (this triggers the bug: tokenDataMap.delete for child!)
+      await hooks.event!({
+        event: createMockEvent('session.idle', { sessionID: 'session-child-persist' }) as any,
+      });
+
+      // The child idle event should be filtered (subagent not in default whitelist but we added it)
+      // Clear payloads from child idle
+      getTestHelpers().payloads.length = 0;
+
+      // Send message.updated for main session with tokens
+      await hooks.event!({
+        event: createMsgEvent({
+          id: 'main-persist-msg-1',
+          sessionID: 'session-parent-persist',
+          cost: 0.05,
+          tokens: { input: 5000 },
+        }) as any,
+      });
+
+      // Fire main session's session.idle
+      await hooks.event!({
+        event: createMockEvent('session.idle', { sessionID: 'session-parent-persist' }) as any,
+      });
+
+      const payloads = getTestHelpers().payloads;
+      const mainIdle = payloads.find(p => p.eventType === 'idle' && p.sessionId === 'session-parent-persist');
+      expect(mainIdle).toBeDefined();
+
+      // main session's totalTokens.input should include child session's tokens
+      // child contributed 2000 input + main contributed 5000 input = 7000 minimum
+      expect(mainIdle!.totalTokens!.input).toBeGreaterThanOrEqual(7000);
+    });
+
+    test('nested sub-sessions (grandchildren) are aggregated into parent total', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token Test' })],
+        includeSessionTypes: ['main', 'subagent'],
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/token-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Create main session
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'nested-main',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'Nested Main Session',
+            version: '1.0',
+            time: { created: Date.now() - 120000, updated: Date.now() },
+          },
+        }) as any,
+      });
+
+      // Create child session (parentID = nested-main)
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'nested-child',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'Nested Child Session',
+            version: '1.0',
+            time: { created: Date.now() - 60000, updated: Date.now() },
+            parentID: 'nested-main',
+          },
+        }) as any,
+      });
+
+      // Create grandchild session (parentID = nested-child)
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'nested-grandchild',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'Nested Grandchild Session',
+            version: '1.0',
+            time: { created: Date.now() - 30000, updated: Date.now() },
+            parentID: 'nested-child',
+          },
+        }) as any,
+      });
+
+      getTestHelpers().payloads.length = 0;
+
+      // Send message.updated for main session
+      await hooks.event!({
+        event: createMsgEvent({
+          id: 'nested-main-msg-1',
+          sessionID: 'nested-main',
+          cost: 0.05,
+          tokens: { input: 5000 },
+        }) as any,
+      });
+
+      // Send message.updated for child session
+      await hooks.event!({
+        event: createMsgEvent({
+          id: 'nested-child-msg-1',
+          sessionID: 'nested-child',
+          cost: 0.03,
+          tokens: { input: 3000 },
+        }) as any,
+      });
+
+      // Send message.updated for grandchild session
+      await hooks.event!({
+        event: createMsgEvent({
+          id: 'nested-grandchild-msg-1',
+          sessionID: 'nested-grandchild',
+          cost: 0.02,
+          tokens: { input: 2000 },
+        }) as any,
+      });
+
+      // Fire main session's idle
+      await hooks.event!({
+        event: createMockEvent('session.idle', { sessionID: 'nested-main' }) as any,
+      });
+
+      const payloads = getTestHelpers().payloads;
+      const idlePayload = payloads.find(p => p.eventType === 'idle' && p.sessionId === 'nested-main');
+      expect(idlePayload).toBeDefined();
+
+      // totalTokens.input should include all three levels: 5000 + 3000 + 2000 = 10000
+      expect(idlePayload!.totalTokens!.input).toBeGreaterThanOrEqual(10000);
+      // totalTokens > sessionTokens (proves child + grandchild included)
+      expect(idlePayload!.totalTokens!.input).toBeGreaterThan(idlePayload!.sessionTokens!.input);
+      // totalCost should include all levels: 0.05 + 0.03 + 0.02 = 0.10
+      expect(idlePayload!.totalCost!).toBeCloseTo(0.10, 10);
+    });
+
+    test('child idle before parent does not lose child token data', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token Test' })],
+        includeSessionTypes: ['main', 'subagent'],
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/token-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Create main session
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'child-idle-main',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'Child Idle Main Session',
+            version: '1.0',
+            time: { created: Date.now() - 120000, updated: Date.now() },
+          },
+        }) as any,
+      });
+
+      // Create child session
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'child-idle-child',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'Child Idle Child Session',
+            version: '1.0',
+            time: { created: Date.now() - 60000, updated: Date.now() },
+            parentID: 'child-idle-main',
+          },
+        }) as any,
+      });
+
+      getTestHelpers().payloads.length = 0;
+
+      // Send message.updated for child session
+      await hooks.event!({
+        event: createMsgEvent({
+          id: 'child-idle-msg-1',
+          sessionID: 'child-idle-child',
+          cost: 0.03,
+          tokens: { input: 3000, output: 1000 },
+        }) as any,
+      });
+
+      // Fire child session's idle FIRST (before main)
+      await hooks.event!({
+        event: createMockEvent('session.idle', { sessionID: 'child-idle-child' }) as any,
+      });
+
+      // Clear payloads from child idle
+      getTestHelpers().payloads.length = 0;
+
+      // Send message.updated for main session
+      await hooks.event!({
+        event: createMsgEvent({
+          id: 'child-idle-main-msg-1',
+          sessionID: 'child-idle-main',
+          cost: 0.05,
+          tokens: { input: 5000 },
+        }) as any,
+      });
+
+      // Fire main session's idle
+      await hooks.event!({
+        event: createMockEvent('session.idle', { sessionID: 'child-idle-main' }) as any,
+      });
+
+      const payloads = getTestHelpers().payloads;
+      const mainIdle = payloads.find(p => p.eventType === 'idle' && p.sessionId === 'child-idle-main');
+      expect(mainIdle).toBeDefined();
+
+      // Child's token data should still be available despite child having idled earlier
+      // totalTokens.input >= 5000 (main) + 3000 (child) = 8000
+      expect(mainIdle!.totalTokens!.input).toBeGreaterThanOrEqual(8000);
+      // totalCost >= 0.05 (main) + 0.03 (child) = 0.08
+      expect(mainIdle!.totalCost!).toBeGreaterThanOrEqual(0.08);
+    });
+
+    test('string-encoded token values from SDK are correctly converted to numbers', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Token String Test' })],
+      };
+
+      const ctx = {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/token-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+      };
+
+      const hooks = await NotificationPlugin(ctx);
+
+      // Create main session
+      await hooks.event!({
+        event: createMockEvent('session.created', {
+          info: {
+            id: 'session-string-tokens',
+            projectID: 'test-project',
+            directory: '/test/directory',
+            title: 'String Token Session',
+            version: '1.0',
+            time: { created: Date.now() - 60000, updated: Date.now() },
+          },
+        }) as any,
+      });
+      getTestHelpers().payloads.length = 0;
+
+      // Send a raw message.updated event with STRING token/cost values
+      // (bypasses createMsgEvent which converts to numbers)
+      await hooks.event!({
+        event: {
+          type: 'message.updated',
+          properties: {
+            info: {
+              id: 'string-msg-1',
+              sessionID: 'session-string-tokens',
+              role: 'assistant',
+              time: { created: Date.now() },
+              cost: '0.03',           // STRING, not number
+              tokens: {
+                input: '5000',         // STRING, not number
+                output: 200,           // number (mixed)
+                reasoning: '300',      // STRING
+                cache: {
+                  read: '100',         // STRING
+                  write: 50,           // number (mixed)
+                },
+              },
+              modelID: 'test-model',
+              providerID: 'test-provider',
+              mode: 'test-mode',
+              parentID: '',
+              path: { cwd: '/', root: '/' },
+            },
+          },
+        } as any,
+      });
+
+      // Fire session.idle
+      await hooks.event!({
+        event: createMockEvent('session.idle', { sessionID: 'session-string-tokens' }) as any,
+      });
+
+      const payloads = getTestHelpers().payloads;
+      expect(payloads.length).toBe(1);
+      const payload = payloads[0];
+
+      // Verify all string-encoded values are correctly converted to numbers
+      expect(payload.sessionCost).toBe(0.03);
+      expect(typeof payload.sessionCost).toBe('number');
+      expect(payload.sessionTokens!.input).toBe(5000);
+      expect(typeof payload.sessionTokens!.input).toBe('number');
+      expect(payload.sessionTokens!.output).toBe(200);
+      expect(payload.sessionTokens!.reasoning).toBe(300);
+      expect(payload.sessionTokens!.cacheRead).toBe(100);
+      expect(payload.sessionTokens!.cacheWrite).toBe(50);
     });
   });
 });

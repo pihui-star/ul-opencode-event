@@ -276,61 +276,6 @@ function fillTokenData(
 }
 
 /**
- * Aggregate sub-session token data into a payload's total fields.
- * Scans tokenDataMap for all sessions whose parentID matches the current session.
- */
-function aggregateSubSessions(
-  payload: EventPayload,
-  tokenDataMap: Map<string, SessionTokenData>,
-  sessionMap: Map<string, Session>,
-  configLanguage?: string,
-  configCost?: import('./types.js').CostConfig,
-  resolveCostConfigFn?: typeof import('./cost.js').resolveCostConfig,
-  formatCostFn?: typeof import('./cost.js').formatCost,
-): void {
-  const sessionId = payload.sessionId;
-  if (payload.sessionCost === undefined) return;
-
-  let totalCost = payload.sessionCost;
-  const st = payload.sessionTokens!;
-  let totalInput = st.input;
-  let totalOutput = st.output;
-  let totalReasoning = st.reasoning;
-  let totalCacheRead = st.cacheRead;
-  let totalCacheWrite = st.cacheWrite;
-
-  for (const [sid, sData] of tokenDataMap) {
-    if (sid === sessionId) continue;
-    const sInfo = sessionMap.get(sid);
-    if (sInfo?.parentID === sessionId) {
-      const agg = aggregateSessionTokens(sData);
-      totalCost += agg.cost;
-      totalInput += agg.tokens.input;
-      totalOutput += agg.tokens.output;
-      totalReasoning += agg.tokens.reasoning;
-      totalCacheRead += agg.tokens.cacheRead;
-      totalCacheWrite += agg.tokens.cacheWrite;
-    }
-  }
-
-  payload.totalCost = totalCost;
-  payload.totalTokens = {
-    input: totalInput,
-    output: totalOutput,
-    reasoning: totalReasoning,
-    cacheRead: totalCacheRead,
-    cacheWrite: totalCacheWrite,
-    total: totalInput + totalOutput + totalReasoning + totalCacheRead + totalCacheWrite,
-  };
-
-  // Re-format totalCostFormatted with the aggregated total
-  if (resolveCostConfigFn && formatCostFn) {
-    const resolved = resolveCostConfigFn(configLanguage, configCost);
-    payload.totalCostFormatted = formatCostFn(totalCost, resolved.currency, resolved.decimalPlaces, resolved.exchangeRate);
-  }
-}
-
-/**
  * Format duration in human-readable format
  */
 function formatDuration(ms: number): string {
@@ -369,6 +314,20 @@ function formatTimestamp(isoString: string, timezone?: string): string {
 }
 
 /**
+ * Collect all descendant session IDs recursively (children, grandchildren, etc.)
+ */
+function collectDescendantSessionIds(parentId: string, sessionMap: Map<string, Session>): string[] {
+  const descendants: string[] = [];
+  for (const [sid, sInfo] of sessionMap) {
+    if (sInfo.parentID === parentId) {
+      descendants.push(sid);
+      descendants.push(...collectDescendantSessionIds(sid, sessionMap));
+    }
+  }
+  return descendants;
+}
+
+/**
  * Format error object to string
  */
 function formatError(error: unknown): string {
@@ -378,6 +337,61 @@ function formatError(error: unknown): string {
     return JSON.stringify(error);
   }
   return String(error);
+}
+
+/**
+ * Scans tokenDataMap for all descendant sessions (children, grandchildren, etc.)
+ * of the current session and aggregates their token data.
+ */
+function aggregateSubSessions(
+  payload: EventPayload,
+  tokenDataMap: Map<string, SessionTokenData>,
+  sessionMap: Map<string, Session>,
+  configLanguage?: string,
+  configCost?: import('./types.js').CostConfig,
+  resolveCostConfigFn?: typeof import('./cost.js').resolveCostConfig,
+  formatCostFn?: typeof import('./cost.js').formatCost,
+): void {
+  const sessionId = payload.sessionId;
+  if (payload.sessionCost === undefined) return;
+
+  let totalCost = payload.sessionCost;
+  const st = payload.sessionTokens!;
+  let totalInput = st.input;
+  let totalOutput = st.output;
+  let totalReasoning = st.reasoning;
+  let totalCacheRead = st.cacheRead;
+  let totalCacheWrite = st.cacheWrite;
+
+  // Collect ALL descendants (direct children + grandchildren + deeper)
+  const descendantIds = collectDescendantSessionIds(sessionId, sessionMap);
+  for (const descendantId of descendantIds) {
+    const sData = tokenDataMap.get(descendantId);
+    if (!sData) continue;
+    const agg = aggregateSessionTokens(sData);
+    totalCost += agg.cost;
+    totalInput += agg.tokens.input;
+    totalOutput += agg.tokens.output;
+    totalReasoning += agg.tokens.reasoning;
+    totalCacheRead += agg.tokens.cacheRead;
+    totalCacheWrite += agg.tokens.cacheWrite;
+  }
+
+  payload.totalCost = totalCost;
+  payload.totalTokens = {
+    input: totalInput,
+    output: totalOutput,
+    reasoning: totalReasoning,
+    cacheRead: totalCacheRead,
+    cacheWrite: totalCacheWrite,
+    total: totalInput + totalOutput + totalReasoning + totalCacheRead + totalCacheWrite,
+  };
+
+  // Re-format totalCostFormatted with the aggregated total
+  if (resolveCostConfigFn && formatCostFn) {
+    const resolved = resolveCostConfigFn(configLanguage, configCost);
+    payload.totalCostFormatted = formatCostFn(totalCost, resolved.currency, resolved.decimalPlaces, resolved.exchangeRate);
+  }
 }
 
 /**
@@ -551,15 +565,20 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
             }
 
             const sdkTokens = msgInfo.tokens as { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } | undefined;
+            const tkInput = Number(sdkTokens?.input) || 0;
+            const tkOutput = Number(sdkTokens?.output) || 0;
+            const tkReasoning = Number(sdkTokens?.reasoning) || 0;
+            const tkCacheRead = Number(sdkTokens?.cache?.read) || 0;
+            const tkCacheWrite = Number(sdkTokens?.cache?.write) || 0;
             const tokenData: TokenData = {
-              cost: (msgInfo.cost as number) ?? 0,
+              cost: Number(msgInfo.cost) || 0,
               tokens: {
-                input: sdkTokens?.input ?? 0,
-                output: sdkTokens?.output ?? 0,
-                reasoning: sdkTokens?.reasoning ?? 0,
-                cacheRead: sdkTokens?.cache?.read ?? 0,
-                cacheWrite: sdkTokens?.cache?.write ?? 0,
-                total: (sdkTokens?.input ?? 0) + (sdkTokens?.output ?? 0) + (sdkTokens?.reasoning ?? 0) + (sdkTokens?.cache?.read ?? 0) + (sdkTokens?.cache?.write ?? 0),
+                input: tkInput,
+                output: tkOutput,
+                reasoning: tkReasoning,
+                cacheRead: tkCacheRead,
+                cacheWrite: tkCacheWrite,
+                total: tkInput + tkOutput + tkReasoning + tkCacheRead + tkCacheWrite,
               },
               modelID: (msgInfo.modelID as string) ?? '',
               providerID: (msgInfo.providerID as string) ?? '',
@@ -629,13 +648,7 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
         logger.error(`Failed to handle event ${payload.eventType}: ${error}`);
       }
 
-      // Clean up tokenDataMap after session.idle or session.error
-      if (event.type === 'session.idle' || event.type === 'session.error') {
-        const sid = (event.properties as Record<string, unknown>).sessionID as string | undefined;
-        if (sid) {
-          tokenDataMap.delete(sid);
-        }
-      }
+
     },
   };
 };
