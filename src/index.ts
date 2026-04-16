@@ -620,14 +620,13 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
 };
 
 /**
- * V1 Plugin Module format (required by OpenCode >= 1.3).
- * readV1Plugin() checks mod.default for { server: Plugin } shape.
- * Legacy format (export default fn) triggers getLegacyPlugins() which
- * iterates ALL exports and breaks on non-function exports like __test.
+ * Default export: the plugin function itself.
+ * This matches the pattern used by all working OpenCode plugins
+ * (opencode-claude-auth, opencode-dcp, opencode-copilot-plugin).
+ * OpenCode's readV1Plugin() in detect mode returns undefined for function defaults,
+ * falling through to getLegacyPlugins() which iterates all module exports.
  */
-export default {
-  server: NotificationPlugin,
-};
+export default NotificationPlugin;
 
 /**
  * Test-only: reset module-level flags so toast tests can run independently.
@@ -640,10 +639,14 @@ function __test_resetFlags(): void {
 
 /**
  * Test-only helpers namespace.
- * Exported as a plain object (not a function) so OpenCode's plugin loader
- * does not mistake it for a Plugin entry point and call it.
+ * Includes a `server` property pointing to NotificationPlugin so that
+ * OpenCode's getServerPlugin() correctly identifies it (returns the server fn)
+ * instead of returning undefined and causing getLegacyPlugins to throw.
+ * The `seen` Set in getLegacyPlugins deduplicates, so NotificationPlugin
+ * is only called once despite appearing in both `default` and `__test.server`.
  */
 export const __test = {
   payloads: __test_payloads,
   resetFlags: __test_resetFlags,
+  server: NotificationPlugin,
 };
