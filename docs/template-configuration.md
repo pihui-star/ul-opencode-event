@@ -201,7 +201,35 @@ interface ChannelTemplates {
 >
 > **关于费用格式化**：`sessionCostFormatted` 和 `totalCostFormatted` 根据 `currency` 变量自动选择货币符号和格式。中文环境（`language: "zh"`）使用 `¥`，英文环境使用 `$`。
 
-### 5.4 变量速查表
+### 5.4 Token 格式化变量（人类可读，所有事件类型可用）
+
+以下变量将原始 Token 数值格式化为人类可读的字符串，使用 K/M/B 后缀 + 1 位小数。默认模板使用这些格式化变量。
+
+#### 会话级别格式化
+
+| 变量 | 说明 | 原始值示例 | 格式化结果 |
+|------|------|-----------|-----------|
+| `{{sessionTokensTotalHuman}}` | 会话合计 Token（格式化） | `127100` | `127.1K` |
+| `{{sessionTokensInputHuman}}` | 会话输入 Token（格式化） | `30100` | `30.1K` |
+| `{{sessionTokensOutputHuman}}` | 会话输出 Token（格式化） | `60000` | `60.0K` |
+| `{{sessionTokensReasoningHuman}}` | 会话推理 Token（格式化） | `5000` | `5.0K` |
+| `{{sessionTokensCacheReadHuman}}` | 会话缓存读取 Token（格式化） | `10000` | `10.0K` |
+| `{{sessionTokensCacheWriteHuman}}` | 会话缓存写入 Token（格式化） | `22000` | `22.0K` |
+
+#### 全部级别格式化
+
+| 变量 | 说明 | 原始值示例 | 格式化结果 |
+|------|------|-----------|-----------|
+| `{{totalTokensTotalHuman}}` | 全部合计 Token（格式化） | `990000` | `990.0K` |
+| `{{totalTokensInputHuman}}` | 全部输入 Token（格式化） | `100000` | `100.0K` |
+| `{{totalTokensOutputHuman}}` | 全部输出 Token（格式化） | `200000` | `200.0K` |
+| `{{totalTokensReasoningHuman}}` | 全部推理 Token（格式化） | `50000` | `50.0K` |
+| `{{totalTokensCacheReadHuman}}` | 全部缓存读取 Token（格式化） | `60000` | `60.0K` |
+| `{{totalTokensCacheWriteHuman}}` | 全部缓存写入 Token（格式化） | `130000` | `130.0K` |
+
+> **格式化规则**：小于 1000 的数值原样显示（如 `420`）；1000 及以上使用 K（千）、M（百万）、B（十亿）后缀 + 1 位小数（如 `127.1K`、`1.5M`、`2.0B`）。如需精确数值，请在自定义模板中使用对应的原始变量（如 `{{sessionTokensTotal}}`）。
+
+### 5.5 变量速查表
 
 | 事件类型 | 可用变量 |
 |---------|---------|
@@ -384,7 +412,7 @@ Body:
 消息: {{message}}
 耗时: {{duration}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### error - 任务出错
@@ -396,7 +424,7 @@ Body:
 会话: {{sessionTitle}} ({{sessionId}})
 错误信息: {{error}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### question - AI 提问
@@ -409,7 +437,7 @@ OpenCode 在 {{timestamp}} 向您提问
 问题: {{title}}
 {{questionText}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### permission - 权限确认
@@ -421,7 +449,7 @@ Body:
 会话: {{sessionTitle}} ({{sessionId}})
 {{title}} ({{permissionType}})
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### status - 状态变更
@@ -433,7 +461,7 @@ Body:
 会话: {{sessionTitle}} ({{sessionId}})
 状态: {{statusType}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### command - 命令执行
@@ -445,7 +473,7 @@ Body:
 会话: {{sessionTitle}} ({{sessionId}})
 命令: {{commandName}} {{arguments}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### fileEdited - 文件编辑
@@ -456,7 +484,7 @@ Body:
 文件编辑时间: {{timestamp}}
 文件: {{filePath}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### todo - Todo 更新
@@ -468,7 +496,7 @@ Todo 更新时间: {{timestamp}}
 会话: {{sessionTitle}} ({{sessionId}})
 {{todoSummary}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 ### 7.2 英文默认模板（`language: "en"`）
@@ -492,7 +520,7 @@ Session: {{sessionTitle}} ({{sessionId}})
 Message: {{message}}
 Duration: {{duration}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### error - Task Error
@@ -504,7 +532,7 @@ Error at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Error: {{error}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### question - Question
@@ -517,7 +545,7 @@ Session: {{sessionTitle}} ({{sessionId}})
 Question: {{title}}
 {{questionText}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### permission - Permission Required
@@ -529,7 +557,7 @@ Permission needed at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 {{title}} ({{permissionType}})
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### status - Status Change
@@ -541,7 +569,7 @@ Session status changed at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Status: {{statusType}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### command - Command Executed
@@ -553,7 +581,7 @@ Command executed at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Command: {{commandName}} {{arguments}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### fileEdited - File Edited
@@ -564,7 +592,7 @@ Body:
 File edited at {{timestamp}}
 File: {{filePath}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 #### todo - Todos Updated
@@ -576,7 +604,7 @@ Todos updated at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 {{todoSummary}}
 
-Token({{sessionTokensTotal}}/{{totalTokensTotal}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
 ```
 
 ---
