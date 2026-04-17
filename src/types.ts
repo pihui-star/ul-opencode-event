@@ -51,12 +51,12 @@ export interface Channel {
 /**
  * Supported channel types
  */
-export type ChannelType = 'smtp' | 'feishu' | 'dingtalk';
+export type ChannelType = 'smtp' | 'feishu' | 'dingtalk' | 'file';
 
 /**
  * Union type for channel-specific configurations
  */
-export type ChannelConfig = SMTPConfig | FeishuConfig | DingtalkConfig;
+export type ChannelConfig = SMTPConfig | FeishuConfig | DingtalkConfig | FileConfig;
 
 /**
  * SMTP channel configuration
@@ -100,6 +100,16 @@ export interface DingtalkConfig {
     /** Whether to @mention all members */
     atAll?: boolean;
   };
+}
+
+/**
+ * File channel configuration for local file-based message logging
+ */
+export interface FileConfig {
+  /** Output file path (default: ~/.local/share/opencode/ul-opencode-event-messages.log) */
+  filePath?: string;
+  /** Max file size in bytes before rotation (default: 1048576 = 1MB) */
+  maxSizeBytes?: number;
 }
 
 /**

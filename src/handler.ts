@@ -99,6 +99,17 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
             } catch (error) {
               logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
             }
+          } else if (channel.type === 'file' && channel.enabled !== false) {
+            try {
+              const fileModule = await import('./file.js');
+              const sender = await fileModule.createFileSender(channel);
+              if (sender) {
+                const key = channel.name || `channel-${i}`;
+                senders.set(key, sender);
+              }
+            } catch (error) {
+              logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
+            }
           }
         }
       }

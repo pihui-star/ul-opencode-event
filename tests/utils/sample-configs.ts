@@ -108,3 +108,22 @@ export const minimalConfig: NotificationConfig = {
     },
   ],
 };
+
+export const sampleFileConfig: NotificationConfig = {
+  channels: [
+    {
+      type: 'file',
+      enabled: true,
+      name: 'File Log',
+      config: {
+        filePath: '/tmp/test-messages.log',
+        maxSizeBytes: 1024,
+      },
+      events: {
+        created: true,
+        idle: true,
+        error: true,
+      },
+    },
+  ],
+};

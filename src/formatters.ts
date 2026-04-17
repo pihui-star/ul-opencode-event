@@ -7,11 +7,13 @@
  * - SMTP: pass-through (subject + text body)
  * - DingTalk: Markdown formatting with escaping and truncation
  * - Feishu: Interactive card messages for Feishu bots
+ * - File: pass-through with full payload bundled
  */
 
 import type { ChannelType, Channel, ChannelFormatter, DingtalkConfig, FeishuConfig } from './types.js';
 import { createDingTalkFormatter } from './dingtalk.js';
 import { createFeishuFormatter } from './feishu.js';
+import { createFileFormatter } from './file.js';
 
 // ─── Email Formatter (SMTP) ──────────────────────────────
 
@@ -29,10 +31,10 @@ export const emailFormatter: ChannelFormatter = {
 
 // ─── Formatter Registry ──────────────────────────────────
 
-/** Built-in formatter lookup by channel type (excluding dingtalk which needs config) */
+/** Built-in formatter lookup by channel type (excluding dingtalk/feishu which need config) */
 const FORMATTER_REGISTRY: Record<string, ChannelFormatter> = {
   smtp: emailFormatter,
-  // dingtalk and feishu formatters created dynamically via getFormatter
+  // dingtalk, feishu, file formatters created dynamically via getFormatter
 };
 
 // ─── Public API ──────────────────────────────────────────
@@ -40,8 +42,8 @@ const FORMATTER_REGISTRY: Record<string, ChannelFormatter> = {
 /**
  * Get the appropriate formatter for a given channel type.
  *
- * @param channelType - The channel type (smtp, dingtalk, feishu)
- * @param channel - The full channel configuration (needed for dingtalk config)
+ * @param channelType - The channel type (smtp, dingtalk, feishu, file)
+ * @param channel - The full channel configuration (needed for dingtalk/feishu config)
  * @returns The channel formatter, or null if the channel type is not supported
  */
 export function getFormatter(channelType: ChannelType, channel: Channel): ChannelFormatter | null {
@@ -51,6 +53,10 @@ export function getFormatter(channelType: ChannelType, channel: Channel): Channe
 
   if (channelType === 'feishu') {
     return createFeishuFormatter(channel.config as FeishuConfig);
+  }
+
+  if (channelType === 'file') {
+    return createFileFormatter();
   }
 
   return FORMATTER_REGISTRY[channelType] ?? null;

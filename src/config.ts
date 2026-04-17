@@ -5,7 +5,7 @@ import type { NotificationConfig, Channel, SessionType, CostConfig } from './typ
 import { DEFAULT_SESSION_TYPES, SUPPORTED_CURRENCIES } from './types.js';
 import { logger } from './logger.js';
 
-const SUPPORTED_CHANNEL_TYPES = ['smtp', 'dingtalk', 'feishu'] as const;
+const SUPPORTED_CHANNEL_TYPES = ['smtp', 'dingtalk', 'feishu', 'file'] as const;
 
 /**
  * Default configuration returned when no config files exist
@@ -266,10 +266,31 @@ export function loadConfig(): NotificationConfig {
   const projectConfigPath = getProjectConfigPath();
   const projectConfig = projectConfigPath ? loadConfigFile(projectConfigPath) : null;
   
-  // If no configs exist, return default
+  // If no configs exist, return default with auto-injected file channel
   if (!globalConfig && !projectConfig) {
     logger.debug(`No config found. Checked: ${globalConfigPath}, ${path.join(process.cwd(), '.opencode', 'ul-opencode-event.json')}, ${path.join(process.cwd(), 'ul-opencode-event.json')}`);
-    return DEFAULT_CONFIG;
+    return {
+      channels: [{
+        type: 'file',
+        enabled: true,
+        name: 'default-file',
+        config: {
+          filePath: path.join(os.homedir(), '.local', 'share', 'opencode', 'ul-opencode-event-messages.log'),
+          maxSizeBytes: 1048576,
+        },
+        events: {
+          created: true,
+          idle: true,
+          error: true,
+          question: true,
+          permission: true,
+          status: true,
+          command: true,
+          fileEdited: true,
+          todo: true,
+        },
+      }],
+    };
   }
   
   // Merge channels
@@ -283,6 +304,30 @@ export function loadConfig(): NotificationConfig {
   
   // Validate and filter supported channel types
   const channels = validateAndFilterChannels(enabledChannels);
+
+  // Auto-inject default file channel if not explicitly configured
+  if (!channels.some(ch => ch.type === 'file')) {
+    channels.push({
+      type: 'file',
+      enabled: true,
+      name: 'default-file',
+      config: {
+        filePath: path.join(os.homedir(), '.local', 'share', 'opencode', 'ul-opencode-event-messages.log'),
+        maxSizeBytes: 1048576,
+      },
+      events: {
+        created: true,
+        idle: true,
+        error: true,
+        question: true,
+        permission: true,
+        status: true,
+        command: true,
+        fileEdited: true,
+        todo: true,
+      },
+    });
+  }
   
   // Merge top-level fields (language, timezone) — project config takes priority
   const mergedLanguage = projectConfig?.language ?? globalConfig?.language;

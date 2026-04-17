@@ -15,6 +15,14 @@ mock.module('fs', () => mockFs);
 // Import after mocking
 const { loadConfig } = await import('../src/config');
 
+/**
+ * Helper: filter out auto-injected file channel so tests only assert on user-configured channels.
+ * loadConfig() auto-injects a 'default-file' channel when no file channel is explicitly configured.
+ */
+function userChannels(config: { channels: Channel[] }): Channel[] {
+  return config.channels.filter(ch => ch.name !== 'default-file');
+}
+
 describe('loadConfig', () => {
   beforeEach(() => {
     // Reset mocks
@@ -24,22 +32,28 @@ describe('loadConfig', () => {
   });
 
   describe('default config', () => {
-    test('returns empty channels when no config files exist', () => {
+    test('returns auto-injected file channel when no config files exist', () => {
       mockFs.existsSync.mockReturnValue(false);
       
       const config = loadConfig();
       
-      expect(config).toEqual({ channels: [] });
+      // Should have exactly the auto-injected file channel
+      expect(config.channels).toHaveLength(1);
+      expect(config.channels[0].type).toBe('file');
+      expect(config.channels[0].name).toBe('default-file');
     });
 
-    test('returns empty channels when global config file does not exist', () => {
+    test('returns auto-injected file channel when global config file does not exist', () => {
       mockFs.existsSync.mockImplementation((p: string) => {
         return !p.includes('.config');
       });
       
       const config = loadConfig();
       
-      expect(config).toEqual({ channels: [] });
+      // Should have exactly the auto-injected file channel
+      expect(config.channels).toHaveLength(1);
+      expect(config.channels[0].type).toBe('file');
+      expect(config.channels[0].name).toBe('default-file');
     });
   });
 
@@ -75,9 +89,9 @@ describe('loadConfig', () => {
       });
 
       const config = loadConfig();
-
-      expect(config.channels).toHaveLength(1);
-      expect(config.channels[0].name).toBe('Global Email');
+      
+      expect(userChannels(config)).toHaveLength(1);
+      expect(userChannels(config)[0].name).toBe('Global Email');
     });
   });
 
@@ -114,8 +128,8 @@ describe('loadConfig', () => {
 
       const config = loadConfig();
 
-      expect(config.channels).toHaveLength(1);
-      expect(config.channels[0].name).toBe('Project Email');
+      expect(userChannels(config)).toHaveLength(1);
+      expect(userChannels(config)[0].name).toBe('Project Email');
     });
 
     test('loads config from ./ul-opencode-event.json when .opencode/ul-opencode-event.json does not exist', () => {
@@ -151,8 +165,8 @@ describe('loadConfig', () => {
 
       const config = loadConfig();
 
-      expect(config.channels).toHaveLength(1);
-      expect(config.channels[0].name).toBe('Local Email');
+      expect(userChannels(config)).toHaveLength(1);
+      expect(userChannels(config)[0].name).toBe('Local Email');
     });
   });
 
@@ -206,8 +220,8 @@ describe('loadConfig', () => {
 
       const config = loadConfig();
 
-      expect(config.channels).toHaveLength(2);
-      expect(config.channels.map(c => c.name)).toEqual(['Global Email', 'Project Email']);
+      expect(userChannels(config)).toHaveLength(2);
+      expect(userChannels(config).map(c => c.name)).toEqual(['Global Email', 'Project Email']);
     });
   });
 
@@ -261,15 +275,15 @@ describe('loadConfig', () => {
 
       const config = loadConfig();
 
-      expect(config.channels).toHaveLength(1);
-      expect(config.channels[0].name).toBe('Shared Email');
+      expect(userChannels(config)).toHaveLength(1);
+      expect(userChannels(config)[0].name).toBe('Shared Email');
       // Project config overrides global
-      expect(config.channels[0].config).toEqual({
+      expect(userChannels(config)[0].config).toEqual({
         host: 'smtp.project.com',
         port: 587,
         auth: { user: 'project@test.com', pass: 'pass' },
       });
-      expect(config.channels[0].events).toEqual({ idle: true, error: true });
+      expect(userChannels(config)[0].events).toEqual({ idle: true, error: true });
     });
   });
 
@@ -316,8 +330,8 @@ describe('loadConfig', () => {
 
       const loadedConfig = loadConfig();
 
-      expect(loadedConfig.channels).toHaveLength(1);
-      expect(loadedConfig.channels[0].name).toBe('Enabled Email');
+      expect(userChannels(loadedConfig)).toHaveLength(1);
+      expect(userChannels(loadedConfig)[0].name).toBe('Enabled Email');
     });
 
     test('includes channels with enabled: undefined (defaults to true)', () => {
@@ -349,8 +363,8 @@ describe('loadConfig', () => {
 
       const loadedConfig = loadConfig();
 
-      expect(loadedConfig.channels).toHaveLength(1);
-      expect(loadedConfig.channels[0].name).toBe('Default Enabled Email');
+      expect(userChannels(loadedConfig)).toHaveLength(1);
+      expect(userChannels(loadedConfig)[0].name).toBe('Default Enabled Email');
     });
   });
 
@@ -387,12 +401,12 @@ describe('loadConfig', () => {
 
         const result = loadConfig();
 
-        expect(result.channels).toHaveLength(0);
+        expect(userChannels(result)).toHaveLength(0);
         expect(warnSpy).toHaveBeenCalled();
         const warnMsg = warnSpy.mock.calls[0][0] as string;
         expect(warnMsg).toContain('Unknown channel type: "slack"');
         expect(warnMsg).toContain('Slack Channel');
-        expect(warnMsg).toContain('smtp, dingtalk, feishu');
+        expect(warnMsg).toContain('smtp, dingtalk, feishu, file');
       } finally {
         console.warn = origWarn;
       }
@@ -440,8 +454,8 @@ describe('loadConfig', () => {
 
         const result = loadConfig();
 
-        expect(result.channels).toHaveLength(1);
-        expect(result.channels[0].name).toBe('Valid Email');
+        expect(userChannels(result)).toHaveLength(1);
+        expect(userChannels(result)[0].name).toBe('Valid Email');
         expect(warnSpy).toHaveBeenCalled();
         const warnMsg = warnSpy.mock.calls[0][0] as string;
         expect(warnMsg).toContain('Unknown channel type: "invalid"');
@@ -477,10 +491,10 @@ describe('loadConfig', () => {
 
       const result = loadConfig();
 
-      expect(result.channels).toHaveLength(1);
-      expect(result.channels[0].type).toBe('dingtalk');
-      expect(result.channels[0].name).toBe('DingTalk Bot');
-      expect(result.channels[0].config).toEqual({
+      expect(userChannels(result)).toHaveLength(1);
+      expect(userChannels(result)[0].type).toBe('dingtalk');
+      expect(userChannels(result)[0].name).toBe('DingTalk Bot');
+      expect(userChannels(result)[0].config).toEqual({
         webhook: 'https://oapi.dingtalk.com/robot/send?access_token=test-token',
       });
     });
@@ -536,10 +550,10 @@ describe('loadConfig', () => {
           throw new Error('File not found');
         });
 
-        const result = loadConfig();
+      const result = loadConfig();
 
-        expect(result.channels).toHaveLength(0);
-        // No warn about unsupported type because disabled channels are filtered first
+      expect(userChannels(result)).toHaveLength(0);
+      // No warn about unsupported type because disabled channels are filtered first
         const unsupportedWarns = warnSpy.mock.calls.filter(
           (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('Unknown channel type')
         );
@@ -591,12 +605,12 @@ describe('loadConfig', () => {
       const result = loadConfig();
 
       // Same name → project overrides global
-      expect(result.channels).toHaveLength(1);
-      expect(result.channels[0].name).toBe('Team DingTalk');
-      expect(result.channels[0].config.webhook).toBe(
+      expect(userChannels(result)).toHaveLength(1);
+      expect(userChannels(result)[0].name).toBe('Team DingTalk');
+      expect(userChannels(result)[0].config.webhook).toBe(
         'https://oapi.dingtalk.com/robot/send?access_token=project-token'
       );
-      expect(result.channels[0].events).toEqual({ idle: true, error: true });
+      expect(userChannels(result)[0].events).toEqual({ idle: true, error: true });
     });
 
     test('global + project dingtalk config with different names appends both', () => {
@@ -637,8 +651,8 @@ describe('loadConfig', () => {
       const result = loadConfig();
 
       // Different names → both kept
-      expect(result.channels).toHaveLength(2);
-      expect(result.channels.map(c => c.name)).toEqual(['Global DT', 'Project DT']);
+      expect(userChannels(result)).toHaveLength(2);
+      expect(userChannels(result).map(c => c.name)).toEqual(['Global DT', 'Project DT']);
     });
   });
 
@@ -656,8 +670,10 @@ describe('loadConfig', () => {
 
       const config = loadConfig();
 
-      // Should return default config when JSON is malformed
-      expect(config).toEqual({ channels: [] });
+      // Should return default config with auto-injected file channel when JSON is malformed
+      expect(userChannels(config)).toHaveLength(0);
+      // Still has auto-injected file channel
+      expect(config.channels.some(ch => ch.name === 'default-file')).toBe(true);
     });
   });
 
@@ -696,8 +712,8 @@ describe('loadConfig', () => {
       // The index.ts plugin reads it via: config.projectName || path.basename(ctx.directory)
       expect(config.projectName).toBeUndefined();
       // Channels are still loaded correctly
-      expect(config.channels).toHaveLength(1);
-      expect(config.channels[0].name).toBe('Project Email');
+      expect(userChannels(config)).toHaveLength(1);
+      expect(userChannels(config)[0].name).toBe('Project Email');
     });
   });
 
@@ -1282,6 +1298,85 @@ describe('loadConfig', () => {
       expect(config.cost?.currency).toBe('USD');
       expect(config.cost?.exchangeRate).toBe(7.25);
       expect(config.cost?.decimalPlaces).toBe(4);
+    });
+  });
+
+  describe('file channel auto-injection', () => {
+    test('auto-injects default-file channel when no file channel configured', () => {
+      const projectConfig: NotificationConfig = {
+        channels: [
+          {
+            type: 'smtp',
+            enabled: true,
+            name: 'My Email',
+            config: {
+              host: 'smtp.test.com',
+              port: 465,
+              auth: { user: 'test@test.com', pass: 'pass' },
+            },
+            recipients: ['admin@test.com'],
+            events: { created: true },
+          },
+        ],
+      };
+
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === projectPath) return JSON.stringify(projectConfig);
+        throw new Error('File not found');
+      });
+
+      const config = loadConfig();
+
+      // User channel + auto-injected file channel
+      expect(config.channels).toHaveLength(2);
+      const fileChannel = config.channels.find(ch => ch.name === 'default-file');
+      expect(fileChannel).toBeDefined();
+      expect(fileChannel!.type).toBe('file');
+      expect(fileChannel!.enabled).toBe(true);
+      expect(fileChannel!.events).toEqual({
+        created: true, idle: true, error: true, question: true,
+        permission: true, status: true, command: true, fileEdited: true, todo: true,
+      });
+    });
+
+    test('does not auto-inject when user already has a file channel', () => {
+      const projectConfig: NotificationConfig = {
+        channels: [
+          {
+            type: 'file',
+            enabled: true,
+            name: 'my-file',
+            config: { filePath: '/tmp/my-messages.log' },
+            events: { idle: true, error: true },
+          },
+        ],
+      };
+
+      const projectPath = path.join(process.cwd(), '.opencode', 'ul-opencode-event.json');
+      mockFs.existsSync.mockImplementation((p: string) => p === projectPath);
+      mockFs.readFileSync.mockImplementation((p: string) => {
+        if (p === projectPath) return JSON.stringify(projectConfig);
+        throw new Error('File not found');
+      });
+
+      const config = loadConfig();
+
+      // Only the user's file channel, no auto-injection
+      expect(config.channels).toHaveLength(1);
+      expect(config.channels[0].name).toBe('my-file');
+    });
+
+    test('auto-injects file channel when no config files exist', () => {
+      mockFs.existsSync.mockReturnValue(false);
+
+      const config = loadConfig();
+
+      // Only the auto-injected file channel
+      expect(config.channels).toHaveLength(1);
+      expect(config.channels[0].name).toBe('default-file');
+      expect(config.channels[0].type).toBe('file');
     });
   });
 });
