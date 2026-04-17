@@ -9,7 +9,8 @@
     "ses_2690c6ffaffe15IantTIZBwb0i",
     "ses_2690c2973ffea7C7y7By2j0qzt",
     "ses_2690be1ceffeL1SY9oRqrOcnu7",
-    "ses_2690b8e10ffe84db2cfZaFZBqC"
+    "ses_2690b8e10ffe84db2cfZaFZBqC",
+    "ses_264fe487dffemghW0xgqsQPxR7"
   ],
   "plan_name": "token-tracking-fix",
   "agent": "atlas",
@@ -45,10 +46,10 @@
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** -- `oracle`",
-      "session_id": "ses_2690b8e10ffe84db2cfZaFZBqC",
+      "session_id": "ses_2648239f4ffeEDbfVL7ANPP50H",
       "agent": "Sisyphus-Junior",
       "category": "deep",
-      "updated_at": "2026-04-16T15:43:27.422Z"
+      "updated_at": "2026-04-17T13:12:01.273Z"
     }
   }
 }
