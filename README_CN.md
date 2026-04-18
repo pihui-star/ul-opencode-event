@@ -174,7 +174,7 @@ ul-opencode-event test --no-send
 | [SMTP 邮箱通道配置](./docs/channels/smtp-channel.md) | SMTP 完整配置字段、IPv4/IPv6 控制 |
 | [钉钉通道配置](./docs/channels/dingtalk-channel.md) | 钉钉机器人 Webhook、加签、@人功能 |
 | [飞书通道配置](./docs/channels/feishu-channel.md) | 飞书机器人 Webhook、签名校验、卡片格式 |
-| [模板配置](./docs/template-configuration.md) | 自定义消息模板、变量说明、多语言支持 |
+| [模板配置](./docs/configuration.md#4-模板系统概述) | 自定义消息模板、变量说明、多语言支持 |
 | [通知渠道开发指南](./docs/channels/channel-development.md) | 如何开发自定义通知渠道 |
 
 ## 故障排除

@@ -213,6 +213,6 @@ message.updated              (不发送通知)       -
 ## 6. 相关文档
 
 - [已知问题：中间事件 Token 为 0](../issues/token-zero-on-mid-event.md)
-- [模板配置详解](../template-configuration.md) -- 包含完整的 Token/费用变量列表
+- [模板配置详解](../configuration.md#8-全部可用变量) -- 包含完整的 Token/费用变量列表
 - [配置指南](../configuration.md)
 - [通道开发指南](../channels/channel-development.md)

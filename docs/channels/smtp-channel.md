@@ -3,7 +3,7 @@
 本文档涵盖 SMTP（邮件）通道的**用户配置指南**和**内部实现细节**。
 
 > 通用配置文件位置和合并规则请参阅 [configuration.md](./configuration.md)。
-> 模板变量和自定义模板语法请参阅 [template-configuration.md](./template-configuration.md)。
+> 模板变量和自定义模板语法请参阅 [configuration.md](../configuration.md#4-模板系统概述)。
 > 开发新渠道的通用指南请参阅 [channel-development.md](./channel-development.md)。
 
 ---
@@ -121,7 +121,7 @@ Outlook 通常可直接使用账户密码。如果启用了双因素认证，也
 }
 ```
 
-> 模板变量和自定义模板的详细说明请参阅 [template-configuration.md](./template-configuration.md)。
+> 模板变量和自定义模板的详细说明请参阅 [configuration.md](../configuration.md#4-模板系统概述)。
 
 ### 1.5 通道配置字段
 
@@ -133,7 +133,7 @@ Outlook 通常可直接使用账户密码。如果启用了双因素认证，也
 | `config` | object | 是 | - | SMTP 服务器配置（见下方） |
 | `recipients` | string[] | 是 | - | 邮件收件人地址列表 |
 | `events` | object | 否 | - | 各事件类型的开关，详见 [configuration.md](./configuration.md) |
-| `templates` | object | 否 | - | 自定义模板，详见 [template-configuration.md](./template-configuration.md) |
+| `templates` | object | 否 | - | 自定义模板，详见 [configuration.md](../configuration.md#4-模板系统概述) |
 
 ### 1.6 SMTP 配置字段
 

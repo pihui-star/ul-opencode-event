@@ -106,7 +106,7 @@ Project-level config overrides global (channels merged by name).
 | `{{duration}}` | Task duration | idle |
 | `{{error}}` | Error message | error |
 
-See [docs/template-configuration.md](docs/template-configuration.md) for customization details.
+See [Configuration - Templates](docs/configuration.md#4-模板系统概述) for customization details.
 
 ## CLI Tool
 
@@ -126,7 +126,7 @@ npx @ulthon/ul-opencode-event test --no-send     # Verify connection only
 | [SMTP Channel](docs/channels/smtp-channel.md) | Email configuration, IPv4/IPv6, FAQ |
 | [DingTalk Channel](docs/channels/dingtalk-channel.md) | Configuration, @mentions, FAQ |
 | [Feishu Channel](docs/channels/feishu-channel.md) | Configuration, card format, FAQ |
-| [Template Configuration](docs/template-configuration.md) | Template variables and customization |
+| [Template Configuration](docs/configuration.md#4-模板系统概述) | Template variables and customization |
 | [Channel Development](docs/channels/channel-development.md) | Developing new notification channels |
 
 ### Architecture
