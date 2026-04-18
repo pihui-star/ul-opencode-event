@@ -82,8 +82,8 @@ Project-level config overrides global (channels merged by name).
 
 ### Other Channels
 
-- **DingTalk**: See [docs/dingtalk-channel.md](docs/dingtalk-channel.md) for robot setup, @mentions, and FAQ.
-- **Feishu**: See [docs/feishu-channel.md](docs/feishu-channel.md) for robot setup, card format, and FAQ.
+- **DingTalk**: See [docs/channels/dingtalk-channel.md](docs/channels/dingtalk-channel.md) for robot setup, @mentions, and FAQ.
+- **Feishu**: See [docs/channels/feishu-channel.md](docs/channels/feishu-channel.md) for robot setup, card format, and FAQ.
 
 ### Events
 
@@ -118,14 +118,28 @@ npx @ulthon/ul-opencode-event test --no-send     # Verify connection only
 
 ## Documentation
 
+### Configuration & Usage
+
 | Document | Description |
 |----------|-------------|
 | [Configuration](docs/configuration.md) | Config file locations, merge rules, events |
-| [SMTP Channel](docs/smtp-channel.md) | Email configuration, IPv4/IPv6, FAQ |
-| [DingTalk Channel](docs/dingtalk-channel.md) | Configuration, @mentions, FAQ |
-| [Feishu Channel](docs/feishu-channel.md) | Configuration, card format, FAQ |
+| [SMTP Channel](docs/channels/smtp-channel.md) | Email configuration, IPv4/IPv6, FAQ |
+| [DingTalk Channel](docs/channels/dingtalk-channel.md) | Configuration, @mentions, FAQ |
+| [Feishu Channel](docs/channels/feishu-channel.md) | Configuration, card format, FAQ |
 | [Template Configuration](docs/template-configuration.md) | Template variables and customization |
-| [Channel Development](docs/channel-development.md) | Developing new notification channels |
+| [Channel Development](docs/channels/channel-development.md) | Developing new notification channels |
+
+### Architecture
+
+| Document | Description |
+|----------|-------------|
+| [Event Data Flow](docs/architecture/event-data-flow.md) | Event processing pipeline, token data flow |
+
+### Known Issues
+
+| Document | Description |
+|----------|-------------|
+| [Token Zero on Mid-Event](docs/issues/token-zero-on-mid-event.md) | question/status events show Token(0/...) |
 
 ## Troubleshooting
 
@@ -133,6 +147,7 @@ npx @ulthon/ul-opencode-event test --no-send     # Verify connection only
 - **Wrong port**: Use 465 for SSL, 587 for STARTTLS
 - **No notifications**: Check `enabled: true`, event types, and config file location
 - **IPv4/IPv6**: Both supported; if IPv6 unstable, set `localAddress` to `"0.0.0.0"`
+- **Token shows 0**: Known issue on mid-event notifications (question/status), see [Token Zero on Mid-Event](docs/issues/token-zero-on-mid-event.md)
 - **Debug mode**: `UL_OPENCODE_EVENT_DEBUG=1 npx @ulthon/ul-opencode-event test`
 
 ## Local Development

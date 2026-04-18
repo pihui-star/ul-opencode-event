@@ -3,9 +3,9 @@
 本文档介绍 `@ulthon/ul-opencode-event` 的通用配置机制，包括配置文件位置、合并规则、事件配置、模板概述和调试模式。
 
 各通知通道的具体配置请参考对应文档：
-- [SMTP 邮件通道配置](smtp-channel.md)
-- [钉钉机器人通道配置](dingtalk-channel.md)
-- [飞书机器人通道配置](feishu-channel.md)
+- [SMTP 邮件通道配置](channels/smtp-channel.md)
+- [钉钉机器人通道配置](channels/dingtalk-channel.md)
+- [飞书机器人通道配置](channels/feishu-channel.md)
 
 ---
 
@@ -226,8 +226,9 @@ UL_OPENCODE_EVENT_DEBUG=1 npx @ulthon/ul-opencode-event test
 
 ## 相关文档
 
-- [SMTP 邮件通道配置](smtp-channel.md)
-- [钉钉机器人通道配置](dingtalk-channel.md)
-- [飞书机器人通道配置](feishu-channel.md)
+- [SMTP 邮件通道配置](channels/smtp-channel.md)
+- [钉钉机器人通道配置](channels/dingtalk-channel.md)
+- [飞书机器人通道配置](channels/feishu-channel.md)
 - [模板配置详解](template-configuration.md)
-- [通道开发指南](channel-development.md)
+- [通道开发指南](channels/channel-development.md)
+- [事件数据流架构](architecture/event-data-flow.md)

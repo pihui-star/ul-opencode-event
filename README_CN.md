@@ -171,11 +171,11 @@ ul-opencode-event test --no-send
 | 文档 | 说明 |
 |------|------|
 | [配置文件位置与合并规则](./docs/configuration.md) | 配置文件查找路径、合并逻辑、优先级说明 |
-| [SMTP 邮箱通道配置](./docs/smtp-channel.md) | SMTP 完整配置字段、IPv4/IPv6 控制 |
-| [钉钉通道配置](./docs/dingtalk-channel.md) | 钉钉机器人 Webhook、加签、@人功能 |
-| [飞书通道配置](./docs/feishu-channel.md) | 飞书机器人 Webhook、签名校验、卡片格式 |
+| [SMTP 邮箱通道配置](./docs/channels/smtp-channel.md) | SMTP 完整配置字段、IPv4/IPv6 控制 |
+| [钉钉通道配置](./docs/channels/dingtalk-channel.md) | 钉钉机器人 Webhook、加签、@人功能 |
+| [飞书通道配置](./docs/channels/feishu-channel.md) | 飞书机器人 Webhook、签名校验、卡片格式 |
 | [模板配置](./docs/template-configuration.md) | 自定义消息模板、变量说明、多语言支持 |
-| [通知渠道开发指南](./docs/channel-development.md) | 如何开发自定义通知渠道 |
+| [通知渠道开发指南](./docs/channels/channel-development.md) | 如何开发自定义通知渠道 |
 
 ## 故障排除
 

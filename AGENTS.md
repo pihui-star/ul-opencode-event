@@ -29,6 +29,8 @@ src/
   formatters.ts # 通道格式化器注册表，按通道类型分发格式化逻辑
   template.ts   # 简单的 {{variable}} 模板渲染
   locales.ts    # i18n 默认模板（zh/en），按事件类型组织
+  file.ts       # file 渠道发送器，将通知消息写入本地 JSONL 文件
+  recorder.ts   # 系统级事件变量录制器，记录全部模板变量到 JSONL（非渠道，始终开启）
   logger.ts     # 生产级文件日志，自动轮转，零依赖，同步 I/O
   updater.ts    # 自动更新模块，检查 npm registry 新版本并可选自动安装
   cli.ts        # 独立 CLI 工具（npx @ulthon/ul-opencode-event test）
@@ -71,6 +73,17 @@ SDK 事件（`session.created`、`session.idle`、`session.error`）映射为内
 
 ### 日志系统
 `logger.ts` 提供全局 `logger` 实例，写文件日志（默认 `~/.local/share/opencode/ul-opencode-event.log`），支持自动轮转（2MB 上限）。通过 `UL_OPENCODE_EVENT_DEBUG=1` 环境变量启用 debug 级别日志。
+
+### 本地文件
+插件运行时在 `~/.local/share/opencode/` 目录下生成 3 个文件（可通过 `OPENCODE_DATA_DIR` 环境变量覆盖基目录）：
+
+| 文件 | 来源模块 | 格式 | 用途 |
+|------|---------|------|------|
+| `ul-opencode-event.log` | `logger.ts` | 文本日志 | 运行日志、错误追踪、debug 输出（2MB 轮转） |
+| `ul-opencode-event-messages.log` | `file.ts` | JSON Lines | 渠道级消息记录：EventPayload + 渲染后的 subject/body（1MB 轮转，自动注入的默认 file 渠道） |
+| `ul-opencode-event-variables.jsonl` | `recorder.ts` | JSON Lines | 系统级变量记录：handler.ts 中全部模板变量（约42个字段，含人类可读 token 格式等衍生字段），始终开启，不受渠道配置影响（2MB 轮转） |
+
+调试时可直接用 `tail -f` 监控或 `jq` 筛选 JSONL 文件。
 
 ## 测试
 

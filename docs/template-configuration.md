@@ -162,6 +162,8 @@ interface ChannelTemplates {
 
 以下变量用于展示 Token 用量、费用和模型信息。在自定义模板中可以按需使用。
 
+> **已知限制**：在 AI 回复中间触发的事件（如 `question`、`status`）中，这些变量可能为 0。详见 [已知问题：中间事件 Token 为 0](issues/token-zero-on-mid-event.md)。
+
 #### 会话级别（当前会话的数据）
 
 | 变量 | 说明 | 示例值 |
