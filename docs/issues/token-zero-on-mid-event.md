@@ -1,7 +1,8 @@
-# 已知问题：中间事件 Token 显示为 0
+# 已修复：中间事件 Token 显示为 0
 
-> 状态：已确认，暂不修复（等待 OpenCode 官方支持）
+> 状态：已修复（totalTokens 部分，v0.1.45）
 > 发现日期：2026-04-18
+> 修复日期：2026-04-18
 
 ## 现象
 
@@ -84,39 +85,62 @@ Map 中数据：
 | `session.error` | 错误发生时触发，token 数据通常已积累 |
 | `session.created` | 创建时没有 token 数据（已特殊处理，不填充 token） |
 
-## 临时修复方案（备选）
+## 修复方案
 
-如果需要在插件侧修复，最小改动方案：
+### 实际实现（v0.1.45）
 
-**修改 `aggregateSessionTokens`**：当最后一条 message 的 total token 为 0 时，回退取前一条有 token 值的 message。
+修复采用**双策略**方案，`sessionTokens` 和 `totalTokens` 使用不同的聚合逻辑：
+
+#### 1. 新增 `sumAllCompletedTokens` 函数
+
+遍历 `sessionData.messages`，累加所有 token 非零消息（`input + output + cacheRead + cacheWrite > 0`）的 token 字段：
 
 ```typescript
-// 伪代码
-const messages = [...sessionData.messages.values()];
-let lastTokens = messages[messages.length - 1]?.tokens;
-if (lastTokens && lastTokens.total === 0 && messages.length > 1) {
-  // 回退到前一条有值的 message
-  for (let i = messages.length - 2; i >= 0; i--) {
-    if (messages[i].tokens.total > 0) {
-      lastTokens = messages[i].tokens;
-      break;
+function sumAllCompletedTokens(sessionData: SessionTokenData): TokenBreakdown {
+  let input = 0, output = 0, reasoning = 0, cacheRead = 0, cacheWrite = 0;
+  for (const td of sessionData.messages.values()) {
+    const t = td.tokens;
+    if (t.input + t.output + t.cacheRead + t.cacheWrite > 0) {
+      input += t.input;
+      output += t.output;
+      reasoning += t.reasoning;
+      cacheRead += t.cacheRead;
+      cacheWrite += t.cacheWrite;
     }
   }
+  return { input, output, reasoning, cacheRead, cacheWrite };
 }
 ```
 
-或者更根本的方案：通过 `ctx.client.session.messages()` SDK API 直接查询 session 的历史消息获取准确的累计 token。
+#### 2. `fillTokenData` 中的策略
 
-## 理想方案
+| 字段 | 策略 | 可靠性 |
+|------|------|--------|
+| `sessionTokens` | 取最后一条非零 message（`aggregateSessionTokens`，fallback） | 流式中间可能为 0（OpenCode 限制） |
+| `totalTokens` | 使用 `sumAllCompletedTokens` 累加所有已完成消息 | 始终可靠 |
 
-向 OpenCode 提 issue，请求在事件 payload 中增加 session 级聚合 token 字段（如 `session.usage`），使插件无需自行计算。
+#### 3. `aggregateSubSessions` 中的策略
+
+- base 改为 `payload.totalTokens`（已使用累加策略）
+- 子会话贡献也使用 `sumAllCompletedTokens`
+
+### 为什么 sessionTokens 不使用累加
+
+`sessionTokens` 的语义是"当前会话最近一次交互的 token 用量"。累加所有消息会导致语义变化（变成 totalTokens），因此保持"取最后一条非零消息"策略。流式中间为 0 是 OpenCode 的已知限制。
+
+```typescript
+// 修复前：totalTokens = aggregateSessionTokens（取最后一条，中间可能为 0）
+// 修复后：totalTokens = sumAllCompletedTokens（累加所有已完成，始终可靠）
+```
 
 ## 相关代码
 
 | 文件 | 位置 | 说明 |
 |------|------|------|
-| `src/index.ts:35-61` | `aggregateSessionTokens` | 从 tokenDataMap 聚合 token，取最后一条 message |
-| `src/index.ts:242-291` | `fillTokenData` | 将聚合结果填充到 EventPayload |
+| `src/index.ts` | `sumAllCompletedTokens` | 累加 session 中所有 token 非零消息的 token 字段 |
+| `src/index.ts:35-61` | `aggregateSessionTokens` | 从 tokenDataMap 聚合 token，取最后一条非零 message（sessionTokens 用） |
+| `src/index.ts:242-291` | `fillTokenData` | 将聚合结果填充到 EventPayload，totalTokens 使用 sumAllCompletedTokens |
+| `src/index.ts:361-410` | `aggregateSubSessions` | 汇总子会话 token，base 改为 totalTokens，子会话贡献也用 sumAllCompletedTokens |
 | `src/index.ts:564-611` | `message.updated` 处理 | token 数据写入 tokenDataMap 的唯一入口 |
 | `src/index.ts:132-148` | `question.asked` 处理 | 调用 fillTokenData 读取 token |
 | `src/types.ts:270-279` | `SessionTokenData` | session 级 token 数据结构 |

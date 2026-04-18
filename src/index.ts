@@ -33,8 +33,9 @@ function resolveSessionType(sessionInfo?: Session): SessionType {
  * Total excludes reasoning (matches OpenCode UI formula).
  */
 function aggregateSessionTokens(sessionData: SessionTokenData): { cost: number; tokens: TokenBreakdown } {
+  const ZERO_TOKENS: TokenBreakdown = { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
   if (sessionData.messages.size === 0) {
-    return { cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+    return { cost: 0, tokens: { ...ZERO_TOKENS } };
   }
 
   // Cost accumulates across all messages
@@ -43,21 +44,65 @@ function aggregateSessionTokens(sessionData: SessionTokenData): { cost: number; 
     cost += td.cost;
   }
 
-  // Token fields use the last message (Map preserves insertion order)
-  let lastTokens: TokenBreakdown | undefined;
-  for (const td of sessionData.messages.values()) {
-    lastTokens = td.tokens;
+  // Token fields use the last message with non-zero total (Map preserves insertion order).
+  // During streaming, a newly created assistant message may have token=0.
+  // Fall back to the most recent completed message to avoid showing 0.
+  const entries = [...sessionData.messages.values()];
+  let bestTokens: TokenBreakdown | undefined;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const t = entries[i].tokens;
+    if (t.input + t.output + t.cacheRead + t.cacheWrite > 0) {
+      bestTokens = t;
+      break;
+    }
+  }
+  if (!bestTokens) {
+    // All messages have zero tokens (e.g. session just started)
+    bestTokens = entries[entries.length - 1].tokens;
   }
 
-  const input = lastTokens!.input;
-  const output = lastTokens!.output;
-  const reasoning = lastTokens!.reasoning;
-  const cacheRead = lastTokens!.cacheRead;
-  const cacheWrite = lastTokens!.cacheWrite;
+  const input = bestTokens.input;
+  const output = bestTokens.output;
+  const reasoning = bestTokens.reasoning;
+  const cacheRead = bestTokens.cacheRead;
+  const cacheWrite = bestTokens.cacheWrite;
   // total excludes reasoning (matches OpenCode UI formula)
   const total = input + output + cacheRead + cacheWrite;
 
   return { cost, tokens: { input, output, reasoning, cacheRead, cacheWrite, total } };
+}
+
+/**
+ * Sum token fields from ALL completed messages (total > 0) in a session.
+ * Used for totalTokens to ensure it reflects accumulated work,
+ * not affected by streaming intermediate states (token=0).
+ */
+function sumAllCompletedTokens(sessionData: SessionTokenData): TokenBreakdown {
+  const ZERO_TOKENS: TokenBreakdown = { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+  if (sessionData.messages.size === 0) {
+    return { ...ZERO_TOKENS };
+  }
+
+  let input = 0;
+  let output = 0;
+  let reasoning = 0;
+  let cacheRead = 0;
+  let cacheWrite = 0;
+
+  for (const td of sessionData.messages.values()) {
+    const t = td.tokens;
+    // Only accumulate messages with non-zero usage (skip streaming intermediates)
+    if (t.input + t.output + t.cacheRead + t.cacheWrite > 0) {
+      input += t.input;
+      output += t.output;
+      reasoning += t.reasoning;
+      cacheRead += t.cacheRead;
+      cacheWrite += t.cacheWrite;
+    }
+  }
+
+  // total excludes reasoning (matches OpenCode UI formula)
+  return { input, output, reasoning, cacheRead, cacheWrite, total: input + output + cacheRead + cacheWrite };
 }
 
 /**
@@ -277,9 +322,10 @@ function fillTokenData(
   payload.providerID = sessionData.lastProviderID;
   payload.mode = sessionData.lastMode;
 
-  // Initially total = session only (sub-sessions added later by aggregateSubSessions)
+  // Total tokens use cumulative sum of all completed messages (reliable during streaming)
+  // sub-sessions added later by aggregateSubSessions
   payload.totalCost = sessionAgg.cost;
-  payload.totalTokens = { ...sessionAgg.tokens };
+  payload.totalTokens = sumAllCompletedTokens(sessionData);
 
   // Cost formatting
   if (resolveCostConfigFn && formatCostFn) {
@@ -371,25 +417,26 @@ function aggregateSubSessions(
   if (payload.sessionCost === undefined) return;
 
   let totalCost = payload.sessionCost;
-  const st = payload.sessionTokens!;
-  let totalInput = st.input;
-  let totalOutput = st.output;
-  let totalReasoning = st.reasoning;
-  let totalCacheRead = st.cacheRead;
-  let totalCacheWrite = st.cacheWrite;
+  const tt = payload.totalTokens!;
+  let totalInput = tt.input;
+  let totalOutput = tt.output;
+  let totalReasoning = tt.reasoning;
+  let totalCacheRead = tt.cacheRead;
+  let totalCacheWrite = tt.cacheWrite;
 
   // Collect ALL descendants (direct children + grandchildren + deeper)
   const descendantIds = collectDescendantSessionIds(sessionId, sessionMap);
   for (const descendantId of descendantIds) {
     const sData = tokenDataMap.get(descendantId);
     if (!sData) continue;
-    const agg = aggregateSessionTokens(sData);
-    totalCost += agg.cost;
-    totalInput += agg.tokens.input;
-    totalOutput += agg.tokens.output;
-    totalReasoning += agg.tokens.reasoning;
-    totalCacheRead += agg.tokens.cacheRead;
-    totalCacheWrite += agg.tokens.cacheWrite;
+    const subCost = [...sData.messages.values()].reduce((sum, td) => sum + td.cost, 0);
+    const subTokens = sumAllCompletedTokens(sData);
+    totalCost += subCost;
+    totalInput += subTokens.input;
+    totalOutput += subTokens.output;
+    totalReasoning += subTokens.reasoning;
+    totalCacheRead += subTokens.cacheRead;
+    totalCacheWrite += subTokens.cacheWrite;
   }
 
   payload.totalCost = totalCost;

@@ -139,7 +139,7 @@ npx @ulthon/ul-opencode-event test --no-send     # Verify connection only
 
 | Document | Description |
 |----------|-------------|
-| [Token Zero on Mid-Event](docs/issues/token-zero-on-mid-event.md) | question/status events show Token(0/...) |
+| [Token Zero on Mid-Event](docs/issues/token-zero-on-mid-event.md) | question/status events show Token(0/...) (fixed in v0.1.45) |
 
 ## Troubleshooting
 

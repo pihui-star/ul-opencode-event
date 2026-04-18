@@ -3811,7 +3811,7 @@ describe('NotificationPlugin', () => {
       expect(payload.sessionCost).toBe(0);
     });
 
-    test('sub-session aggregation: totalTokens = sum of each session\'s last-message total', async () => {
+    test('sub-session aggregation: totalTokens = sum of all completed messages across sessions', async () => {
       configMock = {
         channels: [createMockChannel({ name: 'SubAgg LastMsg Test' })],
         includeSessionTypes: ['main', 'subagent'],
@@ -3844,7 +3844,7 @@ describe('NotificationPlugin', () => {
       await hooks.event!({ event: createMockEvent('session.created', { info: subSession }) as any });
       getTestHelpers().payloads.length = 0;
 
-      // Main session: 2 messages, last should be used for tokens
+      // Main session: 2 messages
       await hooks.event!({
         event: createSemMsg({
           id: 'subagg-main-msg-1',
@@ -3862,7 +3862,7 @@ describe('NotificationPlugin', () => {
         }) as any,
       });
 
-      // Sub session: 2 messages, last should be used for tokens
+      // Sub session: 2 messages
       await hooks.event!({
         event: createSemMsg({
           id: 'subagg-sub-msg-1',
@@ -3888,12 +3888,162 @@ describe('NotificationPlugin', () => {
       const idlePayload = payloads.find(p => p.eventType === 'idle' && p.sessionId === 'subagg-main-1');
       expect(idlePayload).toBeDefined();
 
-      // Main session last-msg total: 200 + 20 + 100 + 10 = 330 (excludes reasoning)
-      const mainLastMsgTotal = 200 + 20 + 100 + 10; // 330
-      // Sub session last-msg total: 400 + 40 + 200 + 20 = 660 (excludes reasoning)
-      const subLastMsgTotal = 400 + 40 + 200 + 20; // 660
-      // totalTokens.total = main last-msg total + sub last-msg total
-      expect(idlePayload!.totalTokens!.total).toBe(mainLastMsgTotal + subLastMsgTotal); // 990
+      // New strategy: totalTokens base = main sumAllCompletedTokens, plus sub sumAllCompletedTokens
+      // Main session sum of all completed: (100+10+50+5) + (200+20+100+10) = 165 + 330 = 495
+      // Sub session sum of all completed: (300+30+150+15) + (400+40+200+20) = 495 + 660 = 1155
+      // totalTokens.total = 495 + 1155 = 1650
+      expect(idlePayload!.totalTokens!.total).toBe(1650);
+    });
+
+    test('streaming intermediate: totalTokens accumulates all completed messages', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Total Token Streaming Test' })],
+      };
+      const ctx = createSemCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'stream-sess-1',
+        projectID: 'test',
+        directory: '/test',
+        title: 'Stream Test',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+
+      // msg1: completed message with non-zero tokens
+      await hooks.event!({ event: createSemMsg({
+        id: 'stream-msg-1', sessionID: 'stream-sess-1', cost: 0.01,
+        tokens: { input: 10000, output: 500, reasoning: 100, cacheRead: 50000, cacheWrite: 0 },
+      }) as any });
+
+      // msg2: streaming intermediate with zero tokens
+      await hooks.event!({ event: createSemMsg({
+        id: 'stream-msg-2', sessionID: 'stream-sess-1', cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }) as any });
+
+      getTestHelpers().payloads.length = 0;
+
+      // Trigger question event (mid-stream)
+      const questionEvent = {
+        type: 'question.asked',
+        properties: {
+          id: 'q-1',
+          sessionID: 'stream-sess-1',
+          questions: [{ text: 'Continue?', options: [{ label: 'Yes' }, { label: 'No' }] }],
+        },
+      };
+      await hooks.event!({ event: questionEvent as any });
+
+      const payloads = getTestHelpers().payloads;
+      const qPayload = payloads.find(p => p.eventType === 'question');
+      expect(qPayload).toBeDefined();
+
+      // sessionTokens uses last non-zero message (fallback), can be non-zero
+      // totalTokens accumulates ALL completed messages
+      expect(qPayload!.totalTokens!.total).toBeGreaterThan(0);
+      // Should be the msg1 total: 10000 + 500 + 50000 + 0 = 60500
+      expect(qPayload!.totalTokens!.total).toBe(60500);
+    });
+
+    test('multiple completed messages: totalTokens reflects last-msg tokens (no sub-sessions)', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Multi Completed Test' })],
+      };
+      const ctx = createSemCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'multi-comp-sess-1',
+        projectID: 'test',
+        directory: '/test',
+        title: 'Multi Completed',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      getTestHelpers().payloads.length = 0;
+
+      // msg1: input=100, output=10, cacheRead=50, cacheWrite=5 => total=165
+      await hooks.event!({ event: createSemMsg({
+        id: 'mc-msg-1', sessionID: 'multi-comp-sess-1', cost: 0.01,
+        tokens: { input: 100, output: 10, cacheRead: 50, cacheWrite: 5 },
+      }) as any });
+
+      // msg2: input=200, output=20, cacheRead=100, cacheWrite=10 => total=330
+      await hooks.event!({ event: createSemMsg({
+        id: 'mc-msg-2', sessionID: 'multi-comp-sess-1', cost: 0.02,
+        tokens: { input: 200, output: 20, cacheRead: 100, cacheWrite: 10 },
+      }) as any });
+
+      // msg3: input=300, output=30, cacheRead=150, cacheWrite=15 => total=495
+      await hooks.event!({ event: createSemMsg({
+        id: 'mc-msg-3', sessionID: 'multi-comp-sess-1', cost: 0.03,
+        tokens: { input: 300, output: 30, cacheRead: 150, cacheWrite: 15 },
+      }) as any });
+
+      // Trigger idle
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'multi-comp-sess-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      const payloads = getTestHelpers().payloads;
+      const idlePayload = payloads.find(p => p.eventType === 'idle' && p.sessionId === 'multi-comp-sess-1');
+      expect(idlePayload).toBeDefined();
+
+      // totalTokens = sum of all completed messages (no sub-sessions)
+      expect(idlePayload!.totalTokens!.total).toBe(165 + 330 + 495); // 990
+      expect(idlePayload!.totalTokens!.input).toBe(100 + 200 + 300); // 600
+      expect(idlePayload!.totalTokens!.output).toBe(10 + 20 + 30); // 60
+      expect(idlePayload!.totalTokens!.cacheRead).toBe(50 + 100 + 150); // 300
+      expect(idlePayload!.totalTokens!.cacheWrite).toBe(5 + 10 + 15); // 30
+    });
+
+    test('all messages with zero tokens: totalTokens is 0', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Zero Tokens Test' })],
+      };
+      const ctx = createSemCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'zero-tok-sess-1',
+        projectID: 'test',
+        directory: '/test',
+        title: 'Zero Tokens',
+        version: '1.0',
+        time: { created: Date.now(), updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      getTestHelpers().payloads.length = 0;
+
+      // msg1: all zero tokens
+      await hooks.event!({ event: createSemMsg({
+        id: 'zero-msg-1', sessionID: 'zero-tok-sess-1', cost: 0,
+        tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      }) as any });
+
+      // msg2: all zero tokens
+      await hooks.event!({ event: createSemMsg({
+        id: 'zero-msg-2', sessionID: 'zero-tok-sess-1', cost: 0,
+        tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      }) as any });
+
+      // Trigger idle
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'zero-tok-sess-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      const payloads = getTestHelpers().payloads;
+      const idlePayload = payloads.find(p => p.eventType === 'idle' && p.sessionId === 'zero-tok-sess-1');
+      expect(idlePayload).toBeDefined();
+
+      // All messages have zero tokens => totalTokens should be 0
+      expect(idlePayload!.totalTokens!.total).toBe(0);
+      expect(idlePayload!.totalTokens!.input).toBe(0);
+      expect(idlePayload!.totalTokens!.output).toBe(0);
+      expect(idlePayload!.totalTokens!.cacheRead).toBe(0);
+      expect(idlePayload!.totalTokens!.cacheWrite).toBe(0);
     });
   });
 });

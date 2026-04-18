@@ -132,15 +132,17 @@ TokenData {
 
 ### 3.3 聚合
 
-`aggregateSessionTokens`（`index.ts:35-61`）：
+Token 聚合采用**双策略**方案（v0.1.45 修复）：
 
-| 字段 | 策略 |
-|------|------|
-| `cost` | 累加所有 message 的 cost |
-| `tokens` (input/output/reasoning/cacheRead/cacheWrite) | 取**最后一条** message 的 token 值 |
-| `total` | input + output + cacheRead + cacheWrite（不含 reasoning） |
+| 字段 | 聚合策略 | 说明 |
+|------|---------|------|
+| `cost` | 累加所有 message 的 cost | 始终可靠 |
+| `sessionTokens` (input/output/reasoning/cacheRead/cacheWrite) | 取**最后一条非零** message 的 token 值（`aggregateSessionTokens`） | 流式中间可能为 0（OpenCode 限制） |
+| `totalTokens` | **累加所有 token 非零 message** 的 token 值（`sumAllCompletedTokens`） | 始终可靠 |
+| `total` (sessionTokens) | input + output + cacheRead + cacheWrite | 基于 sessionTokens 计算 |
+| `total` (totalTokens) | input + output + cacheRead + cacheWrite | 基于 sumAllCompletedTokens 计算 |
 
-> **注意**："取最后一条"策略是为 `session.idle` 设计的。在流式传输过程中，最后一条 message 的 token 可能为 0。详见 [已知问题：中间事件 Token 为 0](../issues/token-zero-on-mid-event.md)。
+> **注意**：`sessionTokens` 取最后一条非零 message，在流式传输过程中新创建的 message token 为 0 时会 fallback 到前一条有值 message。`totalTokens` 使用累加策略，始终反映已完成工作的累计值。详见 [已知问题：中间事件 Token 为 0](../issues/token-zero-on-mid-event.md)。
 
 ### 3.4 填充
 
@@ -154,9 +156,10 @@ fillTokenData(payload, tokenDataMap, ...)
     ├── sessionData 不存在 → 写入全零 + 格式化
     └── sessionData 存在
          |
-         ├── aggregateSessionTokens(sessionData) → session 级聚合
-         ├── payload.sessionTokens = 聚合结果
-         ├── payload.totalTokens = 聚合结果（初始等于 session 级）
+         ├── aggregateSessionTokens(sessionData) → session 级聚合（取最后一条非零）
+         ├── sumAllCompletedTokens(sessionData) → totalTokens 聚合（累加所有已完成）
+         ├── payload.sessionTokens = aggregateSessionTokens 结果
+         ├── payload.totalTokens = sumAllCompletedTokens 结果
          ├── payload.modelID/providerID/mode = lastModelID 等
          └── 格式化 costFormatted / totalCostFormatted
 ```
@@ -172,8 +175,10 @@ aggregateSubSessions(payload, tokenDataMap, sessionMap, ...)
          |
          └── 递归收集所有子孙 session ID
               |
-              └── 累加每个子孙 session 的 token 到 payload.totalTokens
+              └── 对每个子孙 session 使用 sumAllCompletedTokens 累加到 payload.totalTokens
 ```
+
+> **注意**：子会话聚合的 base 是 `payload.totalTokens`（已使用累加策略），子会话贡献也使用 `sumAllCompletedTokens`，确保 totalTokens 始终可靠。
 
 ---
 
