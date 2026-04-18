@@ -1,58 +1,58 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\fix-token-display.md",
-  "started_at": "2026-04-18T11:46:57.164Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\event-variable-recorder.md",
+  "started_at": "2026-04-18T12:41:36.839Z",
   "session_ids": [
-    "ses_264622af3ffeywFhsvQj4XPiyT",
-    "ses_25f78c02fffeu4x1RFSqGLLRm8",
-    "ses_25f7892a8ffeR2ys9B2qNqU827",
-    "ses_25f786b7dffefSP3Did0C5KOWO",
-    "ses_25f7841a0ffeduMHsePiW3ZTZA"
+    "ses_25f70594dffeV8APoQUGts78fL",
+    "ses_25f48a531ffewu8KGffli6TCPU",
+    "ses_25f488849ffensw2fyva5l5UGA",
+    "ses_25f4864b0ffe9QdfICS7TfuypZ",
+    "ses_25f48304dffeQ6JA8rFXtQL7i2"
   ],
   "session_origins": {
-    "ses_264622af3ffeywFhsvQj4XPiyT": "direct",
-    "ses_25f78c02fffeu4x1RFSqGLLRm8": "appended",
-    "ses_25f7892a8ffeR2ys9B2qNqU827": "appended",
-    "ses_25f786b7dffefSP3Did0C5KOWO": "appended",
-    "ses_25f7841a0ffeduMHsePiW3ZTZA": "appended"
+    "ses_25f70594dffeV8APoQUGts78fL": "direct",
+    "ses_25f48a531ffewu8KGffli6TCPU": "appended",
+    "ses_25f488849ffensw2fyva5l5UGA": "appended",
+    "ses_25f4864b0ffe9QdfICS7TfuypZ": "appended",
+    "ses_25f48304dffeQ6JA8rFXtQL7i2": "appended"
   },
-  "plan_name": "fix-token-display",
+  "plan_name": "event-variable-recorder",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "新增失败测试用例（RED 阶段）",
-      "session_id": "ses_25f938619ffe2wMN5QpQpL3429",
+      "task_title": "创建 `src/recorder.ts` 模块",
+      "session_id": "ses_25f61d0bdffebXl5CUMztdhfeS",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-18T11:57:33.257Z"
+      "category": "quick",
+      "updated_at": "2026-04-18T12:46:15.187Z"
     },
     "todo:2": {
       "task_key": "todo:2",
       "task_label": "2",
-      "task_title": "修改聚合逻辑（GREEN 阶段 - 核心修复）",
-      "session_id": "ses_25f89fa38ffe3YIlP36MSpqFFR",
+      "task_title": "重构 handler.ts 提取 variables 构建 + 集成 recorder",
+      "session_id": "ses_25f5d60daffeNCTbFyfHRDJnOc",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-18T12:03:37.064Z"
+      "category": "quick",
+      "updated_at": "2026-04-18T12:52:35.213Z"
     },
     "todo:3": {
       "task_key": "todo:3",
       "task_label": "3",
-      "task_title": "更新现有测试期望值和 mock 数据（GREEN 继续）",
-      "session_id": "ses_25f84316fffeDdKddZB0BrTKsZ",
+      "task_title": "添加 recorder 测试文件",
+      "session_id": "ses_25f51cc37ffeEB57Qlr1LR8woJ",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-18T12:14:47.180Z"
+      "category": "quick",
+      "updated_at": "2026-04-18T13:09:39.788Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_25f7841a0ffeduMHsePiW3ZTZA",
+      "session_id": "ses_25f48304dffeQ6JA8rFXtQL7i2",
       "agent": "Sisyphus-Junior",
       "category": "deep",
-      "updated_at": "2026-04-18T12:22:00.594Z"
+      "updated_at": "2026-04-18T13:14:00.425Z"
     }
   }
 }
