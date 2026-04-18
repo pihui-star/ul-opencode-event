@@ -1,55 +1,58 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\token-tracking-fix.md",
-  "started_at": "2026-04-16T15:14:01.575Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\fix-token-display.md",
+  "started_at": "2026-04-18T11:46:57.164Z",
   "session_ids": [
-    "ses_26948b8b6ffejnvhxNaV3Gg0bp",
-    "ses_26922ff98ffetPqKMx36GEz6WP",
-    "ses_2691ac4efffeU6ItYIoi2kS4jk",
-    "ses_2691098cdffekIaKfq35K4WRB2",
-    "ses_2690c6ffaffe15IantTIZBwb0i",
-    "ses_2690c2973ffea7C7y7By2j0qzt",
-    "ses_2690be1ceffeL1SY9oRqrOcnu7",
-    "ses_2690b8e10ffe84db2cfZaFZBqC",
-    "ses_264fe487dffemghW0xgqsQPxR7"
+    "ses_264622af3ffeywFhsvQj4XPiyT",
+    "ses_25f78c02fffeu4x1RFSqGLLRm8",
+    "ses_25f7892a8ffeR2ys9B2qNqU827",
+    "ses_25f786b7dffefSP3Did0C5KOWO",
+    "ses_25f7841a0ffeduMHsePiW3ZTZA"
   ],
-  "plan_name": "token-tracking-fix",
+  "session_origins": {
+    "ses_264622af3ffeywFhsvQj4XPiyT": "direct",
+    "ses_25f78c02fffeu4x1RFSqGLLRm8": "appended",
+    "ses_25f7892a8ffeR2ys9B2qNqU827": "appended",
+    "ses_25f786b7dffefSP3Did0C5KOWO": "appended",
+    "ses_25f7841a0ffeduMHsePiW3ZTZA": "appended"
+  },
+  "plan_name": "fix-token-display",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "编写失败测试用例 - 多 idle 场景 token 单调递增",
-      "session_id": "ses_26922ff98ffetPqKMx36GEz6WP",
+      "task_title": "新增失败测试用例（RED 阶段）",
+      "session_id": "ses_25f938619ffe2wMN5QpQpL3429",
       "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-16T15:22:24.377Z"
+      "category": "deep",
+      "updated_at": "2026-04-18T11:57:33.257Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "修改聚合逻辑（GREEN 阶段 - 核心修复）",
+      "session_id": "ses_25f89fa38ffe3YIlP36MSpqFFR",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-18T12:03:37.064Z"
     },
     "todo:3": {
       "task_key": "todo:3",
       "task_label": "3",
-      "task_title": "修复子会话聚合 + 嵌套递归",
-      "session_id": "ses_2691ac4efffeU6ItYIoi2kS4jk",
+      "task_title": "更新现有测试期望值和 mock 数据（GREEN 继续）",
+      "session_id": "ses_25f84316fffeDdKddZB0BrTKsZ",
       "agent": "Sisyphus-Junior",
       "category": "deep",
-      "updated_at": "2026-04-16T15:33:21.374Z"
-    },
-    "todo:4": {
-      "task_key": "todo:4",
-      "task_label": "4",
-      "task_title": "Number()||0 安全模式 + sessionMap 清理策略",
-      "session_id": "ses_2691098cdffekIaKfq35K4WRB2",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-16T15:38:54.230Z"
+      "updated_at": "2026-04-18T12:14:47.180Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
-      "task_title": "**Plan Compliance Audit** -- `oracle`",
-      "session_id": "ses_2648239f4ffeEDbfVL7ANPP50H",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_25f7841a0ffeduMHsePiW3ZTZA",
       "agent": "Sisyphus-Junior",
       "category": "deep",
-      "updated_at": "2026-04-17T13:12:01.273Z"
+      "updated_at": "2026-04-18T12:22:00.594Z"
     }
   }
 }

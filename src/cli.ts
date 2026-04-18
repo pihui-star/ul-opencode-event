@@ -23,9 +23,9 @@ const LOOKUP_TIMEOUT_MS = 1200;
 /** Mock token data for CLI test messages */
 const MOCK_TOKEN_DATA = {
   sessionCost: 0.05,
-  sessionTokens: { input: 15000, output: 2500, reasoning: 800, cacheRead: 12000, cacheWrite: 3000, total: 20500 },
+  sessionTokens: { input: 15000, output: 2500, reasoning: 800, cacheRead: 12000, cacheWrite: 3000, total: 32500 },
   totalCost: 0.05,
-  totalTokens: { input: 15000, output: 2500, reasoning: 800, cacheRead: 12000, cacheWrite: 3000, total: 20500 },
+  totalTokens: { input: 15000, output: 2500, reasoning: 800, cacheRead: 12000, cacheWrite: 3000, total: 32500 },
   modelID: 'test-model',
   providerID: 'test-provider',
   mode: 'build',

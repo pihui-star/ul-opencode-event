@@ -28,36 +28,36 @@ function resolveSessionType(sessionInfo?: Session): SessionType {
 
 /**
  * Aggregate token data for a session from its SessionTokenData.
- * Sums cost and all token fields across messages (each message.id counted once).
+ * Cost is summed across all messages; token fields use the last message
+ * (matches OpenCode UI behavior where TrackUsage uses = not +=).
+ * Total excludes reasoning (matches OpenCode UI formula).
  */
 function aggregateSessionTokens(sessionData: SessionTokenData): { cost: number; tokens: TokenBreakdown } {
-  let cost = 0;
-  let input = 0;
-  let output = 0;
-  let reasoning = 0;
-  let cacheRead = 0;
-  let cacheWrite = 0;
-
-  for (const td of sessionData.messages.values()) {
-    cost += td.cost;
-    input += td.tokens.input;
-    output += td.tokens.output;
-    reasoning += td.tokens.reasoning;
-    cacheRead += td.tokens.cacheRead;
-    cacheWrite += td.tokens.cacheWrite;
+  if (sessionData.messages.size === 0) {
+    return { cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
   }
 
-  return {
-    cost,
-    tokens: {
-      input,
-      output,
-      reasoning,
-      cacheRead,
-      cacheWrite,
-      total: input + output + reasoning + cacheRead + cacheWrite,
-    },
-  };
+  // Cost accumulates across all messages
+  let cost = 0;
+  for (const td of sessionData.messages.values()) {
+    cost += td.cost;
+  }
+
+  // Token fields use the last message (Map preserves insertion order)
+  let lastTokens: TokenBreakdown | undefined;
+  for (const td of sessionData.messages.values()) {
+    lastTokens = td.tokens;
+  }
+
+  const input = lastTokens!.input;
+  const output = lastTokens!.output;
+  const reasoning = lastTokens!.reasoning;
+  const cacheRead = lastTokens!.cacheRead;
+  const cacheWrite = lastTokens!.cacheWrite;
+  // total excludes reasoning (matches OpenCode UI formula)
+  const total = input + output + cacheRead + cacheWrite;
+
+  return { cost, tokens: { input, output, reasoning, cacheRead, cacheWrite, total } };
 }
 
 /**
@@ -252,7 +252,22 @@ function fillTokenData(
 
   const sessionId = payload.sessionId;
   const sessionData = tokenDataMap.get(sessionId);
-  if (!sessionData || sessionData.messages.size === 0) return;
+
+  // Empty session (no message.updated events) gets all-zero token data
+  const ZERO_TOKENS: TokenBreakdown = { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+  if (!sessionData) {
+    payload.sessionCost = 0;
+    payload.sessionTokens = { ...ZERO_TOKENS };
+    payload.totalCost = 0;
+    payload.totalTokens = { ...ZERO_TOKENS };
+    if (resolveCostConfigFn && formatCostFn) {
+      const resolved = resolveCostConfigFn(configLanguage, configCost);
+      payload.costFormatted = formatCostFn(0, resolved.currency, resolved.decimalPlaces, resolved.exchangeRate);
+      payload.totalCostFormatted = payload.costFormatted;
+      payload.currency = resolved.currency;
+    }
+    return;
+  }
 
   // Session-level aggregation
   const sessionAgg = aggregateSessionTokens(sessionData);
@@ -384,7 +399,7 @@ function aggregateSubSessions(
     reasoning: totalReasoning,
     cacheRead: totalCacheRead,
     cacheWrite: totalCacheWrite,
-    total: totalInput + totalOutput + totalReasoning + totalCacheRead + totalCacheWrite,
+    total: totalInput + totalOutput + totalCacheRead + totalCacheWrite,
   };
 
   // Re-format totalCostFormatted with the aggregated total
@@ -578,7 +593,7 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
                 reasoning: tkReasoning,
                 cacheRead: tkCacheRead,
                 cacheWrite: tkCacheWrite,
-                total: tkInput + tkOutput + tkReasoning + tkCacheRead + tkCacheWrite,
+                total: tkInput + tkOutput + tkCacheRead + tkCacheWrite,
               },
               modelID: (msgInfo.modelID as string) ?? '',
               providerID: (msgInfo.providerID as string) ?? '',

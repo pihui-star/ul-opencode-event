@@ -2648,8 +2648,8 @@ describe('NotificationPlugin', () => {
       expect(getTestHelpers().payloads.length).toBe(1);
       // Should have 0.07 (0.03 + 0.04)
       expect(getTestHelpers().payloads[0].sessionCost).toBeCloseTo(0.07, 10);
-      expect(getTestHelpers().payloads[0].sessionTokens!.input).toBe(110);
-      expect(getTestHelpers().payloads[0].sessionTokens!.output).toBe(220);
+      expect(getTestHelpers().payloads[0].sessionTokens!.input).toBe(60);
+      expect(getTestHelpers().payloads[0].sessionTokens!.output).toBe(120);
     });
 
     test('UserMessage is silently skipped (role !== assistant)', async () => {
@@ -2831,11 +2831,13 @@ describe('NotificationPlugin', () => {
 
       expect(getTestHelpers().payloads.length).toBe(1);
       const payload = getTestHelpers().payloads[0];
-      expect(payload.sessionCost).toBeUndefined();
-      expect(payload.totalCost).toBeUndefined();
-      expect(payload.sessionTokens).toBeUndefined();
+      // No messages - fillTokenData fills all-zero token data
+      expect(payload.sessionCost).toBe(0);
+      expect(payload.totalCost).toBe(0);
+      expect(payload.sessionTokens).toBeDefined();
+      expect(payload.sessionTokens!.total).toBe(0);
       expect(payload.modelID).toBeUndefined();
-      expect(payload.costFormatted).toBeUndefined();
+      expect(payload.costFormatted).toBeDefined();
     });
 
     test('costFormatted and totalCostFormatted are correctly formatted', async () => {
@@ -3038,7 +3040,7 @@ describe('NotificationPlugin', () => {
             id: `msg-${i}`,
             sessionID: 'session-token-test',
             cost: 0.05,
-            tokens: { input: 3000, output: 500, reasoning: 200, cacheRead: 1000, cacheWrite: 300 },
+            tokens: { input: 6000, output: 1200, reasoning: 600, cacheRead: 2500, cacheWrite: 600 },
           }) as any,
         });
       }
@@ -3518,6 +3520,380 @@ describe('NotificationPlugin', () => {
       expect(payload.sessionTokens!.reasoning).toBe(300);
       expect(payload.sessionTokens!.cacheRead).toBe(100);
       expect(payload.sessionTokens!.cacheWrite).toBe(50);
+    });
+  });
+
+  // ============================================================
+  // aggregateSessionTokens: last-message semantics
+  // ============================================================
+  describe('aggregateSessionTokens: last-message semantics', () => {
+    // Helper: create a mock assistant message.updated event
+    function createSemMsg(overrides: {
+      id: string;
+      sessionID: string;
+      cost?: number;
+      tokens?: { input?: number; output?: number; reasoning?: number; cacheRead?: number; cacheWrite?: number };
+      modelID?: string;
+      providerID?: string;
+      mode?: string;
+    }) {
+      return createMockEvent('message.updated', {
+        info: {
+          id: overrides.id,
+          sessionID: overrides.sessionID,
+          role: 'assistant',
+          time: { created: Date.now() },
+          cost: overrides.cost ?? 0,
+          tokens: {
+            input: overrides.tokens?.input ?? 0,
+            output: overrides.tokens?.output ?? 0,
+            reasoning: overrides.tokens?.reasoning ?? 0,
+            cache: {
+              read: overrides.tokens?.cacheRead ?? 0,
+              write: overrides.tokens?.cacheWrite ?? 0,
+            },
+          },
+          modelID: overrides.modelID ?? 'test-model',
+          providerID: overrides.providerID ?? 'test-provider',
+          mode: overrides.mode ?? 'test-mode',
+          parentID: '',
+          path: { cwd: '/', root: '/' },
+        },
+      });
+    }
+
+    // Helper: create standard ctx
+    function createSemCtx(overrides: Record<string, unknown> = {}) {
+      return {
+        project: { id: 'test-project', worktree: '/test/path', time: { created: Date.now() } },
+        directory: '/token-project',
+        worktree: '/test/worktree',
+        serverUrl: new URL('http://localhost:3000'),
+        client: {} as any,
+        $: {} as any,
+        ...overrides,
+      };
+    }
+
+    test('3+ messages: sessionTokens.total = last message\'s input + output + cacheRead + cacheWrite', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'LastMsg Semantics Test' })],
+      };
+
+      const ctx = createSemCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'lastmsg-semantics-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Last Message Semantics',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      getTestHelpers().payloads.length = 0;
+
+      // Message 1: input=100, output=10, reasoning=5, cacheRead=500, cacheWrite=50
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'sem-msg-1',
+          sessionID: 'lastmsg-semantics-1',
+          cost: 0.01,
+          tokens: { input: 100, output: 10, reasoning: 5, cacheRead: 500, cacheWrite: 50 },
+        }) as any,
+      });
+
+      // Message 2: input=200, output=20, reasoning=10, cacheRead=600, cacheWrite=60
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'sem-msg-2',
+          sessionID: 'lastmsg-semantics-1',
+          cost: 0.02,
+          tokens: { input: 200, output: 20, reasoning: 10, cacheRead: 600, cacheWrite: 60 },
+        }) as any,
+      });
+
+      // Message 3 (last): input=300, output=30, reasoning=15, cacheRead=700, cacheWrite=70
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'sem-msg-3',
+          sessionID: 'lastmsg-semantics-1',
+          cost: 0.03,
+          tokens: { input: 300, output: 30, reasoning: 15, cacheRead: 700, cacheWrite: 70 },
+        }) as any,
+      });
+
+      // Trigger idle
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'lastmsg-semantics-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(getTestHelpers().payloads.length).toBe(1);
+      const payload = getTestHelpers().payloads[0];
+      // total = last message's input + output + cacheRead + cacheWrite (excludes reasoning)
+      expect(payload.sessionTokens!.total).toBe(300 + 30 + 700 + 70); // 1100
+      expect(payload.sessionTokens!.input).toBe(300);
+      expect(payload.sessionTokens!.output).toBe(30);
+      expect(payload.sessionTokens!.reasoning).toBe(15);
+      expect(payload.sessionTokens!.cacheRead).toBe(700);
+      expect(payload.sessionTokens!.cacheWrite).toBe(70);
+    });
+
+    test('sessionCost = sum of all message costs (unchanged)', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Cost Sum Test' })],
+      };
+
+      const ctx = createSemCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'cost-sum-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Cost Sum Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      getTestHelpers().payloads.length = 0;
+
+      // 3 messages with costs 0.01, 0.02, 0.03
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'cost-msg-1',
+          sessionID: 'cost-sum-1',
+          cost: 0.01,
+          tokens: { input: 100 },
+        }) as any,
+      });
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'cost-msg-2',
+          sessionID: 'cost-sum-1',
+          cost: 0.02,
+          tokens: { input: 200 },
+        }) as any,
+      });
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'cost-msg-3',
+          sessionID: 'cost-sum-1',
+          cost: 0.03,
+          tokens: { input: 300 },
+        }) as any,
+      });
+
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'cost-sum-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(getTestHelpers().payloads.length).toBe(1);
+      // Cost should be sum of all message costs (unchanged behavior)
+      expect(getTestHelpers().payloads[0].sessionCost).toBeCloseTo(0.06, 10);
+    });
+
+    test('reasoning excluded from total but available in breakdown', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Reasoning Exclude Test' })],
+      };
+
+      const ctx = createSemCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'reasoning-exclude-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Reasoning Exclude Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      getTestHelpers().payloads.length = 0;
+
+      // 1 message: input=100, output=50, reasoning=999, cacheRead=200, cacheWrite=10
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'reasoning-msg-1',
+          sessionID: 'reasoning-exclude-1',
+          cost: 0.01,
+          tokens: { input: 100, output: 50, reasoning: 999, cacheRead: 200, cacheWrite: 10 },
+        }) as any,
+      });
+
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'reasoning-exclude-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(getTestHelpers().payloads.length).toBe(1);
+      const payload = getTestHelpers().payloads[0];
+      // total excludes reasoning: 100 + 50 + 200 + 10 = 360
+      expect(payload.sessionTokens!.total).toBe(100 + 50 + 200 + 10); // 360
+      // reasoning still available in breakdown
+      expect(payload.sessionTokens!.reasoning).toBe(999);
+    });
+
+    test('single message: behavior same as current', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Single Msg Test' })],
+      };
+
+      const ctx = createSemCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'single-msg-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Single Message Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      getTestHelpers().payloads.length = 0;
+
+      // 1 message: input=1000, output=500, reasoning=100, cacheRead=2000, cacheWrite=50
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'single-msg-1',
+          sessionID: 'single-msg-1',
+          cost: 0.05,
+          tokens: { input: 1000, output: 500, reasoning: 100, cacheRead: 2000, cacheWrite: 50 },
+        }) as any,
+      });
+
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'single-msg-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(getTestHelpers().payloads.length).toBe(1);
+      const payload = getTestHelpers().payloads[0];
+      // total excludes reasoning: 1000 + 500 + 2000 + 50 = 3550
+      expect(payload.sessionTokens!.total).toBe(1000 + 500 + 2000 + 50); // 3550
+      expect(payload.sessionTokens!.input).toBe(1000);
+      expect(payload.sessionTokens!.output).toBe(500);
+      expect(payload.sessionTokens!.reasoning).toBe(100);
+      expect(payload.sessionTokens!.cacheRead).toBe(2000);
+      expect(payload.sessionTokens!.cacheWrite).toBe(50);
+    });
+
+    test('empty session: all token fields 0', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'Empty Session Test' })],
+      };
+
+      const ctx = createSemCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      const sessionInfo = {
+        id: 'empty-session-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'Empty Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: sessionInfo }) as any });
+      getTestHelpers().payloads.length = 0;
+
+      // No message.updated events - go straight to idle
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'empty-session-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      expect(getTestHelpers().payloads.length).toBe(1);
+      const payload = getTestHelpers().payloads[0];
+      // Empty session should have token fields as 0 (not undefined)
+      expect(payload.sessionTokens).toBeDefined();
+      expect(payload.sessionTokens!.total).toBe(0);
+      expect(payload.sessionTokens!.input).toBe(0);
+      expect(payload.sessionTokens!.output).toBe(0);
+      expect(payload.sessionTokens!.reasoning).toBe(0);
+      expect(payload.sessionTokens!.cacheRead).toBe(0);
+      expect(payload.sessionTokens!.cacheWrite).toBe(0);
+      expect(payload.sessionCost).toBe(0);
+    });
+
+    test('sub-session aggregation: totalTokens = sum of each session\'s last-message total', async () => {
+      configMock = {
+        channels: [createMockChannel({ name: 'SubAgg LastMsg Test' })],
+        includeSessionTypes: ['main', 'subagent'],
+      };
+
+      const ctx = createSemCtx();
+      const hooks = await NotificationPlugin(ctx);
+
+      // Main session
+      const mainSession = {
+        id: 'subagg-main-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'SubAgg Main Session',
+        version: '1.0',
+        time: { created: Date.now() - 120000, updated: Date.now() },
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: mainSession }) as any });
+
+      // Sub session
+      const subSession = {
+        id: 'subagg-sub-1',
+        projectID: 'test-project',
+        directory: '/test/directory',
+        title: 'SubAgg Sub Session',
+        version: '1.0',
+        time: { created: Date.now() - 60000, updated: Date.now() },
+        parentID: 'subagg-main-1',
+      };
+      await hooks.event!({ event: createMockEvent('session.created', { info: subSession }) as any });
+      getTestHelpers().payloads.length = 0;
+
+      // Main session: 2 messages, last should be used for tokens
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'subagg-main-msg-1',
+          sessionID: 'subagg-main-1',
+          cost: 0.01,
+          tokens: { input: 100, output: 10, reasoning: 5, cacheRead: 50, cacheWrite: 5 },
+        }) as any,
+      });
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'subagg-main-msg-2',
+          sessionID: 'subagg-main-1',
+          cost: 0.02,
+          tokens: { input: 200, output: 20, reasoning: 10, cacheRead: 100, cacheWrite: 10 },
+        }) as any,
+      });
+
+      // Sub session: 2 messages, last should be used for tokens
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'subagg-sub-msg-1',
+          sessionID: 'subagg-sub-1',
+          cost: 0.03,
+          tokens: { input: 300, output: 30, reasoning: 15, cacheRead: 150, cacheWrite: 15 },
+        }) as any,
+      });
+      await hooks.event!({
+        event: createSemMsg({
+          id: 'subagg-sub-msg-2',
+          sessionID: 'subagg-sub-1',
+          cost: 0.04,
+          tokens: { input: 400, output: 40, reasoning: 20, cacheRead: 200, cacheWrite: 20 },
+        }) as any,
+      });
+
+      // Trigger main session idle
+      const idleEvent = createMockEvent('session.idle', { sessionID: 'subagg-main-1' });
+      await hooks.event!({ event: idleEvent as any });
+
+      const payloads = getTestHelpers().payloads;
+      const idlePayload = payloads.find(p => p.eventType === 'idle' && p.sessionId === 'subagg-main-1');
+      expect(idlePayload).toBeDefined();
+
+      // Main session last-msg total: 200 + 20 + 100 + 10 = 330 (excludes reasoning)
+      const mainLastMsgTotal = 200 + 20 + 100 + 10; // 330
+      // Sub session last-msg total: 400 + 40 + 200 + 20 = 660 (excludes reasoning)
+      const subLastMsgTotal = 400 + 40 + 200 + 20; // 660
+      // totalTokens.total = main last-msg total + sub last-msg total
+      expect(idlePayload!.totalTokens!.total).toBe(mainLastMsgTotal + subLastMsgTotal); // 990
     });
   });
 });
