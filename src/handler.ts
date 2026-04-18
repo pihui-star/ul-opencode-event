@@ -10,6 +10,7 @@ import { renderTemplate } from './template.js';
 import { getDefaultTemplates } from './locales.js';
 import { getFormatter } from './formatters.js';
 import { logger } from './logger.js';
+import { recordEventVariables } from './recorder.js';
 
 /**
  * 事件默认开关配置
@@ -114,6 +115,68 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
         }
       }
 
+      // Prepare template variables from payload (channel-independent, built once)
+      const variables = {
+        eventType: payload.eventType,
+        timestamp: payload.timestamp,
+        projectName: payload.projectName,
+        sessionId: payload.sessionId,
+        sessionTitle: payload.sessionTitle,
+        message: payload.message,
+        error: payload.error,
+        duration: payload.duration,
+        // 新增字段
+        title: payload.title,
+        questionText: payload.questionText,
+        options: payload.options,
+        permissionType: payload.permissionType,
+        statusType: payload.statusType,
+        commandName: payload.commandName,
+        arguments: payload.arguments,
+        filePath: payload.filePath,
+        todoSummary: payload.todoSummary,
+        sessionType: payload.sessionType,
+        parentSessionId: payload.parentSessionId,
+        projectPath: payload.projectPath,
+        // 费用与 Token 用量
+        sessionCost: payload.sessionCost != null ? String(payload.sessionCost) : undefined,
+        sessionCostFormatted: payload.costFormatted,
+        sessionTokensInput: payload.sessionTokens?.input != null ? String(payload.sessionTokens.input) : undefined,
+        sessionTokensOutput: payload.sessionTokens?.output != null ? String(payload.sessionTokens.output) : undefined,
+        sessionTokensReasoning: payload.sessionTokens?.reasoning != null ? String(payload.sessionTokens.reasoning) : undefined,
+        sessionTokensCacheRead: payload.sessionTokens?.cacheRead != null ? String(payload.sessionTokens.cacheRead) : undefined,
+        sessionTokensCacheWrite: payload.sessionTokens?.cacheWrite != null ? String(payload.sessionTokens.cacheWrite) : undefined,
+        sessionTokensTotal: payload.sessionTokens?.total != null ? String(payload.sessionTokens.total) : undefined,
+        totalCost: payload.totalCost != null ? String(payload.totalCost) : undefined,
+        totalCostFormatted: payload.totalCostFormatted,
+        totalTokensInput: payload.totalTokens?.input != null ? String(payload.totalTokens.input) : undefined,
+        totalTokensOutput: payload.totalTokens?.output != null ? String(payload.totalTokens.output) : undefined,
+        totalTokensReasoning: payload.totalTokens?.reasoning != null ? String(payload.totalTokens.reasoning) : undefined,
+        totalTokensCacheRead: payload.totalTokens?.cacheRead != null ? String(payload.totalTokens.cacheRead) : undefined,
+        totalTokensCacheWrite: payload.totalTokens?.cacheWrite != null ? String(payload.totalTokens.cacheWrite) : undefined,
+        totalTokensTotal: payload.totalTokens?.total != null ? String(payload.totalTokens.total) : undefined,
+        modelID: payload.modelID,
+        providerID: payload.providerID,
+        mode: payload.mode,
+        currency: payload.currency,
+        // Token 用量（人类可读格式）
+        sessionTokensInputHuman: payload.sessionTokens?.input != null ? formatTokenCount(payload.sessionTokens.input) : undefined,
+        sessionTokensOutputHuman: payload.sessionTokens?.output != null ? formatTokenCount(payload.sessionTokens.output) : undefined,
+        sessionTokensReasoningHuman: payload.sessionTokens?.reasoning != null ? formatTokenCount(payload.sessionTokens.reasoning) : undefined,
+        sessionTokensCacheReadHuman: payload.sessionTokens?.cacheRead != null ? formatTokenCount(payload.sessionTokens.cacheRead) : undefined,
+        sessionTokensCacheWriteHuman: payload.sessionTokens?.cacheWrite != null ? formatTokenCount(payload.sessionTokens.cacheWrite) : undefined,
+        sessionTokensTotalHuman: payload.sessionTokens?.total != null ? formatTokenCount(payload.sessionTokens.total) : undefined,
+        totalTokensInputHuman: payload.totalTokens?.input != null ? formatTokenCount(payload.totalTokens.input) : undefined,
+        totalTokensOutputHuman: payload.totalTokens?.output != null ? formatTokenCount(payload.totalTokens.output) : undefined,
+        totalTokensReasoningHuman: payload.totalTokens?.reasoning != null ? formatTokenCount(payload.totalTokens.reasoning) : undefined,
+        totalTokensCacheReadHuman: payload.totalTokens?.cacheRead != null ? formatTokenCount(payload.totalTokens.cacheRead) : undefined,
+        totalTokensCacheWriteHuman: payload.totalTokens?.cacheWrite != null ? formatTokenCount(payload.totalTokens.cacheWrite) : undefined,
+        totalTokensTotalHuman: payload.totalTokens?.total != null ? formatTokenCount(payload.totalTokens.total) : undefined,
+      };
+
+      // System-level: record all event variables (always on, independent of channels)
+      recordEventVariables(variables);
+
       // Process each channel using cached senders
       for (let i = 0; i < config.channels.length; i++) {
         const channel = config.channels[i];
@@ -128,65 +191,6 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
 
         // Get template (channel-specific or default)
         const template = channel.templates?.[eventType] ?? defaultTemplates[eventType];
-
-        // Prepare template variables from payload
-        const variables = {
-          eventType: payload.eventType,
-          timestamp: payload.timestamp,
-          projectName: payload.projectName,
-          sessionId: payload.sessionId,
-          sessionTitle: payload.sessionTitle,
-          message: payload.message,
-          error: payload.error,
-          duration: payload.duration,
-          // 新增字段
-          title: payload.title,
-          questionText: payload.questionText,
-          options: payload.options,
-          permissionType: payload.permissionType,
-          statusType: payload.statusType,
-          commandName: payload.commandName,
-          arguments: payload.arguments,
-          filePath: payload.filePath,
-          todoSummary: payload.todoSummary,
-          sessionType: payload.sessionType,
-          parentSessionId: payload.parentSessionId,
-          projectPath: payload.projectPath,
-          // 费用与 Token 用量
-          sessionCost: payload.sessionCost != null ? String(payload.sessionCost) : undefined,
-          sessionCostFormatted: payload.costFormatted,
-          sessionTokensInput: payload.sessionTokens?.input != null ? String(payload.sessionTokens.input) : undefined,
-          sessionTokensOutput: payload.sessionTokens?.output != null ? String(payload.sessionTokens.output) : undefined,
-          sessionTokensReasoning: payload.sessionTokens?.reasoning != null ? String(payload.sessionTokens.reasoning) : undefined,
-          sessionTokensCacheRead: payload.sessionTokens?.cacheRead != null ? String(payload.sessionTokens.cacheRead) : undefined,
-          sessionTokensCacheWrite: payload.sessionTokens?.cacheWrite != null ? String(payload.sessionTokens.cacheWrite) : undefined,
-          sessionTokensTotal: payload.sessionTokens?.total != null ? String(payload.sessionTokens.total) : undefined,
-          totalCost: payload.totalCost != null ? String(payload.totalCost) : undefined,
-          totalCostFormatted: payload.totalCostFormatted,
-          totalTokensInput: payload.totalTokens?.input != null ? String(payload.totalTokens.input) : undefined,
-          totalTokensOutput: payload.totalTokens?.output != null ? String(payload.totalTokens.output) : undefined,
-          totalTokensReasoning: payload.totalTokens?.reasoning != null ? String(payload.totalTokens.reasoning) : undefined,
-          totalTokensCacheRead: payload.totalTokens?.cacheRead != null ? String(payload.totalTokens.cacheRead) : undefined,
-          totalTokensCacheWrite: payload.totalTokens?.cacheWrite != null ? String(payload.totalTokens.cacheWrite) : undefined,
-          totalTokensTotal: payload.totalTokens?.total != null ? String(payload.totalTokens.total) : undefined,
-          modelID: payload.modelID,
-          providerID: payload.providerID,
-          mode: payload.mode,
-          currency: payload.currency,
-          // Token 用量（人类可读格式）
-          sessionTokensInputHuman: payload.sessionTokens?.input != null ? formatTokenCount(payload.sessionTokens.input) : undefined,
-          sessionTokensOutputHuman: payload.sessionTokens?.output != null ? formatTokenCount(payload.sessionTokens.output) : undefined,
-          sessionTokensReasoningHuman: payload.sessionTokens?.reasoning != null ? formatTokenCount(payload.sessionTokens.reasoning) : undefined,
-          sessionTokensCacheReadHuman: payload.sessionTokens?.cacheRead != null ? formatTokenCount(payload.sessionTokens.cacheRead) : undefined,
-          sessionTokensCacheWriteHuman: payload.sessionTokens?.cacheWrite != null ? formatTokenCount(payload.sessionTokens.cacheWrite) : undefined,
-          sessionTokensTotalHuman: payload.sessionTokens?.total != null ? formatTokenCount(payload.sessionTokens.total) : undefined,
-          totalTokensInputHuman: payload.totalTokens?.input != null ? formatTokenCount(payload.totalTokens.input) : undefined,
-          totalTokensOutputHuman: payload.totalTokens?.output != null ? formatTokenCount(payload.totalTokens.output) : undefined,
-          totalTokensReasoningHuman: payload.totalTokens?.reasoning != null ? formatTokenCount(payload.totalTokens.reasoning) : undefined,
-          totalTokensCacheReadHuman: payload.totalTokens?.cacheRead != null ? formatTokenCount(payload.totalTokens.cacheRead) : undefined,
-          totalTokensCacheWriteHuman: payload.totalTokens?.cacheWrite != null ? formatTokenCount(payload.totalTokens.cacheWrite) : undefined,
-          totalTokensTotalHuman: payload.totalTokens?.total != null ? formatTokenCount(payload.totalTokens.total) : undefined,
-        };
 
         // Render templates
         const subject = template.subject ? renderTemplate(template.subject, variables) : '';
