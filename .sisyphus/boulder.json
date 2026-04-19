@@ -1,0 +1,23 @@
+{
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\plugin-sdk-upgrade.md",
+  "started_at": "2026-04-19T09:21:22.983Z",
+  "session_ids": [
+    "ses_25b2a4ef7ffeOiexUHaxYo10DI"
+  ],
+  "session_origins": {
+    "ses_25b2a4ef7ffeOiexUHaxYo10DI": "direct"
+  },
+  "plan_name": "plugin-sdk-upgrade",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "升级 @opencode-ai/plugin 依赖到 1.14.17",
+      "session_id": "ses_25af335a6ffehNjPwpowQKYmHF",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-19T09:24:24.690Z"
+    }
+  }
+}
