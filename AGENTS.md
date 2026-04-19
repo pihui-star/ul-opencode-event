@@ -31,6 +31,7 @@ src/
   locales.ts    # i18n 默认模板（zh/en），按事件类型组织
   file.ts       # file 渠道发送器，将通知消息写入本地 JSONL 文件
   recorder.ts   # 系统级事件变量录制器，记录全部模板变量到 JSONL（非渠道，始终开启）
+  db-preload.ts # SQLite 预加载器，从 opencode.db 恢复 token 数据（插件重启恢复）
   logger.ts     # 生产级文件日志，自动轮转，零依赖，同步 I/O
   updater.ts    # 自动更新模块，检查 npm registry 新版本并可选自动安装
   cli.ts        # 独立 CLI 工具（npx @ulthon/ul-opencode-event test）
@@ -75,7 +76,7 @@ SDK 事件（`session.created`、`session.idle`、`session.error`）映射为内
 `logger.ts` 提供全局 `logger` 实例，写文件日志（默认 `~/.local/share/opencode/ul-opencode-event.log`），支持自动轮转（2MB 上限）。通过 `UL_OPENCODE_EVENT_DEBUG=1` 环境变量启用 debug 级别日志。
 
 ### 本地文件
-插件运行时在 `~/.local/share/opencode/` 目录下生成 3 个文件（可通过 `OPENCODE_DATA_DIR` 环境变量覆盖基目录）：
+插件运行时在 `~/.local/share/opencode/` 目录下生成 3 个文件（可通过 `OPENCODE_DATA_DIR` 环境变量覆盖基目录）。此外，`db-preload.ts` 在插件初始化时会从同目录下的 `opencode.db`（OpenCode 主程序维护的 SQLite 数据库）读取最近的 assistant 消息 token 数据，用于恢复 `tokenDataMap`（只读访问，不修改）。
 
 | 文件 | 来源模块 | 格式 | 用途 |
 |------|---------|------|------|

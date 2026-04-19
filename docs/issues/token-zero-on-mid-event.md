@@ -144,3 +144,30 @@ function sumAllCompletedTokens(sessionData: SessionTokenData): TokenBreakdown {
 | `src/index.ts:564-611` | `message.updated` 处理 | token 数据写入 tokenDataMap 的唯一入口 |
 | `src/index.ts:132-148` | `question.asked` 处理 | 调用 fillTokenData 读取 token |
 | `src/types.ts:270-279` | `SessionTokenData` | session 级 token 数据结构 |
+| `src/db-preload.ts` | 全文 | 从 SQLite 预加载 token 数据到 tokenDataMap |
+
+## 插件重启恢复
+
+### 问题
+
+`tokenDataMap` 是纯内存 Map（`Map<string, SessionTokenData>`），插件重启后为空。如果 OpenCode 有正在进行的会话，插件重启后收到该会话的通知事件时，`fillTokenData()` 无法从 `tokenDataMap` 找到对应 session 的数据，导致 Token 显示为 `Token(0/0)`。
+
+### 方案
+
+`src/db-preload.ts` 提供 `preloadTokenData(tokenDataMap, dataDir, limit=10)` 函数，在插件初始化时从 OpenCode 的 `opencode.db` SQLite 数据库预加载最近 N 个会话的 assistant 消息 token 数据，填充到 `tokenDataMap`。
+
+### 实现
+
+- **数据库**：`opencode.db`（SQLite，WAL 模式），位于 OpenCode 数据目录（`~/.local/share/opencode/`）
+- **驱动**：`bun:sqlite`（Bun 内置模块，零 npm 外部依赖）
+- **访问模式**：`{ readonly: true }` 只读打开，`finally { db.close() }` 自动关闭连接
+- **查询逻辑**：查询最近 N 个 session 的所有 assistant 消息，解析 `data` JSON 字段中的 token 数据
+- **安全**：整个函数包裹在 try/catch 中，任何错误仅写 debug 日志，不抛出异常，不影响插件正常启动
+
+### 数据流
+
+```
+opencode.db → SELECT message → JSON.parse → TokenData → tokenDataMap
+```
+
+预加载的数据会被实时 `message.updated` 事件自然覆盖（相同 messageId 的数据会被替换），不会产生重复累加。

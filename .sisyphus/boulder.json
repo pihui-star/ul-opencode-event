@@ -1,54 +1,45 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\total-tokens-reliable.md",
-  "started_at": "2026-04-18T14:26:12.055Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\token-preload-sqlite.md",
+  "started_at": "2026-04-18T23:37:40.753Z",
   "session_ids": [
     "ses_25f4002ebffekr2ogdxlim8vul",
-    "ses_25eec6a72ffexpFyvMu5T45Mqa",
-    "ses_25eec237cffe1WpDZEqOSwpT1B"
+    "ses_25ccd4c73ffeZ2mO8to1kU9yzL",
+    "ses_25ccd1a5cffehfTYXRaBLIQcCq"
   ],
   "session_origins": {
     "ses_25f4002ebffekr2ogdxlim8vul": "direct",
-    "ses_25eec6a72ffexpFyvMu5T45Mqa": "appended",
-    "ses_25eec237cffe1WpDZEqOSwpT1B": "appended"
+    "ses_25ccd4c73ffeZ2mO8to1kU9yzL": "appended",
+    "ses_25ccd1a5cffehfTYXRaBLIQcCq": "appended"
   },
-  "plan_name": "total-tokens-reliable",
+  "plan_name": "token-preload-sqlite",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "新增 sumAllCompletedTokens 函数",
-      "session_id": "ses_25f02ff8fffeAwLZWP1hz6hXHT",
+      "task_title": "新增 bun-sqlite.d.ts 类型声明",
+      "session_id": "ses_25d092da6ffeli0q2Jbyoo3Sgc",
       "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-18T14:29:18.435Z"
-    },
-    "todo:3": {
-      "task_key": "todo:3",
-      "task_label": "3",
-      "task_title": "新增测试 + 全量验证",
-      "session_id": "ses_25ef360fcffeYombtarESvbutY",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-18T14:44:47.886Z"
+      "category": "deep",
+      "updated_at": "2026-04-18T23:42:21.135Z"
     },
     "todo:4": {
       "task_key": "todo:4",
       "task_label": "4",
-      "task_title": "更新文档",
-      "session_id": "ses_25ef01db2ffeXfu76PM0MjTStm",
+      "task_title": "单元测试",
+      "session_id": "ses_25cd5261dffeIcphWdTYlncLm0",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-18T14:51:05.013Z"
+      "updated_at": "2026-04-19T00:41:31.918Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** -- `oracle`",
-      "session_id": "ses_25eec237cffe1WpDZEqOSwpT1B",
+      "session_id": "ses_25ccd1a5cffehfTYXRaBLIQcCq",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-04-18T14:54:35.205Z"
+      "updated_at": "2026-04-19T00:47:08.064Z"
     }
   }
 }

@@ -215,7 +215,76 @@ message.updated              (不发送通知)       -
 
 ---
 
-## 6. 相关文档
+## 6. 插件重启恢复（预加载）
+
+### 6.1 问题
+
+`tokenDataMap` 是纯内存 Map，插件重启后为空。如果 OpenCode 有正在进行的会话，插件重启后收到该会话的事件时，`fillTokenData()` 无法从 `tokenDataMap` 找到对应数据，导致通知中 Token 显示为 `Token(0/0)`。
+
+### 6.2 方案
+
+`src/db-preload.ts` 导出 `preloadTokenData(tokenDataMap, dataDir, limit=10)`，在插件初始化时从 `opencode.db` SQLite 数据库预加载最近的 token 数据到 `tokenDataMap`。
+
+### 6.3 调用位置
+
+在 `src/index.ts` 中，`tokenDataMap` 创建之后、任何事件处理之前调用：
+
+```
+index.ts 初始化流程：
+    tokenDataMap = new Map()
+         |
+         v
+    preloadTokenData(tokenDataMap, dataDir)   -- db-preload.ts
+         |
+         v
+    开始监听 SDK 事件
+```
+
+### 6.4 数据流
+
+```
+opencode.db (SQLite, WAL mode)
+    |
+    | SELECT m.id, m.session_id, m.data
+    | FROM message m
+    | WHERE json_extract(m.data, '$.role') = 'assistant'
+    |   AND m.session_id IN (SELECT id FROM session ORDER BY time_updated DESC LIMIT N)
+    | ORDER BY m.session_id, m.time_created ASC
+    |
+    v
+JSON.parse(m.data) → 提取 tokens 字段
+    |
+    ├── data.tokens.cache.read  → cacheRead
+    ├── data.tokens.cache.write → cacheWrite
+    ├── data.tokens.input       → input
+    ├── data.tokens.output      → output
+    └── data.tokens.reasoning   → reasoning
+    |
+    v
+构造 TokenData → tokenDataMap.set(sessionId, ...)
+```
+
+### 6.5 技术细节
+
+| 项目 | 说明 |
+|------|------|
+| 数据库驱动 | `bun:sqlite`（Bun 内置，零 npm 依赖） |
+| 打开模式 | `{ readonly: true }`，只读访问 |
+| 连接管理 | open-read-close 模式，`finally { db.close() }` 自动关闭 |
+| 错误处理 | 整个函数包裹在 try/catch 中，失败时仅写 debug 日志，不影响插件启动 |
+| 数据覆盖 | 预加载的数据会被实时 `message.updated` 事件自然覆盖（相同 messageId） |
+
+### 6.6 相关文件
+
+| 文件 | 说明 |
+|------|------|
+| `src/db-preload.ts` | 预加载函数实现 |
+| `src/bun-sqlite.d.ts` | `bun:sqlite` 类型声明 |
+| `src/index.ts:557-564` | 调用入口 |
+
+---
+
+## 7. 相关文档
 
 - [已知问题：中间事件 Token 为 0](../issues/token-zero-on-mid-event.md)
 - [模板配置详解](../configuration.md#8-全部可用变量) -- 包含完整的 Token/费用变量列表

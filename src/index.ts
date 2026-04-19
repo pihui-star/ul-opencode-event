@@ -5,6 +5,7 @@
 import type { Plugin } from '@opencode-ai/plugin';
 import type { Event, Session } from '@opencode-ai/sdk';
 import * as path from 'path';
+import * as os from 'node:os';
 import { loadConfig } from './config.js';
 import { createEventHandler, type EventHandler } from './handler.js';
 import { getDefaultTimezone } from './locales.js';
@@ -552,6 +553,16 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
   const eventHandler: EventHandler = createEventHandler(config);
   const sessionMap = new Map<string, Session>();
   const tokenDataMap = new Map<string, SessionTokenData>();
+
+  // Preload token data from OpenCode database (plugin restart recovery)
+  try {
+    const { preloadTokenData } = await import('./db-preload.js');
+    const baseDir = process.env.OPENCODE_DATA_DIR ?? path.join(os.homedir(), '.local', 'share', 'opencode');
+    preloadTokenData(tokenDataMap, baseDir);
+  } catch {
+    // non-critical: plugin works without preloaded data
+  }
+
   if (DEBUG_ENABLED) {
     logger.debug(`Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
   }
