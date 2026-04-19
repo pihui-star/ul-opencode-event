@@ -36,42 +36,42 @@ const localeTemplates: Record<LocaleType, Record<EventType, TemplateConfig>> = {
     idle: {
       subject: '[{{projectName}}] Task Completed',
       body:
-        'Task completed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nMessage: {{message}}\nDuration: {{duration}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        'Task completed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nMessage: {{message}}\nDuration: {{duration}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     error: {
       subject: '[{{projectName}}] Task Error',
       body:
-        'Error at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nError: {{error}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        'Error at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nError: {{error}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     question: {
       subject: '[{{projectName}}] Question',
       body:
-        'OpenCode has a question at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nQuestion: {{title}}\n{{questionText}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        'OpenCode has a question at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nQuestion: {{title}}\n{{questionText}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     permission: {
       subject: '[{{projectName}}] Permission Required',
       body:
-        'Permission needed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\n{{title}} ({{permissionType}})\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        'Permission needed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\n{{title}} ({{permissionType}})\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     status: {
       subject: '[{{projectName}}] Status Change',
       body:
-        'Session status changed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nStatus: {{statusType}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        'Session status changed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nStatus: {{statusType}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     command: {
       subject: '[{{projectName}}] Command Executed',
       body:
-        'Command executed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nCommand: {{commandName}} {{arguments}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        'Command executed at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\nCommand: {{commandName}} {{arguments}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     fileEdited: {
       subject: '[{{projectName}}] File Edited',
       body:
-        'File edited at {{timestamp}}\nFile: {{filePath}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        'File edited at {{timestamp}}\nFile: {{filePath}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     todo: {
       subject: '[{{projectName}}] Todos Updated',
       body:
-        'Todos updated at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\n{{todoSummary}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        'Todos updated at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\n{{todoSummary}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
   },
 
@@ -84,42 +84,42 @@ const localeTemplates: Record<LocaleType, Record<EventType, TemplateConfig>> = {
     idle: {
       subject: '[{{projectName}}] 任务已完成',
       body:
-        '任务完成时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n消息: {{message}}\n耗时: {{duration}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        '任务完成时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n消息: {{message}}\n耗时: {{duration}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     error: {
       subject: '[{{projectName}}] 任务出错',
       body:
-        '错误发生时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n错误信息: {{error}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        '错误发生时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n错误信息: {{error}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     question: {
       subject: '[{{projectName}}] AI 提问',
       body:
-        'OpenCode 在 {{timestamp}} 向您提问\n会话: {{sessionTitle}} ({{sessionId}})\n问题: {{title}}\n{{questionText}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        'OpenCode 在 {{timestamp}} 向您提问\n会话: {{sessionTitle}} ({{sessionId}})\n问题: {{title}}\n{{questionText}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     permission: {
       subject: '[{{projectName}}] 需要权限确认',
       body:
-        '{{timestamp}} 需要权限确认\n会话: {{sessionTitle}} ({{sessionId}})\n{{title}} ({{permissionType}})\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        '{{timestamp}} 需要权限确认\n会话: {{sessionTitle}} ({{sessionId}})\n{{title}} ({{permissionType}})\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     status: {
       subject: '[{{projectName}}] 状态变更',
       body:
-        '会话状态变更时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n状态: {{statusType}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        '会话状态变更时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n状态: {{statusType}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     command: {
       subject: '[{{projectName}}] 命令已执行',
       body:
-        '命令执行时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n命令: {{commandName}} {{arguments}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        '命令执行时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n命令: {{commandName}} {{arguments}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     fileEdited: {
       subject: '[{{projectName}}] 文件已编辑',
       body:
-        '文件编辑时间: {{timestamp}}\n文件: {{filePath}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        '文件编辑时间: {{timestamp}}\n文件: {{filePath}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
     todo: {
       subject: '[{{projectName}}] Todo 已更新',
       body:
-        'Todo 更新时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n{{todoSummary}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}',
+        'Todo 更新时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n{{todoSummary}}\n\nToken({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}',
     },
   },
 };

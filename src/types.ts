@@ -197,6 +197,12 @@ export interface EventPayload {
   totalCostFormatted?: string;
   /** 货币代码（如 USD、CNY） */
   currency?: string;
+  /** 项目累计费用 */
+  projectCost?: number;
+  /** 项目累计 Token 用量 */
+  projectTokens?: TokenBreakdown;
+  /** 项目累计费用格式化字符串（含货币符号） */
+  projectCostFormatted?: string;
 }
 
 /**
@@ -276,6 +282,8 @@ export interface SessionTokenData {
   lastProviderID: string;
   /** 最后使用的模式 */
   lastMode: string;
+  /** 项目路径（用于按项目聚合 token 数据） */
+  projectPath?: string;
 }
 
 /**

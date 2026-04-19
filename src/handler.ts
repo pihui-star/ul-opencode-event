@@ -172,6 +172,21 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
         totalTokensCacheReadHuman: payload.totalTokens?.cacheRead != null ? formatTokenCount(payload.totalTokens.cacheRead) : undefined,
         totalTokensCacheWriteHuman: payload.totalTokens?.cacheWrite != null ? formatTokenCount(payload.totalTokens.cacheWrite) : undefined,
         totalTokensTotalHuman: payload.totalTokens?.total != null ? formatTokenCount(payload.totalTokens.total) : undefined,
+        // 项目级 Token 用量
+        projectCost: payload.projectCost != null ? String(payload.projectCost) : undefined,
+        projectCostFormatted: payload.projectCostFormatted,
+        projectTokensInput: payload.projectTokens?.input != null ? String(payload.projectTokens.input) : undefined,
+        projectTokensOutput: payload.projectTokens?.output != null ? String(payload.projectTokens.output) : undefined,
+        projectTokensReasoning: payload.projectTokens?.reasoning != null ? String(payload.projectTokens.reasoning) : undefined,
+        projectTokensCacheRead: payload.projectTokens?.cacheRead != null ? String(payload.projectTokens.cacheRead) : undefined,
+        projectTokensCacheWrite: payload.projectTokens?.cacheWrite != null ? String(payload.projectTokens.cacheWrite) : undefined,
+        projectTokensTotal: payload.projectTokens?.total != null ? String(payload.projectTokens.total) : undefined,
+        projectTokensInputHuman: payload.projectTokens?.input != null ? formatTokenCount(payload.projectTokens.input) : undefined,
+        projectTokensOutputHuman: payload.projectTokens?.output != null ? formatTokenCount(payload.projectTokens.output) : undefined,
+        projectTokensReasoningHuman: payload.projectTokens?.reasoning != null ? formatTokenCount(payload.projectTokens.reasoning) : undefined,
+        projectTokensCacheReadHuman: payload.projectTokens?.cacheRead != null ? formatTokenCount(payload.projectTokens.cacheRead) : undefined,
+        projectTokensCacheWriteHuman: payload.projectTokens?.cacheWrite != null ? formatTokenCount(payload.projectTokens.cacheWrite) : undefined,
+        projectTokensTotalHuman: payload.projectTokens?.total != null ? formatTokenCount(payload.projectTokens.total) : undefined,
       };
 
       // System-level: record all event variables (always on, independent of channels)

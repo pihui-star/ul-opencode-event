@@ -458,6 +458,62 @@ function aggregateSubSessions(
 }
 
 /**
+ * Aggregate token data across ALL sessions in tokenDataMap that match the given projectPath.
+ * Uses path.normalize() for cross-platform path comparison.
+ * Sessions without projectPath are NOT counted (old preloaded data).
+ */
+function aggregateProjectTokens(
+  tokenDataMap: Map<string, SessionTokenData>,
+  projectPath: string,
+): { cost: number; tokens: TokenBreakdown } {
+  const normalizedTarget = path.normalize(projectPath);
+  let cost = 0;
+  let input = 0, output = 0, reasoning = 0, cacheRead = 0, cacheWrite = 0;
+
+  for (const [, sessionData] of tokenDataMap) {
+    if (!sessionData.projectPath) continue; // skip sessions without projectPath
+    if (path.normalize(sessionData.projectPath) !== normalizedTarget) continue; // skip other projects
+
+    const sessionTokens = sumAllCompletedTokens(sessionData);
+    const sessionCost = [...sessionData.messages.values()].reduce((sum, td) => sum + td.cost, 0);
+    cost += sessionCost;
+    input += sessionTokens.input;
+    output += sessionTokens.output;
+    reasoning += sessionTokens.reasoning;
+    cacheRead += sessionTokens.cacheRead;
+    cacheWrite += sessionTokens.cacheWrite;
+  }
+
+  return {
+    cost,
+    tokens: { input, output, reasoning, cacheRead, cacheWrite, total: input + output + cacheRead + cacheWrite },
+  };
+}
+
+/**
+ * Fill project-level token/cost data into an EventPayload.
+ * Aggregates across all sessions matching the current projectPath.
+ */
+function fillProjectData(
+  payload: EventPayload,
+  tokenDataMap: Map<string, SessionTokenData>,
+  projectPath: string,
+  configLanguage?: string,
+  configCost?: import('./types.js').CostConfig,
+  resolveCostConfigFn?: typeof import('./cost.js').resolveCostConfig,
+  formatCostFn?: typeof import('./cost.js').formatCost,
+): void {
+  const projectAgg = aggregateProjectTokens(tokenDataMap, projectPath);
+  payload.projectCost = projectAgg.cost;
+  payload.projectTokens = projectAgg.tokens;
+
+  if (resolveCostConfigFn && formatCostFn) {
+    const resolved = resolveCostConfigFn(configLanguage, configCost);
+    payload.projectCostFormatted = formatCostFn(projectAgg.cost, resolved.currency, resolved.decimalPlaces, resolved.exchangeRate);
+  }
+}
+
+/**
  * Guard flag to ensure auto-update only runs once per plugin load
  */
 let hasCheckedUpdate = false;
@@ -558,7 +614,7 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
   try {
     const { preloadTokenData } = await import('./db-preload.js');
     const baseDir = process.env.OPENCODE_DATA_DIR ?? path.join(os.homedir(), '.local', 'share', 'opencode');
-    preloadTokenData(tokenDataMap, baseDir);
+    preloadTokenData(tokenDataMap, baseDir, 10, ctx.directory);
   } catch {
     // non-critical: plugin works without preloaded data
   }
@@ -580,6 +636,12 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
 
       if (event.type === 'session.created') {
         sessionMap.set(event.properties.info.id, event.properties.info);
+
+        // Backfill projectPath for sessions that already exist in tokenDataMap (from preloading)
+        const existingSessionData = tokenDataMap.get(event.properties.info.id);
+        if (existingSessionData && !existingSessionData.projectPath && event.properties.info.directory) {
+          existingSessionData.projectPath = event.properties.info.directory;
+        }
 
         // Auto-update check (runs once, first main session only)
         if (!hasCheckedUpdate) {
@@ -633,6 +695,8 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
                 lastModelID: '',
                 lastProviderID: '',
                 lastMode: '',
+                // Tag with project path from sessionMap or fallback to ctx.directory
+                projectPath: sessionMap.get(sessionId)?.directory ?? ctx.directory,
               };
               tokenDataMap.set(sessionId, sessionData);
             }
@@ -663,6 +727,9 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
             sessionData.lastModelID = tokenData.modelID;
             sessionData.lastProviderID = tokenData.providerID;
             sessionData.lastMode = tokenData.mode;
+            if (!sessionData.projectPath) {
+              sessionData.projectPath = sessionMap.get(sessionId)?.directory ?? ctx.directory;
+            }
           }
         }
         // message.updated does not produce a notification
@@ -693,6 +760,9 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
 
       // Aggregate sub-session token data into total fields
       aggregateSubSessions(payload, tokenDataMap, sessionMap, config.language, config.cost, resolveCostConfig, formatCost);
+
+      // Aggregate project-level token data
+      fillProjectData(payload, tokenDataMap, ctx.directory, config.language, config.cost, resolveCostConfig, formatCost);
 
       // Filter by session type whitelist (default: only 'main' sessions)
       const allowedTypes = config.includeSessionTypes ?? DEFAULT_SESSION_TYPES;
