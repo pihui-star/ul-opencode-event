@@ -267,44 +267,44 @@ interface ChannelTemplates {
 
 > **注意**：sessionTokens 在 AI 回复中间可能为 0（OpenCode 限制）。totalTokens 始终反映已完成工作的累计值。详见 [中间事件 Token 为 0](issues/token-zero-on-mid-event.md)。
 
-#### 会话级别（当前会话的数据）
+#### 会话级别（最近一次 API 调用的 token 快照）
 
 | 变量 | 说明 | 示例值 |
 |------|------|--------|
-| `{{sessionTokensTotal}}` | 会话合计 Token 数 | `420` |
-| `{{sessionTokensInput}}` | 会话输入 Token 数 | `100` |
-| `{{sessionTokensOutput}}` | 会话输出 Token 数 | `200` |
-| `{{sessionTokensReasoning}}` | 会话推理 Token 数 | `50` |
-| `{{sessionTokensCacheRead}}` | 会话缓存读取 Token 数 | `30` |
-| `{{sessionTokensCacheWrite}}` | 会话缓存写入 Token 数 | `40` |
-| `{{sessionCost}}` | 会话费用（原始数值） | `0.05` |
-| `{{sessionCostFormatted}}` | 会话费用（格式化，含货币符号） | `$0.0500` |
+| `{{sessionTokensTotal}}` | 最近一次 API 调用的 Token 总计（input+output+cacheRead+cacheWrite，不含 reasoning） | `420` |
+| `{{sessionTokensInput}}` | 最近一次 API 调用的输入 Token 数 | `100` |
+| `{{sessionTokensOutput}}` | 最近一次 API 调用的输出 Token 数 | `200` |
+| `{{sessionTokensReasoning}}` | 最近一次 API 调用的推理 Token 数 | `50` |
+| `{{sessionTokensCacheRead}}` | 最近一次 API 调用的缓存读取 Token 数 | `30` |
+| `{{sessionTokensCacheWrite}}` | 最近一次 API 调用的缓存写入 Token 数 | `40` |
+| `{{sessionCost}}` | 当前会话累计费用（原始数值） | `0.05` |
+| `{{sessionCostFormatted}}` | 当前会话累计费用（格式化，含货币符号） | `$0.0500` |
 
-#### 全部级别（包含所有子会话的汇总数据）
-
-| 变量 | 说明 | 示例值 |
-|------|------|--------|
-| `{{totalTokensTotal}}` | 全部合计 Token 数 | `990` |
-| `{{totalTokensInput}}` | 全部输入 Token 数 | `300` |
-| `{{totalTokensOutput}}` | 全部输出 Token 数 | `400` |
-| `{{totalTokensReasoning}}` | 全部推理 Token 数 | `100` |
-| `{{totalTokensCacheRead}}` | 全部缓存读取 Token 数 | `60` |
-| `{{totalTokensCacheWrite}}` | 全部缓存写入 Token 数 | `130` |
-| `{{totalCost}}` | 全部费用（原始数值） | `0.12` |
-| `{{totalCostFormatted}}` | 全部费用（格式化，含货币符号） | `$0.1200` |
-
-#### 项目级别（当前项目所有会话的汇总数据）
+#### 总计级别（当前会话及所有子会话的累计计费总量）
 
 | 变量 | 说明 | 示例值 |
 |------|------|--------|
-| `{{projectTokensTotal}}` | 项目合计 Token 数 | `2500` |
-| `{{projectTokensInput}}` | 项目输入 Token 数 | `800` |
-| `{{projectTokensOutput}}` | 项目输出 Token 数 | `1000` |
-| `{{projectTokensReasoning}}` | 项目推理 Token 数 | `200` |
-| `{{projectTokensCacheRead}}` | 项目缓存读取 Token 数 | `150` |
-| `{{projectTokensCacheWrite}}` | 项目缓存写入 Token 数 | `350` |
-| `{{projectCost}}` | 项目费用（原始数值） | `0.35` |
-| `{{projectCostFormatted}}` | 项目费用（格式化，含货币符号） | `$0.3500` |
+| `{{totalTokensTotal}}` | 当前会话及所有子会话的累计 Token 总计 | `990` |
+| `{{totalTokensInput}}` | 当前会话及所有子会话的累计输入 Token 数 | `300` |
+| `{{totalTokensOutput}}` | 当前会话及所有子会话的累计输出 Token 数 | `400` |
+| `{{totalTokensReasoning}}` | 当前会话及所有子会话的累计推理 Token 数 | `100` |
+| `{{totalTokensCacheRead}}` | 当前会话及所有子会话的累计缓存读取 Token 数 | `60` |
+| `{{totalTokensCacheWrite}}` | 当前会话及所有子会话的累计缓存写入 Token 数 | `130` |
+| `{{totalCost}}` | 当前会话及所有子会话的累计费用（原始数值） | `0.12` |
+| `{{totalCostFormatted}}` | 当前会话及所有子会话的累计费用（格式化，含货币符号） | `$0.1200` |
+
+#### 项目级别（当前项目路径下所有会话的累计计费总量）
+
+| 变量 | 说明 | 示例值 |
+|------|------|--------|
+| `{{projectTokensTotal}}` | 当前项目所有会话的累计 Token 总计 | `2500` |
+| `{{projectTokensInput}}` | 当前项目所有会话的累计输入 Token 数 | `800` |
+| `{{projectTokensOutput}}` | 当前项目所有会话的累计输出 Token 数 | `1000` |
+| `{{projectTokensReasoning}}` | 当前项目所有会话的累计推理 Token 数 | `200` |
+| `{{projectTokensCacheRead}}` | 当前项目所有会话的累计缓存读取 Token 数 | `150` |
+| `{{projectTokensCacheWrite}}` | 当前项目所有会话的累计缓存写入 Token 数 | `350` |
+| `{{projectCost}}` | 当前项目所有会话的累计费用（原始数值） | `0.35` |
+| `{{projectCostFormatted}}` | 当前项目所有会话的累计费用（格式化，含货币符号） | `$0.3500` |
 
 #### 模型与配置
 
@@ -315,7 +315,13 @@ interface ChannelTemplates {
 | `{{mode}}` | 运行模式 | `plan`、`code` |
 | `{{currency}}` | 货币符号 | `$`、`¥` |
 
-> **关于会话级别与全部级别与项目级别的区别**：`session*` 变量仅统计当前会话自身的用量，`total*` 变量统计当前会话及所有子会话的汇总用量，`project*` 变量统计当前项目路径下所有会话的汇总用量。对于没有子会话的场景，`session*` 和 `total*` 数值相同。
+> **关于三级 Token 变量的区别**：三个级别采用不同的计算策略：
+>
+> - **会话级别**（`session*`）：取当前会话**最近一次 API 调用**的 Token 值（快照），与 OpenCode UI 显示一致。反映单次请求的 token 消耗。
+> - **总计级别**（`total*`）：将当前会话及所有子会话（explore/librarian 等子代理）的**每次 API 调用的 Token 值累加**，是累计计费总量。由于每次 API 调用都会读取缓存（cacheRead），多轮对话后该值会远大于会话级别。
+> - **项目级别**（`project*`）：将当前项目路径下**所有会话**的累计 Token 值再累加，是项目整体计费总量。
+>
+> 因此，即使没有子会话，`total*` 通常也会大于 `session*`（因为多次 API 调用的 token 被累加，尤其是 cacheRead）。
 >
 > **关于费用格式化**：`sessionCostFormatted`、`totalCostFormatted` 和 `projectCostFormatted` 根据 `currency` 变量自动选择货币符号和格式。中文环境（`language: "zh"`）使用 `¥`，英文环境使用 `$`。
 
