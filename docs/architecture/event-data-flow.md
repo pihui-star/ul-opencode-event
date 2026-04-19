@@ -13,9 +13,9 @@ OpenCode SDK
     v
 Plugin.event()                       -- index.ts
     |
-    ├── session.created  → sessionMap.set()
+    ├── session.created  → sessionMap.set() + projectPath 回填
     ├── session.updated  → sessionMap.set()
-    ├── message.updated  → tokenDataMap 写入  (不发送通知)
+    ├── message.updated  → tokenDataMap 写入 + projectPath 标记 (不发送通知)
     └── 其他事件         → eventToPayload()
                               |
                               v
@@ -23,6 +23,9 @@ Plugin.event()                       -- index.ts
                               |
                               v
                          aggregateSubSessions() -- 汇总子会话 token
+                              |
+                              v
+                         fillProjectData()    -- 汇总项目级 token（按 projectPath 过滤）
                               |
                               v
                          eventHandler.handle()
@@ -117,6 +120,7 @@ SessionTokenData {
   lastModelID: string;
   lastProviderID: string;
   lastMode: string;
+  projectPath?: string;              // 项目路径（用于项目级聚合过滤）
 }
 
 TokenData {
@@ -180,6 +184,26 @@ aggregateSubSessions(payload, tokenDataMap, sessionMap, ...)
 
 > **注意**：子会话聚合的 base 是 `payload.totalTokens`（已使用累加策略），子会话贡献也使用 `sumAllCompletedTokens`，确保 totalTokens 始终可靠。
 
+### 3.6 项目级聚合
+
+`aggregateProjectTokens` + `fillProjectData`（`index.ts:465-514`）在 `aggregateSubSessions` 之后调用，将当前项目的所有会话 token 累加到 `projectTokens`：
+
+```
+fillProjectData(payload, tokenDataMap, projectPath, ...)
+    |
+    └── aggregateProjectTokens(tokenDataMap, projectPath)
+         |
+         └── 遍历 tokenDataMap
+              |
+              ├── sessionData.projectPath 未设置 → 跳过（旧版预加载数据）
+              ├── path.normalize(projectPath) 不匹配 → 跳过（其他项目）
+              └── 匹配 → sumAllCompletedTokens 累加
+         |
+         └── payload.projectTokens / projectCost / projectCostFormatted
+```
+
+> **注意**：项目级聚合使用 `path.normalize()` 进行跨平台路径比较。未标记 `projectPath` 的会话（旧版 db-preload 恢复的数据）不计入项目总量。`message.updated` 处理器会为新会话设置 `projectPath`（优先从 `sessionMap` 获取 `directory`，fallback 到 `ctx.directory`）。`session.created` 处理器会回填已存在但缺少 `projectPath` 的会话数据。
+
 ---
 
 ## 4. 事件到通知的完整映射
@@ -188,7 +212,7 @@ aggregateSubSessions(payload, tokenDataMap, sessionMap, ...)
 SDK Event                    内部 EventType    通知模板 Token 行
 ─────────────────────────────────────────────────────────────
 session.created              created           无 Token 行
-session.idle                 idle              Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}) {{modelID}}
+session.idle                 idle              Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
 session.error                error             Token(...)
 question.asked               question          Token(...)
 permission.updated           permission        Token(...)
@@ -211,7 +235,7 @@ message.updated              (不发送通知)       -
 | `ul-opencode-event-messages.log` | `file.ts` | EventPayload + subject/body | 每次通知发送 |
 | `ul-opencode-event-variables.jsonl` | `recorder.ts` | 全部模板变量 | 每次事件处理 |
 
-`recorder.ts` 记录的是 `handler.ts` 中构建的全部模板变量（约 42 个字段），包含原始值和人类可读格式（如 `sessionTokensTotalHuman`）。**始终开启，不受通道配置影响**，可用于调试。
+`recorder.ts` 记录的是 `handler.ts` 中构建的全部模板变量（约 56 个字段），包含原始值和人类可读格式（如 `sessionTokensTotalHuman`、`projectTokensTotalHuman`）。**始终开启，不受通道配置影响**，可用于调试。
 
 ---
 
@@ -223,7 +247,7 @@ message.updated              (不发送通知)       -
 
 ### 6.2 方案
 
-`src/db-preload.ts` 导出 `preloadTokenData(tokenDataMap, dataDir, limit=10)`，在插件初始化时从 `opencode.db` SQLite 数据库预加载最近的 token 数据到 `tokenDataMap`。
+`src/db-preload.ts` 导出 `preloadTokenData(tokenDataMap, dataDir, limit=10, projectPath?)`，在插件初始化时从 `opencode.db` SQLite 数据库预加载最近的 token 数据到 `tokenDataMap`。传入 `projectPath` 时仅加载匹配该路径的会话（通过 `session.directory` 列过滤），SQL 失败时自动回退到加载全部会话。
 
 ### 6.3 调用位置
 
@@ -234,7 +258,7 @@ index.ts 初始化流程：
     tokenDataMap = new Map()
          |
          v
-    preloadTokenData(tokenDataMap, dataDir)   -- db-preload.ts
+    preloadTokenData(tokenDataMap, dataDir, 10, ctx.directory)   -- db-preload.ts（按项目过滤）
          |
          v
     开始监听 SDK 事件

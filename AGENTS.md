@@ -30,8 +30,8 @@ src/
   template.ts   # 简单的 {{variable}} 模板渲染
   locales.ts    # i18n 默认模板（zh/en），按事件类型组织
   file.ts       # file 渠道发送器，将通知消息写入本地 JSONL 文件
-  recorder.ts   # 系统级事件变量录制器，记录全部模板变量到 JSONL（非渠道，始终开启）
-  db-preload.ts # SQLite 预加载器，从 opencode.db 恢复 token 数据（插件重启恢复）
+  recorder.ts   # 系统级事件变量录制器，记录全部模板变量到 JSONL（非渠道，始终开启），约56个字段（含 project* 项目级变量）
+  db-preload.ts # SQLite 预加载器，从 opencode.db 恢复 token 数据（插件重启恢复），支持 projectPath 过滤
   logger.ts     # 生产级文件日志，自动轮转，零依赖，同步 I/O
   updater.ts    # 自动更新模块，检查 npm registry 新版本并可选自动安装
   cli.ts        # 独立 CLI 工具（npx @ulthon/ul-opencode-event test）
@@ -66,6 +66,8 @@ SDK 事件（`session.created`、`session.idle`、`session.error`）映射为内
 
 事件处理流程：`handler.ts` 接收事件 -> 渲染模板 -> 通过 `formatters.ts` 获取通道格式化器 -> 格式化为通道原生消息结构 -> 通过 `ChannelSender.send()` 发送。
 
+Token 聚合流程：`index.ts` 中 `message.updated` 累积单条消息 token -> `fillTokenData()` 汇总会话级 -> `aggregateSubSessions()` 汇总会话+子会话级 -> `fillProjectData()` 汇总项目级（按 `ctx.directory` 过滤匹配 `projectPath` 的会话）。默认模板 Token 行格式为三段式：`Token(会话/总量/项目) 模型名`。
+
 ### 通道类型
 `smtp`、`dingtalk`、`feishu` 三种通道均已完整实现。每种通道包含：
 - **发送器**（Sender）: 实现 `ChannelSender` 接口，负责实际发送（`email.ts`、`dingtalk.ts`、`feishu.ts`）
@@ -75,14 +77,26 @@ SDK 事件（`session.created`、`session.idle`、`session.error`）映射为内
 ### 日志系统
 `logger.ts` 提供全局 `logger` 实例，写文件日志（默认 `~/.local/share/opencode/ul-opencode-event.log`），支持自动轮转（2MB 上限）。通过 `UL_OPENCODE_EVENT_DEBUG=1` 环境变量启用 debug 级别日志。
 
+### Token 聚合层级
+Token 数据分为四个聚合层级：
+
+| 层级 | 变量前缀 | 范围 | 聚合函数 |
+|------|---------|------|---------|
+| 消息 | - | 单条 assistant 消息 | 直接从 SDK event 提取 |
+| 会话 | `session` | 当前会话所有消息 | `fillTokenData()` |
+| 总计 | `total` | 当前会话 + 所有子会话 | `aggregateSubSessions()` |
+| 项目 | `project` | 当前项目路径下所有会话 | `aggregateProjectTokens()` + `fillProjectData()` |
+
+项目级聚合使用 `path.normalize()` 比较 `SessionTokenData.projectPath` 与 `ctx.directory`，未标记 projectPath 的会话（旧版预加载数据）不计入项目总量。
+
 ### 本地文件
-插件运行时在 `~/.local/share/opencode/` 目录下生成 3 个文件（可通过 `OPENCODE_DATA_DIR` 环境变量覆盖基目录）。此外，`db-preload.ts` 在插件初始化时会从同目录下的 `opencode.db`（OpenCode 主程序维护的 SQLite 数据库）读取最近的 assistant 消息 token 数据，用于恢复 `tokenDataMap`（只读访问，不修改）。
+插件运行时在 `~/.local/share/opencode/` 目录下生成 3 个文件（可通过 `OPENCODE_DATA_DIR` 环境变量覆盖基目录）。此外，`db-preload.ts` 在插件初始化时会从同目录下的 `opencode.db`（OpenCode 主程序维护的 SQLite 数据库）读取最近的 assistant 消息 token 数据，用于恢复 `tokenDataMap`（只读访问，不修改）。`preloadTokenData()` 支持可选的 `projectPath` 参数，传入时仅加载匹配该路径的会话（`session.directory` 列），SQL 失败时自动回退到加载全部会话。
 
 | 文件 | 来源模块 | 格式 | 用途 |
 |------|---------|------|------|
 | `ul-opencode-event.log` | `logger.ts` | 文本日志 | 运行日志、错误追踪、debug 输出（2MB 轮转） |
 | `ul-opencode-event-messages.log` | `file.ts` | JSON Lines | 渠道级消息记录：EventPayload + 渲染后的 subject/body（1MB 轮转，自动注入的默认 file 渠道） |
-| `ul-opencode-event-variables.jsonl` | `recorder.ts` | JSON Lines | 系统级变量记录：handler.ts 中全部模板变量（约42个字段，含人类可读 token 格式等衍生字段），始终开启，不受渠道配置影响（2MB 轮转） |
+| `ul-opencode-event-variables.jsonl` | `recorder.ts` | JSON Lines | 系统级变量记录：handler.ts 中全部模板变量（约56个字段，含 project* 项目级、人类可读 token 格式等衍生字段），始终开启，不受渠道配置影响（2MB 轮转） |
 
 调试时可直接用 `tail -f` 监控或 `jq` 筛选 JSONL 文件。
 

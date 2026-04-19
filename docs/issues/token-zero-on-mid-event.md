@@ -154,7 +154,7 @@ function sumAllCompletedTokens(sessionData: SessionTokenData): TokenBreakdown {
 
 ### 方案
 
-`src/db-preload.ts` 提供 `preloadTokenData(tokenDataMap, dataDir, limit=10)` 函数，在插件初始化时从 OpenCode 的 `opencode.db` SQLite 数据库预加载最近 N 个会话的 assistant 消息 token 数据，填充到 `tokenDataMap`。
+`src/db-preload.ts` 提供 `preloadTokenData(tokenDataMap, dataDir, limit=10, projectPath?)` 函数，在插件初始化时从 OpenCode 的 `opencode.db` SQLite 数据库预加载最近 N 个会话的 assistant 消息 token 数据，填充到 `tokenDataMap`。传入 `projectPath` 时仅加载匹配该路径的会话（通过 `session.directory` 列过滤），SQL 失败时自动回退到加载全部会话。
 
 ### 实现
 
