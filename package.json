@@ -53,7 +53,7 @@
     "nodemailer": "^6.9.0"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "latest",
+    "@opencode-ai/plugin": "^1.14.17",
     "@types/node": "^22.15.24",
     "@types/nodemailer": "^6.4.0",
     "@typescript-eslint/parser": "^8.0.0",

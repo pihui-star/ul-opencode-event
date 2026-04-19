@@ -797,12 +797,12 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
 };
 
 /**
- * Default export: the plugin function itself.
- * This matches the pattern used by all working OpenCode plugins
- * (opencode-claude-auth, opencode-dcp, opencode-copilot-plugin).
- * OpenCode's readV1Plugin() in detect mode returns undefined for function defaults,
- * falling through to getLegacyPlugins() which iterates all module exports.
+ * PluginModule format for OpenCode 1.14+ compatibility.
+ * The new plugin loader expects { id, server } object, not a bare function.
  */
-export default NotificationPlugin;
+export default {
+  id: "@ulthon/ul-opencode-event",
+  server: NotificationPlugin,
+};
 
 
