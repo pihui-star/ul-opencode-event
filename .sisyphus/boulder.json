@@ -1,67 +1,34 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\session-cache.md",
-  "started_at": "2026-04-19T14:07:56.208Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\cache-reload-fix.md",
+  "started_at": "2026-04-20T12:38:50.228Z",
   "session_ids": [
     "ses_25a52cab9ffeBChsjSYNoYgFID",
-    "ses_259b5f22bffeq4ae9I2UEhGfuL",
-    "ses_259b5c833ffen1kvRt7Al3mMYG",
-    "ses_259b57735ffeb66EibECTvWtI6",
-    "ses_259b5387bffeKpHrE5wRb5g7t6"
+    "ses_2550e82bbffeG0IIqr6eriGsNJ"
   ],
   "session_origins": {
     "ses_25a52cab9ffeBChsjSYNoYgFID": "direct",
-    "ses_259b5f22bffeq4ae9I2UEhGfuL": "appended",
-    "ses_259b5c833ffen1kvRt7Al3mMYG": "appended",
-    "ses_259b57735ffeb66EibECTvWtI6": "appended",
-    "ses_259b5387bffeKpHrE5wRb5g7t6": "appended"
+    "ses_2550e82bbffeG0IIqr6eriGsNJ": "appended"
   },
-  "plan_name": "session-cache",
+  "plan_name": "cache-reload-fix",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "创建 session-cache.ts 核心模块",
-      "session_id": "ses_259e9da8dffeuPOJIeTmYii3TZ",
+      "task_title": "修复 sessionCache 内存刷新",
+      "session_id": "ses_25517bec7ffe20DUHlSz1BbYY0",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-19T14:16:41.103Z"
+      "category": "quick",
+      "updated_at": "2026-04-20T12:45:30.290Z"
     },
-    "todo:3": {
-      "task_key": "todo:3",
-      "task_label": "3",
-      "task_title": "修改 fillProjectData 集成双数据源",
-      "session_id": "ses_259e27241ffePPN322iucCje8u",
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** -- `oracle`",
+      "session_id": "ses_2550e82bbffeG0IIqr6eriGsNJ",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-04-19T14:25:30.776Z"
-    },
-    "todo:4": {
-      "task_key": "todo:4",
-      "task_label": "4",
-      "task_title": "添加缓存写入触发逻辑",
-      "session_id": "ses_259db86f8ffeLOH5gaDLMkspwV",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-19T14:46:04.406Z"
-    },
-    "todo:8": {
-      "task_key": "todo:8",
-      "task_label": "8",
-      "task_title": "注册 ul-token-rebuild tool + DB 全量同步",
-      "session_id": "ses_259c914b7ffe53ZmJejhBgmSY6",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-19T14:54:41.015Z"
-    },
-    "todo:6": {
-      "task_key": "todo:6",
-      "task_label": "6",
-      "task_title": "更新已有测试适配新行为",
-      "session_id": "ses_259b79b56ffek71fFYoDRjSaMt",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-19T15:08:46.885Z"
+      "updated_at": "2026-04-20T13:04:11.317Z"
     }
   }
 }

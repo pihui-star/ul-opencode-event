@@ -20,6 +20,13 @@ import { generateFeishuSign, createFeishuFormatter } from './feishu.js';
 const CLI_PREFIX = '[ul-opencode-event-cli]';
 const LOOKUP_TIMEOUT_MS = 1200;
 
+/** Format large numbers in human-readable form (e.g., 57.7M, 3.1K) */
+function humanize(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}
+
 /** Mock token data for CLI test messages */
 const MOCK_TOKEN_DATA = {
   sessionCost: 0.05,
@@ -77,17 +84,13 @@ interface TestOptions {
  */
 function printUsage(): void {
   console.log(`
-Usage: npx @ulthon/ul-opencode-event test [options]
+Usage: npx @ulthon/ul-opencode-event <command>
 
-Options:
-  --channel <name>   Test only the channel with this name
-  --no-send          Only verify connection, don't send test email
-  --help             Show this help message
+Commands:
+  test      Test notification channel configuration
+  rebuild   Rebuild token cache from database
 
-Examples:
-  npx @ulthon/ul-opencode-event test
-  npx @ulthon/ul-opencode-event test --channel "Primary Email"
-  npx @ulthon/ul-opencode-event test --no-send
+Run 'npx @ulthon/ul-opencode-event test' for test options.
 `);
 }
 
@@ -912,10 +915,53 @@ function loadConfigForTesting(): NotificationConfig {
 }
 
 /**
+ * Rebuild session token cache from OpenCode database
+ */
+async function runRebuild(): Promise<void> {
+  const dataDir = process.env.OPENCODE_DATA_DIR
+    || path.join(os.homedir(), '.local', 'share', 'opencode');
+  const projectPath = process.cwd();
+
+  const { loadSessionCache, syncFromDB } = await import('./session-cache.js');
+  const currentCache = loadSessionCache(dataDir);
+  const result = await syncFromDB(dataDir, projectPath, currentCache);
+
+  const t = result.totalTokens;
+  console.log(`\n${CLI_PREFIX} Token cache rebuild complete.\n`);
+  console.log(`Project: ${projectPath}`);
+  console.log(`New sessions synced: ${result.newSessions}`);
+  console.log(`Total cached sessions: ${result.totalSessions}`);
+  console.log();
+  console.log('Token breakdown:');
+
+  const fields: Array<{ label: string; value: number }> = [
+    { label: 'Input', value: t.input },
+    { label: 'Output', value: t.output },
+    { label: 'Cache Read', value: t.cacheRead },
+    { label: 'Cache Write', value: t.cacheWrite },
+    { label: 'Reasoning', value: t.reasoning },
+    { label: 'Total', value: t.total },
+  ];
+
+  const maxLabelLen = Math.max(...fields.map(f => f.label.length));
+  for (const f of fields) {
+    const label = f.label.padEnd(maxLabelLen);
+    const num = f.value.toLocaleString().padStart(15);
+    const h = humanize(f.value);
+    console.log(`  ${label}: ${num} (${h})`);
+  }
+}
+
+/**
  * Main CLI entry point
  */
 async function main(): Promise<void> {
   const { command, options } = parseArgs();
+
+  if (command === 'rebuild') {
+    await runRebuild();
+    process.exit(0);
+  }
 
   if (command !== 'test') {
     console.error(`${CLI_PREFIX} Unknown command: "${command || '(none)'}"`);

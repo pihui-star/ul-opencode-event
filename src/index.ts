@@ -652,7 +652,28 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
   }
 
   // Load session token cache for accurate project-level aggregation
-  const sessionCache = loadSessionCache(baseDir);
+  let sessionCache = loadSessionCache(baseDir);
+
+  // Auto-register /ul-token-rebuild slash command
+  try {
+    const commandDir = path.join(os.homedir(), '.config', 'opencode', 'command');
+    const commandFile = path.join(commandDir, 'ul-token-rebuild.md');
+    // Use dynamic import for fs (async context, non-hot path)
+    const cmdFs = (await import('node:fs')).default || (await import('node:fs'));
+    if (!cmdFs.existsSync(commandFile)) {
+      cmdFs.mkdirSync(commandDir, { recursive: true });
+      cmdFs.writeFileSync(commandFile, [
+        '---',
+        'description: 从数据库重建 token 缓存，提升项目级聚合准确度',
+        '---',
+        '直接调用 ul-token-rebuild 工具，不要委派给其他 agent。执行后向用户报告同步结果。',
+        '',
+      ].join('\n'), 'utf-8');
+    }
+  } catch (cmdErr) {
+    // Non-critical: command registration failure should not block plugin
+    logger.warn(`Failed to register slash command: ${cmdErr}`);
+  }
 
   if (DEBUG_ENABLED) {
     logger.debug(`Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
@@ -859,12 +880,12 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
       'ul-token-rebuild': tool({
         description: '从 OpenCode 数据库重建会话 token 缓存。扫描所有历史会话，将缺失的会话聚合数据写入缓存文件。用于首次安装、缓存丢失后恢复、或定期刷新项目级 token 聚合准确度。',
         args: {},
-        execute: async (_args, toolCtx) => {
+        execute: async (_args, _toolCtx) => {
           try {
             const { syncFromDB } = await import('./session-cache.js');
-            const cacheDir = process.env.OPENCODE_DATA_DIR ?? path.join(os.homedir(), '.local', 'share', 'opencode');
-            const currentCache = loadSessionCache(cacheDir);
-            const result = await syncFromDB(cacheDir, toolCtx.directory, currentCache);
+            const result = await syncFromDB(baseDir, _toolCtx.directory, sessionCache);
+            // Refresh in-memory cache after successful sync
+            sessionCache = loadSessionCache(baseDir);
             return `Token cache rebuild complete.\n- New sessions synced: ${result.newSessions}\n- Total cached sessions: ${result.totalSessions}\n- Total tokens: input=${result.totalTokens.input}, output=${result.totalTokens.output}, cacheRead=${result.totalTokens.cacheRead}, cacheWrite=${result.totalTokens.cacheWrite}`;
           } catch (err) {
             return `Token cache rebuild failed: ${err}`;
