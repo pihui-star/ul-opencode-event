@@ -287,6 +287,30 @@ export interface SessionTokenData {
 }
 
 /**
+ * Cached aggregate token data for a completed session.
+ * Written to JSONL cache file on session completion (idle/error/status events).
+ * Used for accurate project-level token aggregation across all historical sessions.
+ */
+export interface SessionCacheEntry {
+  /** Session ID (unique key for deduplication) */
+  sessionId: string;
+  /** Project path for filtering during project-level aggregation */
+  projectPath: string;
+  /** Token usage aggregated via sumAllCompletedTokens */
+  tokens: TokenBreakdown;
+  /** Cumulative cost across all messages in the session */
+  cost: number;
+  /** Model ID from the last message */
+  modelID: string;
+  /** Provider ID from the last message */
+  providerID: string;
+  /** Mode from the last message */
+  mode: string;
+  /** ISO 8601 timestamp of when this cache entry was written */
+  updatedAt: string;
+}
+
+/**
  * 费用计算配置（用户可配置）
  */
 export interface CostConfig {

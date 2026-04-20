@@ -31,6 +31,7 @@ src/
   locales.ts    # i18n 默认模板（zh/en），按事件类型组织
   file.ts       # file 渠道发送器，将通知消息写入本地 JSONL 文件
   recorder.ts   # 系统级事件变量录制器，记录全部模板变量到 JSONL（非渠道，始终开启），约56个字段（含 project* 项目级变量）
+  session-cache.ts # 会话级 token 缓存管理（加载/写入/去重/轮转/DB同步），遵循 recorder.ts 的 JSONL I/O 模式
   db-preload.ts # SQLite 预加载器，从 opencode.db 恢复 token 数据（插件重启恢复），支持 projectPath 过滤
   logger.ts     # 生产级文件日志，自动轮转，零依赖，同步 I/O
   updater.ts    # 自动更新模块，检查 npm registry 新版本并可选自动安装
@@ -40,6 +41,7 @@ src/
 入口：
 - **库**: `src/index.ts` -> 导出 `NotificationPlugin`（默认），供 OpenCode 插件系统使用
 - **CLI**: `src/cli.js`（构建产物）-> `ul-opencode-event test` 命令
+- **工具**: `ul-token-rebuild` -> AI 可调用工具（通过 Hooks.tool 注册），从 opencode.db 重建 session cache，用于首次同步或恢复
 
 ## 关键约定
 
@@ -90,13 +92,14 @@ Token 数据分为四个聚合层级：
 项目级聚合使用 `path.normalize()` 比较 `SessionTokenData.projectPath` 与 `ctx.directory`，未标记 projectPath 的会话（旧版预加载数据）不计入项目总量。
 
 ### 本地文件
-插件运行时在 `~/.local/share/opencode/` 目录下生成 3 个文件（可通过 `OPENCODE_DATA_DIR` 环境变量覆盖基目录）。此外，`db-preload.ts` 在插件初始化时会从同目录下的 `opencode.db`（OpenCode 主程序维护的 SQLite 数据库）读取最近的 assistant 消息 token 数据，用于恢复 `tokenDataMap`（只读访问，不修改）。`preloadTokenData()` 支持可选的 `projectPath` 参数，传入时仅加载匹配该路径的会话（`session.directory` 列），SQL 失败时自动回退到加载全部会话。
+插件运行时在 `~/.local/share/opencode/` 目录下生成 4 个文件（可通过 `OPENCODE_DATA_DIR` 环境变量覆盖基目录）。此外，`db-preload.ts` 在插件初始化时会从同目录下的 `opencode.db`（OpenCode 主程序维护的 SQLite 数据库）读取最近的 assistant 消息 token 数据，用于恢复 `tokenDataMap`（只读访问，不修改）。`preloadTokenData()` 支持可选的 `projectPath` 参数，传入时仅加载匹配该路径的会话（`session.directory` 列），SQL 失败时自动回退到加载全部会话。
 
 | 文件 | 来源模块 | 格式 | 用途 |
 |------|---------|------|------|
 | `ul-opencode-event.log` | `logger.ts` | 文本日志 | 运行日志、错误追踪、debug 输出（2MB 轮转） |
 | `ul-opencode-event-messages.log` | `file.ts` | JSON Lines | 渠道级消息记录：EventPayload + 渲染后的 subject/body（1MB 轮转，自动注入的默认 file 渠道） |
 | `ul-opencode-event-variables.jsonl` | `recorder.ts` | JSON Lines | 系统级变量记录：handler.ts 中全部模板变量（约56个字段，含 project* 项目级、人类可读 token 格式等衍生字段），始终开启，不受渠道配置影响（2MB 轮转） |
+| `ul-opencode-event-session-cache.jsonl` | `session-cache.ts` | JSON Lines | 会话级 token 聚合缓存：已完成会话的 sumAllCompletedTokens 结果，用于项目级聚合。latest-per-session wins 去重，2MB 轮转 |
 
 调试时可直接用 `tail -f` 监控或 `jq` 筛选 JSONL 文件。
 

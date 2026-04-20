@@ -2,17 +2,18 @@
  * Notification Plugin Entry Point
  * Sends email notifications when session events occur
  */
-import type { Plugin } from '@opencode-ai/plugin';
+import { type Plugin, tool } from '@opencode-ai/plugin';
 import type { Event, Session } from '@opencode-ai/sdk';
 import * as path from 'path';
 import * as os from 'node:os';
 import { loadConfig } from './config.js';
 import { createEventHandler, type EventHandler } from './handler.js';
 import { getDefaultTimezone } from './locales.js';
-import type { EventPayload, EventType, SessionType, SessionTokenData, TokenData, TokenBreakdown } from './types.js';
+import type { EventPayload, EventType, SessionType, SessionTokenData, TokenData, TokenBreakdown, SessionCacheEntry } from './types.js';
 import { DEFAULT_SESSION_TYPES } from './types.js';
 import { logger, DEBUG_ENABLED } from './logger.js';
 import { runAutoUpdate, getCurrentVersion } from './updater.js';
+import { loadSessionCache, aggregateProjectFromCache, buildCacheEntry, writeCacheEntry } from './session-cache.js';
 // cost.js imported lazily inside NotificationPlugin to follow lazy-import convention
 
 /**
@@ -502,8 +503,35 @@ function fillProjectData(
   configCost?: import('./types.js').CostConfig,
   resolveCostConfigFn?: typeof import('./cost.js').resolveCostConfig,
   formatCostFn?: typeof import('./cost.js').formatCost,
+  sessionCache?: Map<string, SessionCacheEntry>,
 ): void {
-  const projectAgg = aggregateProjectTokens(tokenDataMap, projectPath);
+  // Dual-source aggregation: cache (historical) + tokenDataMap (current running)
+  // Exclude sessions from cache that are already in tokenDataMap to avoid double-counting
+  let cacheAgg: { cost: number; tokens: TokenBreakdown };
+  if (sessionCache && sessionCache.size > 0) {
+    const filteredCache = new Map(sessionCache);
+    for (const sessionId of tokenDataMap.keys()) {
+      filteredCache.delete(sessionId);
+    }
+    cacheAgg = aggregateProjectFromCache(filteredCache, projectPath);
+  } else {
+    cacheAgg = { cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  }
+
+  const liveAgg = aggregateProjectTokens(tokenDataMap, projectPath);
+
+  const projectAgg = {
+    cost: cacheAgg.cost + liveAgg.cost,
+    tokens: {
+      input: cacheAgg.tokens.input + liveAgg.tokens.input,
+      output: cacheAgg.tokens.output + liveAgg.tokens.output,
+      reasoning: cacheAgg.tokens.reasoning + liveAgg.tokens.reasoning,
+      cacheRead: cacheAgg.tokens.cacheRead + liveAgg.tokens.cacheRead,
+      cacheWrite: cacheAgg.tokens.cacheWrite + liveAgg.tokens.cacheWrite,
+      total: cacheAgg.tokens.total + liveAgg.tokens.total,
+    },
+  };
+
   payload.projectCost = projectAgg.cost;
   payload.projectTokens = projectAgg.tokens;
 
@@ -518,6 +546,8 @@ function fillProjectData(
  */
 let hasCheckedUpdate = false;
 let hasShownStartupToast = false;
+let lastCacheWriteTime = 0;
+let isTestEnvironment = false;
 
 /**
  * Test-only: captured payloads for verification in tests.
@@ -532,6 +562,8 @@ const __test_payloads: EventPayload[] = [];
 function __test_resetFlags(): void {
   hasCheckedUpdate = false;
   hasShownStartupToast = false;
+  isTestEnvironment = true;
+  lastCacheWriteTime = 0;
   __test_payloads.length = 0;
 }
 
@@ -609,15 +641,18 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
   const eventHandler: EventHandler = createEventHandler(config);
   const sessionMap = new Map<string, Session>();
   const tokenDataMap = new Map<string, SessionTokenData>();
+  const baseDir = process.env.OPENCODE_DATA_DIR ?? path.join(os.homedir(), '.local', 'share', 'opencode');
 
   // Preload token data from OpenCode database (plugin restart recovery)
   try {
     const { preloadTokenData } = await import('./db-preload.js');
-    const baseDir = process.env.OPENCODE_DATA_DIR ?? path.join(os.homedir(), '.local', 'share', 'opencode');
     preloadTokenData(tokenDataMap, baseDir, 10, ctx.directory);
   } catch {
     // non-critical: plugin works without preloaded data
   }
+
+  // Load session token cache for accurate project-level aggregation
+  const sessionCache = loadSessionCache(baseDir);
 
   if (DEBUG_ENABLED) {
     logger.debug(`Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
@@ -762,7 +797,7 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
       aggregateSubSessions(payload, tokenDataMap, sessionMap, config.language, config.cost, resolveCostConfig, formatCost);
 
       // Aggregate project-level token data
-      fillProjectData(payload, tokenDataMap, ctx.directory, config.language, config.cost, resolveCostConfig, formatCost);
+      fillProjectData(payload, tokenDataMap, ctx.directory, config.language, config.cost, resolveCostConfig, formatCost, sessionCache);
 
       // Filter by session type whitelist (default: only 'main' sessions)
       const allowedTypes = config.includeSessionTypes ?? DEFAULT_SESSION_TYPES;
@@ -791,7 +826,51 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
         logger.error(`Failed to handle event ${payload.eventType}: ${error}`);
       }
 
+      // Cache write: persist session token data for project-level aggregation
+      // Skip during tests to prevent cross-test filesystem pollution
+      if (!isTestEnvironment) {
+        try {
+          const shouldWrite =
+            payload.eventType === 'idle' ||
+            payload.eventType === 'error' ||
+            (payload.eventType === 'status' && Date.now() - lastCacheWriteTime >= 60000);
 
+          if (shouldWrite) {
+            const sessionId = payload.sessionId;
+            const sessionData = tokenDataMap.get(sessionId);
+            if (sessionData) {
+              const entry = buildCacheEntry(sessionId, sessionData);
+              if (entry) {
+                writeCacheEntry(baseDir, entry);
+                if (payload.eventType === 'status') {
+                  lastCacheWriteTime = Date.now();
+                }
+              }
+            }
+          }
+        } catch (cacheErr) {
+          logger.error(`Cache write failed: ${cacheErr}`);
+        }
+      }
+
+
+    },
+    tool: {
+      'ul-token-rebuild': tool({
+        description: '从 OpenCode 数据库重建会话 token 缓存。扫描所有历史会话，将缺失的会话聚合数据写入缓存文件。用于首次安装、缓存丢失后恢复、或定期刷新项目级 token 聚合准确度。',
+        args: {},
+        execute: async (_args, toolCtx) => {
+          try {
+            const { syncFromDB } = await import('./session-cache.js');
+            const cacheDir = process.env.OPENCODE_DATA_DIR ?? path.join(os.homedir(), '.local', 'share', 'opencode');
+            const currentCache = loadSessionCache(cacheDir);
+            const result = await syncFromDB(cacheDir, toolCtx.directory, currentCache);
+            return `Token cache rebuild complete.\n- New sessions synced: ${result.newSessions}\n- Total cached sessions: ${result.totalSessions}\n- Total tokens: input=${result.totalTokens.input}, output=${result.totalTokens.output}, cacheRead=${result.totalTokens.cacheRead}, cacheWrite=${result.totalTokens.cacheWrite}`;
+          } catch (err) {
+            return `Token cache rebuild failed: ${err}`;
+          }
+        },
+      }),
     },
   };
 };

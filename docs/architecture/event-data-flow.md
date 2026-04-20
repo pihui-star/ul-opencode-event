@@ -186,21 +186,38 @@ aggregateSubSessions(payload, tokenDataMap, sessionMap, ...)
 
 ### 3.6 项目级聚合
 
-`aggregateProjectTokens` + `fillProjectData`（`index.ts:465-514`）在 `aggregateSubSessions` 之后调用，将当前项目的所有会话 token 累加到 `projectTokens`：
+`aggregateProjectTokens` + `fillProjectData`（`index.ts:465-514`）在 `aggregateSubSessions` 之后调用，将当前项目的所有会话 token 累加到 `projectTokens`。项目级聚合采用**双数据源**方案，确保重启后的历史会话也能被计入：
 
 ```
-fillProjectData(payload, tokenDataMap, projectPath, ...)
+fillProjectData(payload, tokenDataMap, projectPath, cacheData?, ...)
     |
-    └── aggregateProjectTokens(tokenDataMap, projectPath)
-         |
-         └── 遍历 tokenDataMap
-              |
-              ├── sessionData.projectPath 未设置 → 跳过（旧版预加载数据）
-              ├── path.normalize(projectPath) 不匹配 → 跳过（其他项目）
-              └── 匹配 → sumAllCompletedTokens 累加
-         |
-         └── payload.projectTokens / projectCost / projectCostFormatted
+    ├── 从 tokenDataMap 聚合（实时数据源）
+    |    └── aggregateProjectTokens(tokenDataMap, projectPath)
+    |         |
+    |         └── 遍历 tokenDataMap
+    |              |
+    |              ├── sessionData.projectPath 未设置 → 跳过（旧版预加轂数据）
+    |              ├── path.normalize(projectPath) 不匹配 → 跳过（其他项目）
+    |              └── 匹配 → sumAllCompletedTokens 累加
+    |
+    ├── 从 cacheData 聚合（历史数据源，session-cache.ts 提供）
+    |    └── aggregateProjectFromCache(cacheData, projectPath, tokenDataMap)
+    |         |
+    |         └── 遍历 cacheData 中已完成会话
+    |              |
+    |              ├── sessionId 存在于 tokenDataMap → 跳过（避免重复计数）
+    |              ├── projectPath 不匹配 → 跳过
+    |              └── 匹配 → 累加缓存的 totalTokens
+    |
+    └── payload.projectTokens / projectCost / projectCostFormatted（两源合计）
 ```
+
+**缓存数据来源**（`session-cache.ts`）：
+1. 插件初始化时通过 `loadSessionCache()` 从 `ul-opencode-event-session-cache.jsonl` 加载
+2. `idle` / `error` 事件时始终写入缓存（已完成会话的 `sumAllCompletedTokens` 结果）
+3. `status` 事件时节流写入（60 秒间隔），避免高频写入
+4. 缓存条目按 sessionId 去重，latest-per-session wins
+5. `ul-token-rebuild` 工具可从 opencode.db 重建缓存，用于首次同步或恢复
 
 > **注意**：项目级聚合使用 `path.normalize()` 进行跨平台路径比较。未标记 `projectPath` 的会话（旧版 db-preload 恢复的数据）不计入项目总量。`message.updated` 处理器会为新会话设置 `projectPath`（优先从 `sessionMap` 获取 `directory`，fallback 到 `ctx.directory`）。`session.created` 处理器会回填已存在但缺少 `projectPath` 的会话数据。
 
@@ -234,6 +251,7 @@ message.updated              (不发送通知)       -
 | `ul-opencode-event.log` | `logger.ts` | 运行日志 | 每次日志调用 |
 | `ul-opencode-event-messages.log` | `file.ts` | EventPayload + subject/body | 每次通知发送 |
 | `ul-opencode-event-variables.jsonl` | `recorder.ts` | 全部模板变量 | 每次事件处理 |
+| `ul-opencode-event-session-cache.jsonl` | `session-cache.ts` | 已完成会话的 sumAllCompletedTokens | idle/error 事件（始终）；status 事件（60s 节流） |
 
 `recorder.ts` 记录的是 `handler.ts` 中构建的全部模板变量（约 56 个字段），包含原始值和人类可读格式（如 `sessionTokensTotalHuman`、`projectTokensTotalHuman`）。**始终开启，不受通道配置影响**，可用于调试。
 
