@@ -5,12 +5,14 @@
  * Only imports when actually needed (when creating senders).
  * Supports SMTP and DingTalk channels via a unified ChannelSender interface.
  */
+import os from 'node:os';
 import type { NotificationConfig, EventPayload, EventType, TemplateConfig, ChannelSender } from './types.js';
 import { renderTemplate } from './template.js';
 import { getDefaultTemplates } from './locales.js';
 import { getFormatter } from './formatters.js';
 import { logger } from './logger.js';
 import { recordEventVariables } from './recorder.js';
+import { getCurrentVersion } from './updater.js';
 
 /**
  * 事件默认开关配置
@@ -31,6 +33,58 @@ const EVENT_DEFAULTS: Record<EventType, boolean> = {
 export interface EventHandler {
   handle: (eventType: EventType, payload: EventPayload) => Promise<void>;
   close: () => Promise<void>;
+  setOpenCodeVersion: (version: string) => void;
+}
+
+/**
+ * Virtual network interface name prefixes to skip when detecting local IP.
+ * Case-insensitive comparison.
+ */
+const VIRTUAL_NIC_PREFIXES = ['docker', 'wsl', 'vethernet', 'tun', 'vmnet', 'vnic'];
+
+/**
+ * Format system uptime (in seconds) as a human-readable string.
+ * Rules: calculate from largest unit (days) to smallest (seconds),
+ * skip zero-valued large units, but always keep minutes as the baseline minimum.
+ *
+ * Examples: 0 → "0m", 45 → "0m 45s", 3661 → "1h 1m 1s", 90061 → "1d 1h 1m 1s"
+ */
+export function formatSystemUptime(seconds: number): string {
+  const secs = Math.floor(Math.abs(seconds));
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+
+  const parts: string[] = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  parts.push(`${m}m`);
+  if (s > 0) parts.push(`${s}s`);
+
+  return parts.join(' ');
+}
+
+/**
+ * Get the first non-internal, non-virtual IPv4 address from network interfaces.
+ * Returns "127.0.0.1" if no suitable interface is found.
+ */
+export function getLocalIP(): string {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    const lowerName = name.toLowerCase();
+    if (VIRTUAL_NIC_PREFIXES.some(prefix => lowerName.startsWith(prefix))) {
+      continue;
+    }
+    const entries = interfaces[name];
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (!entry.internal && entry.family === 'IPv4') {
+        return entry.address;
+      }
+    }
+  }
+  return '127.0.0.1';
 }
 
 /**
@@ -57,6 +111,21 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
 
   // Resolve locale-aware default templates at creation time
   const defaultTemplates = getDefaultTemplates(config.language);
+
+  // Static system variables - collected once at creation time
+  const staticSystemInfo = {
+    hostname: os.hostname(),
+    osType: os.type(),
+    osPlatform: os.platform(),
+    osRelease: os.release(),
+    osArch: os.arch(),
+    username: os.userInfo().username,
+    nodeVersion: process.version,
+    pluginVersion: getCurrentVersion() ?? "unknown",
+  };
+
+  // OpenCode version - set from session.created event in index.ts
+  let opencodeVersion = "";
 
   return {
     handle: async (eventType: EventType, payload: EventPayload): Promise<void> => {
@@ -187,7 +256,32 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
         projectTokensCacheReadHuman: payload.projectTokens?.cacheRead != null ? formatTokenCount(payload.projectTokens.cacheRead) : undefined,
         projectTokensCacheWriteHuman: payload.projectTokens?.cacheWrite != null ? formatTokenCount(payload.projectTokens.cacheWrite) : undefined,
         projectTokensTotalHuman: payload.projectTokens?.total != null ? formatTokenCount(payload.projectTokens.total) : undefined,
+        // 静态系统变量
+        hostname: staticSystemInfo.hostname,
+        osType: staticSystemInfo.osType,
+        osPlatform: staticSystemInfo.osPlatform,
+        osRelease: staticSystemInfo.osRelease,
+        osArch: staticSystemInfo.osArch,
+        username: staticSystemInfo.username,
+        nodeVersion: staticSystemInfo.nodeVersion,
+        pluginVersion: staticSystemInfo.pluginVersion,
+        opencodeVersion,
+        // 动态系统变量
+        processPid: String(process.pid),
+        systemUptime: formatSystemUptime(os.uptime()),
+        localIP: getLocalIP(),
       };
+
+      // Resolve custom variables - merge after built-in vars are built
+      if (config.customVariables && Object.keys(config.customVariables).length > 0) {
+        // First, resolve custom variable values against built-in variables (single pass)
+        const resolvedCustomVars: Record<string, string> = {};
+        for (const [key, value] of Object.entries(config.customVariables)) {
+          resolvedCustomVars[key] = renderTemplate(value, variables);
+        }
+        // Then merge into variables map (custom can override built-in)
+        Object.assign(variables, resolvedCustomVars);
+      }
 
       // System-level: record all event variables (always on, independent of channels)
       recordEventVariables(variables);
@@ -238,6 +332,10 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
       const closePromises = Array.from(senders.values()).map(sender => sender.close());
       await Promise.all(closePromises);
       senders.clear();
+    },
+
+    setOpenCodeVersion: (version: string): void => {
+      opencodeVersion = version;
     },
   };
 }

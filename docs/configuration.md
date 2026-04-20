@@ -118,6 +118,15 @@
 
 **解析流程**：发送通知时，插件先查找当前通道是否为该事件类型配置了自定义模板；如果没有，则使用 `language` 对应的内置默认模板。
 
+### 变量来源与优先级
+
+模板变量的值来自多个来源，按以下优先级合并（后出现的覆盖先出现的）：
+
+1. **事件数据变量** - 来自 SDK 事件（eventType, sessionId, duration 等）
+2. **Token 聚合变量** - 自动计算（session/total/project 级别）
+3. **内置系统变量** - 自动收集（hostname, osPlatform, localIP 等）
+4. **自定义变量** - 来自配置文件 `customVariables` 字段（优先级最高，可覆盖上述所有变量）
+
 ---
 
 ## 5. 语言设置
@@ -199,6 +208,18 @@ interface ChannelTemplates {
 | `{{sessionTitle}}` | 会话标题（来自 SDK Session.title） | `Fix auth bug` |
 | `{{sessionType}}` | 会话类型 | `main`、`subagent`、`unknown` |
 | `{{parentSessionId}}` | 父会话 ID（子代理事件时有值，主会话为空） | `ses_parent456` |
+| `{{hostname}}` | 主机名 | `DESKTOP-ABC` |
+| `{{osType}}` | 操作系统类型 | `Windows_NT` |
+| `{{osPlatform}}` | 平台标识 | `win32` |
+| `{{osRelease}}` | 系统版本 | `10.0.19045` |
+| `{{osArch}}` | CPU 架构 | `x64` |
+| `{{username}}` | 当前用户名 | `augushong` |
+| `{{nodeVersion}}` | Node.js 版本 | `v22.1.0` |
+| `{{pluginVersion}}` | 插件版本 | `0.1.52` |
+| `{{opencodeVersion}}` | OpenCode 版本 | `1.0.0` |
+| `{{localIP}}` | 本机 IP（第一个非内部 IPv4 地址） | `192.168.1.100` |
+| `{{processPid}}` | 进程 PID | `12345` |
+| `{{systemUptime}}` | 系统运行时间 | `3d 5h 20m` |
 
 > **关于 `projectName`**：`projectName` 显示项目的短名称（目录名），而非完整路径。可通过配置文件顶层 `"projectName": "自定义名称"` 字段覆盖自动取值。如需完整路径，请使用 `{{projectPath}}`。
 
@@ -522,6 +543,72 @@ interface ChannelTemplates {
 
 上例中，`error` 事件使用自定义模板，`idle` 事件使用中文默认模板。
 
+### 9.5 自定义变量配置
+
+通过顶层 `customVariables` 字段添加自定义模板变量，所有通道共享：
+
+```json
+{
+  "customVariables": {
+    "env": "production",
+    "team": "backend"
+  },
+  "channels": [...]
+}
+```
+
+在模板中使用：
+
+```
+环境: {{env}}
+团队: {{team}}
+主机: {{hostname}}
+```
+
+自定义变量支持嵌套引用内置变量（单层）：
+
+```json
+{
+  "customVariables": {
+    "serverLabel": "{{hostname}}-{{env}}"
+  }
+}
+```
+
+`serverLabel` 会被渲染为类似 `DESKTOP-ABC-production` 的值。
+
+#### 合并规则
+
+全局和项目配置都有 `customVariables` 时，按 `{ ...global, ...project }` 合并，项目级同名 key 覆盖全局级。
+
+```json
+// 全局配置
+{
+  "customVariables": {
+    "env": "production",
+    "region": "us-east"
+  }
+}
+
+// 项目配置
+{
+  "customVariables": {
+    "env": "staging",
+    "project": "my-app"
+  }
+}
+
+// 最终生效：{ "env": "staging", "region": "us-east", "project": "my-app" }
+```
+
+#### 规则
+
+- 变量名必须匹配 `/^\w+$/`（字母、数字、下划线）
+- 值必须为字符串
+- 自定义变量可以覆盖内置变量的值（允许）
+- 仅支持静态值，不支持环境变量展开
+- 嵌套引用仅支持单层（自定义变量引用内置变量，不能引用其他自定义变量）
+
 ---
 
 ## 10. 内置默认模板参考
@@ -795,6 +882,14 @@ A: 可以。`subject` 和 `body` 是独立配置的。例如只设置 `"subject"
 
 A: 占位符被替换为空字符串。例如 `{{parentSessionId}}` 在主会话事件中为空，模板中 `父会话: {{parentSessionId}}` 会渲染为 `父会话: `。如需隐藏空值行，建议在自定义模板中移除对应行。
 
+**Q: 如何使用自定义变量？**
+
+A: 在配置文件顶层添加 `customVariables` 字段，键值对形式，值为字符串。例如 `{"env": "production"}`，然后在模板中用 `{{env}}` 引用。自定义变量优先级最高，可以覆盖内置变量的值。详见 [9.5 自定义变量配置](#95-自定义变量配置)。
+
+**Q: 自定义变量会记录到本地文件吗？**
+
+A: 会。`recorder.ts` 会记录所有模板变量（包括自定义变量和内置系统变量）到 `ul-opencode-event-variables.jsonl`。调试时可通过 `jq` 筛选查看。
+
 ---
 
 ## 13. 顶层配置字段
@@ -808,6 +903,7 @@ A: 占位符被替换为空字符串。例如 `{{parentSessionId}}` 在主会话
 | `timezone` | string | 根据 `language` 推断 | IANA 时区标识符，如 `"Asia/Shanghai"` |
 | `auto_update` | boolean | `true` | 是否自动检查并安装新版本 |
 | `includeSessionTypes` | string[] | `["main"]` | 包含的会话类型，可选值：`"main"`、`"subagent"`、`"unknown"` |
+| `customVariables` | Record<string, string> | `{}` | 自定义模板变量，所有通道共享。项目级同名 key 覆盖全局级 |
 
 ### 配置示例
 
@@ -818,6 +914,9 @@ A: 占位符被替换为空字符串。例如 `{{parentSessionId}}` 在主会话
   "timezone": "Asia/Shanghai",
   "auto_update": true,
   "includeSessionTypes": ["main"],
+  "customVariables": {
+    "env": "production"
+  },
   "channels": [
     {
       "type": "smtp",

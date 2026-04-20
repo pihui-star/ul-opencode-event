@@ -693,6 +693,11 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
       if (event.type === 'session.created') {
         sessionMap.set(event.properties.info.id, event.properties.info);
 
+        // Extract OpenCode version from session info and pass to handler
+        if (event.properties.info.version) {
+          eventHandler.setOpenCodeVersion(event.properties.info.version);
+        }
+
         // Backfill projectPath for sessions that already exist in tokenDataMap (from preloading)
         const existingSessionData = tokenDataMap.get(event.properties.info.id);
         if (existingSessionData && !existingSessionData.projectPath && event.properties.info.directory) {

@@ -48,6 +48,9 @@ EventPayload
     │
     ▼
 renderTemplate(subjectTpl, bodyTpl, variables)  ← template.ts
+    │   // variables map 包含：事件数据变量 + Token 聚合变量
+    │   // + 内置系统变量（hostname, localIP, osPlatform 等）
+    │   // + customVariables（配置文件自定义变量，优先级最高）
     │
     ├─→ subject: string  ("[OpenCode] 任务完成 - my-project")
     └─→ body: string     ("项目: my-project\n时间: ...\n耗时: ...")

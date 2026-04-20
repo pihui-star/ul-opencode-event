@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { NotificationConfig, Channel, SessionType, CostConfig } from './types.js';
-import { DEFAULT_SESSION_TYPES, SUPPORTED_CURRENCIES } from './types.js';
+import { DEFAULT_SESSION_TYPES, SUPPORTED_CURRENCIES, VARIABLE_NAME_REGEX } from './types.js';
 import { logger } from './logger.js';
 
 const SUPPORTED_CHANNEL_TYPES = ['smtp', 'dingtalk', 'feishu', 'file'] as const;
@@ -91,6 +91,33 @@ function validateIncludeSessionTypes(types?: unknown): SessionType[] {
     return [...DEFAULT_SESSION_TYPES];
   }
 
+  return result;
+}
+
+/**
+ * Validate and filter customVariables.
+ * - Key must match VARIABLE_NAME_REGEX (/^\w+$/), otherwise warn and skip
+ * - Value must be string type, otherwise warn and skip
+ * - Returns filtered Record<string, string>
+ * - Empty object or undefined input returns {}
+ */
+export function validateCustomVariables(vars: Record<string, unknown> | undefined): Record<string, string> {
+  if (!vars || typeof vars !== 'object') {
+    return {};
+  }
+
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(vars)) {
+    if (!VARIABLE_NAME_REGEX.test(key)) {
+      logger.warn(`customVariables: invalid key "${key}". Key must match ${VARIABLE_NAME_REGEX.toString()}. Skipping.`);
+      continue;
+    }
+    if (typeof value !== 'string') {
+      logger.warn(`customVariables: value for key "${key}" is not a string (got ${typeof value}). Skipping.`);
+      continue;
+    }
+    result[key] = value;
+  }
   return result;
 }
 
@@ -345,6 +372,13 @@ export function loadConfig(): NotificationConfig {
     enableOnlineRate: projectConfig?.cost?.enableOnlineRate ?? globalConfig?.cost?.enableOnlineRate,
   };
 
+  // Merge customVariables — project overrides global (same key), then validate
+  const mergedCustomVariablesRaw: Record<string, unknown> = {
+    ...(globalConfig?.customVariables ?? {}),
+    ...(projectConfig?.customVariables ?? {}),
+  };
+  const customVariables = validateCustomVariables(mergedCustomVariablesRaw);
+
   // Deprecation warning for old field
   for (const rawConfig of [globalConfig, projectConfig] as Array<typeof globalConfig>) {
     if (rawConfig && 'includeSubagentEvents' in rawConfig) {
@@ -361,5 +395,6 @@ export function loadConfig(): NotificationConfig {
     ...(mergedAutoUpdate !== undefined ? { auto_update: mergedAutoUpdate } : { auto_update: true }),
     includeSessionTypes: validateIncludeSessionTypes(rawIncludeSessionTypes),
     cost: resolveCostConfig(mergedCostRaw, mergedLanguage),
+    ...(Object.keys(customVariables).length > 0 && { customVariables }),
   };
 }

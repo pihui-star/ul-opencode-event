@@ -33,7 +33,15 @@ export interface NotificationConfig {
   auto_update?: boolean;
   /** 费用计算配置 */
   cost?: CostConfig;
+  /** 自定义模板变量，key 必须匹配 VARIABLE_NAME_REGEX */
+  customVariables?: Record<string, string>;
 }
+
+/**
+ * Valid variable name pattern for customVariables keys.
+ * Must match the template system's /\{\{(\w+)\}\}/g regex.
+ */
+export const VARIABLE_NAME_REGEX = /^\w+$/;
 
 /**
  * Generic channel interface

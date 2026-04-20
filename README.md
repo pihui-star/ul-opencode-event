@@ -47,7 +47,7 @@ Add to `~/.config/opencode/opencode.json`:
 1. **Project-level**: `.opencode/ul-opencode-event.json` or `./ul-opencode-event.json`
 2. **Global**: `~/.config/opencode/ul-opencode-event.json`
 
-Project-level config overrides global (channels merged by name).
+Project-level config overrides global (channels merged by name). Custom variables can be added via the top-level `customVariables` field, see [Configuration](docs/configuration.md#13-顶层配置字段) for details.
 
 ### Minimal SMTP Example
 
@@ -105,6 +105,12 @@ Project-level config overrides global (channels merged by name).
 | `{{message}}` | Completion message | idle |
 | `{{duration}}` | Task duration | idle |
 | `{{error}}` | Error message | error |
+| `{{hostname}}` | Machine hostname | All |
+| `{{localIP}}` | Local IP address | All |
+| `{{pluginVersion}}` | Plugin version | All |
+| `{{osPlatform}}` | OS platform (win32, darwin, linux) | All |
+
+> Full variable list (68+ variables) including system info and custom variables: see [Configuration - Template Variables](docs/configuration.md#8-模板变量)
 
 See [Configuration - Templates](docs/configuration.md#4-模板系统概述) for customization details.
 

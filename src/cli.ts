@@ -14,6 +14,7 @@ import * as os from 'os';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import type { Channel, SMTPConfig, DingtalkConfig, FeishuConfig, NotificationConfig } from './types.js';
+import { validateCustomVariables } from './config.js';
 import { generateSign, createDingTalkFormatter } from './dingtalk.js';
 import { generateFeishuSign, createFeishuFormatter } from './feishu.js';
 
@@ -77,6 +78,7 @@ Cost:
 interface TestOptions {
   channelName?: string;
   noSend: boolean;
+  customVars?: string;
 }
 
 /**
@@ -90,7 +92,11 @@ Commands:
   test      Test notification channel configuration
   rebuild   Rebuild token cache from database
 
-Run 'npx @ulthon/ul-opencode-event test' for test options.
+Test options:
+  --channel <name>       Test specific channel by name
+  --no-send              Only verify connection, don't send message
+  --custom-vars <json>   Custom template variables as JSON string
+                         Example: --custom-vars '{"env":"test","team":"backend"}'
 `);
 }
 
@@ -115,6 +121,8 @@ function parseArgs(): { command: string | null; options: TestOptions } {
       options.channelName = args[++i];
     } else if (arg === '--no-send') {
       options.noSend = true;
+    } else if (arg === '--custom-vars') {
+      options.customVars = args[++i];
     } else if (!arg.startsWith('-')) {
       command = arg;
     }
@@ -906,11 +914,13 @@ function loadConfigForTesting(): NotificationConfig {
   // Merge top-level fields (language, timezone) — project config takes priority
   const mergedLanguage = projectConfig?.language ?? globalConfig?.language;
   const mergedTimezone = projectConfig?.timezone ?? globalConfig?.timezone;
+  const mergedCustomVars = { ...globalConfig?.customVariables, ...projectConfig?.customVariables };
 
   return {
     channels: mergedChannels,
     ...(mergedLanguage !== undefined && { language: mergedLanguage }),
     ...(mergedTimezone !== undefined && { timezone: mergedTimezone }),
+    ...(Object.keys(mergedCustomVars).length > 0 && { customVariables: mergedCustomVars }),
   };
 }
 
@@ -973,6 +983,23 @@ async function main(): Promise<void> {
 
   // Load configuration
   const config = loadConfigForTesting();
+
+  // Parse and inject --custom-vars if provided
+  if (options.customVars) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(options.customVars);
+    } catch {
+      console.error(`${CLI_PREFIX} Failed to parse --custom-vars JSON: ${options.customVars}`);
+      process.exit(1);
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      console.error(`${CLI_PREFIX} --custom-vars must be a JSON object, got: ${typeof parsed}`);
+      process.exit(1);
+    }
+    const validated = validateCustomVariables(parsed as Record<string, unknown>);
+    config.customVariables = { ...config.customVariables, ...validated };
+  }
 
   if (config.channels.length === 0) {
     console.error(`${CLI_PREFIX} No channels configured.`);

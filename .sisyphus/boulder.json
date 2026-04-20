@@ -1,32 +1,67 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\created-token-template.md",
-  "started_at": "2026-04-20T13:58:59.526Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\builtin-custom-variables.md",
+  "started_at": "2026-04-20T15:07:16.797Z",
   "session_ids": [
-    "ses_254dba5b0ffe0rjZ6FQzlzoxVj"
+    "ses_254be1c19ffeGx0ct0cf6yLKv7",
+    "ses_2545e5351ffeuXIqnZDK3bS2pr",
+    "ses_2545d6739ffeb2Ase0nEO2fvRC",
+    "ses_2545d4f2dffed996azyjRT4UE5",
+    "ses_2545d41bdfferiito9YiUbRBOK"
   ],
   "session_origins": {
-    "ses_254dba5b0ffe0rjZ6FQzlzoxVj": "direct"
+    "ses_254be1c19ffeGx0ct0cf6yLKv7": "direct",
+    "ses_2545e5351ffeuXIqnZDK3bS2pr": "appended",
+    "ses_2545d6739ffeb2Ase0nEO2fvRC": "appended",
+    "ses_2545d4f2dffed996azyjRT4UE5": "appended",
+    "ses_2545d41bdfferiito9YiUbRBOK": "appended"
   },
-  "plan_name": "created-token-template",
+  "plan_name": "builtin-custom-variables",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "修改 created 事件模板，追加项目级 Token 信息",
-      "session_id": "ses_254ce182bffeuzTv11JvZpgVXS",
+      "task_title": "types.ts - 添加 customVariables 类型定义 + 变量名校验常量",
+      "session_id": "ses_2548bb64dffe9bU2IglTv4Anld",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-20T14:03:47.285Z"
+      "updated_at": "2026-04-20T15:17:49.530Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "config.ts - customVariables 合并 + 校验逻辑",
+      "session_id": "ses_25482a41bffeuVjWHAIpcQd5fH",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-20T15:29:11.552Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "handler.ts - 动态系统变量 (localIP, systemUptime, processPid)",
+      "session_id": "ses_25479fbc8ffeEh6zs72v1ZBE8k",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-20T15:48:39.875Z"
+    },
+    "todo:7": {
+      "task_key": "todo:7",
+      "task_label": "7",
+      "task_title": "CLI 测试工具同步更新",
+      "session_id": "ses_25466f731ffeJS8SjjaUZaD8xF",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-20T15:59:10.814Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
-      "task_title": "**Plan Compliance Audit** -- `quick`",
-      "session_id": "ses_254c62facffejIJD6qgNpf00GP",
+      "task_title": "**Plan Compliance Audit** -- `oracle`",
+      "session_id": "ses_2545d41bdfferiito9YiUbRBOK",
       "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-20T14:10:57.236Z"
+      "category": "deep",
+      "updated_at": "2026-04-20T16:11:08.154Z"
     }
   }
 }
