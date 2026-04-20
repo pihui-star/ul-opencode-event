@@ -1,34 +1,32 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\cache-reload-fix.md",
-  "started_at": "2026-04-20T12:38:50.228Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\created-token-template.md",
+  "started_at": "2026-04-20T13:58:59.526Z",
   "session_ids": [
-    "ses_25a52cab9ffeBChsjSYNoYgFID",
-    "ses_2550e82bbffeG0IIqr6eriGsNJ"
+    "ses_254dba5b0ffe0rjZ6FQzlzoxVj"
   ],
   "session_origins": {
-    "ses_25a52cab9ffeBChsjSYNoYgFID": "direct",
-    "ses_2550e82bbffeG0IIqr6eriGsNJ": "appended"
+    "ses_254dba5b0ffe0rjZ6FQzlzoxVj": "direct"
   },
-  "plan_name": "cache-reload-fix",
+  "plan_name": "created-token-template",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "修复 sessionCache 内存刷新",
-      "session_id": "ses_25517bec7ffe20DUHlSz1BbYY0",
+      "task_title": "修改 created 事件模板，追加项目级 Token 信息",
+      "session_id": "ses_254ce182bffeuzTv11JvZpgVXS",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-20T12:45:30.290Z"
+      "updated_at": "2026-04-20T14:03:47.285Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
-      "task_title": "**Plan Compliance Audit** -- `oracle`",
-      "session_id": "ses_2550e82bbffeG0IIqr6eriGsNJ",
+      "task_title": "**Plan Compliance Audit** -- `quick`",
+      "session_id": "ses_254c62facffejIJD6qgNpf00GP",
       "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-20T13:04:11.317Z"
+      "category": "quick",
+      "updated_at": "2026-04-20T14:10:57.236Z"
     }
   }
 }

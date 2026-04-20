@@ -31,7 +31,7 @@ const localeTemplates: Record<LocaleType, Record<EventType, TemplateConfig>> = {
     created: {
       subject: '[{{projectName}}] Task Started',
       body:
-        'Task started at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})',
+        'Task started at {{timestamp}}\nSession: {{sessionTitle}} ({{sessionId}})\n\nProject Token: {{projectTokensTotalHuman}}',
     },
     idle: {
       subject: '[{{projectName}}] Task Completed',
@@ -79,7 +79,7 @@ const localeTemplates: Record<LocaleType, Record<EventType, TemplateConfig>> = {
     created: {
       subject: '[{{projectName}}] 任务已启动',
       body:
-        '任务启动时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})',
+        '任务启动时间: {{timestamp}}\n会话: {{sessionTitle}} ({{sessionId}})\n\n项目累计 Token: {{projectTokensTotalHuman}}',
     },
     idle: {
       subject: '[{{projectName}}] 任务已完成',
