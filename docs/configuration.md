@@ -220,6 +220,9 @@ interface ChannelTemplates {
 | `{{localIP}}` | 本机 IP（第一个非内部 IPv4 地址） | `192.168.1.100` |
 | `{{processPid}}` | 进程 PID | `12345` |
 | `{{systemUptime}}` | 系统运行时间 | `3d 5h 20m` |
+| `{{sessionCacheHitRate}}` | 当前会话缓存命中率 | `89.5%` |
+| `{{totalCacheHitRate}}` | 会话及所有子会话的缓存命中率 | `92.3%` |
+| `{{projectCacheHitRate}}` | 项目范围内所有会话的缓存命中率 | `85.1%` |
 
 > **关于 `projectName`**：`projectName` 显示项目的短名称（目录名），而非完整路径。可通过配置文件顶层 `"projectName": "自定义名称"` 字段覆盖自动取值。如需完整路径，请使用 `{{projectPath}}`。
 

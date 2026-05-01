@@ -109,8 +109,11 @@ Project-level config overrides global (channels merged by name). Custom variable
 | `{{localIP}}` | Local IP address | All |
 | `{{pluginVersion}}` | Plugin version | All |
 | `{{osPlatform}}` | OS platform (win32, darwin, linux) | All |
+| `{{sessionCacheHitRate}}` | Current session cache hit rate | All |
+| `{{totalCacheHitRate}}` | Session + sub-sessions cache hit rate | All |
+| `{{projectCacheHitRate}}` | Project-wide cache hit rate | All |
 
-> Full variable list (68+ variables) including system info and custom variables: see [Configuration - Template Variables](docs/configuration.md#8-模板变量)
+> Full variable list (71+ variables) including system info and custom variables: see [Configuration - Template Variables](docs/configuration.md#8-模板变量)
 
 See [Configuration - Templates](docs/configuration.md#4-模板系统概述) for customization details.
 
