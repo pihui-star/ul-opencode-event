@@ -6,7 +6,7 @@
  * Supports SMTP and DingTalk channels via a unified ChannelSender interface.
  */
 import os from 'node:os';
-import type { NotificationConfig, EventPayload, EventType, TemplateConfig, ChannelSender } from './types.js';
+import type { NotificationConfig, EventPayload, EventType, TemplateConfig, ChannelSender, TokenBreakdown } from './types.js';
 import { renderTemplate } from './template.js';
 import { getDefaultTemplates } from './locales.js';
 import { getFormatter } from './formatters.js';
@@ -98,6 +98,21 @@ export function formatTokenCount(n: number): string {
   if (abs < 1_000_000) return (abs / 1000).toFixed(1) + 'K';
   if (abs < 1_000_000_000) return (abs / 1_000_000).toFixed(1) + 'M';
   return (abs / 1_000_000_000).toFixed(1) + 'B';
+}
+
+/**
+ * Calculate cache hit rate from token breakdown.
+ * Returns percentage string like "45.2%" or "N/A" for invalid/missing data.
+ * Handles: undefined, null, total=0, NaN (0/0), Infinity, negative values.
+ */
+export function calcCacheHitRate(tokens: TokenBreakdown | undefined): string {
+  if (tokens == null) return 'N/A';
+  const total = tokens.total;
+  const cacheRead = tokens.cacheRead;
+  if (total === 0 || !Number.isFinite(cacheRead) || cacheRead < 0) return 'N/A';
+  const rate = cacheRead / total * 100;
+  if (!Number.isFinite(rate)) return 'N/A';
+  return rate.toFixed(1) + '%';
 }
 
 /**
@@ -256,6 +271,10 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
         projectTokensCacheReadHuman: payload.projectTokens?.cacheRead != null ? formatTokenCount(payload.projectTokens.cacheRead) : undefined,
         projectTokensCacheWriteHuman: payload.projectTokens?.cacheWrite != null ? formatTokenCount(payload.projectTokens.cacheWrite) : undefined,
         projectTokensTotalHuman: payload.projectTokens?.total != null ? formatTokenCount(payload.projectTokens.total) : undefined,
+        // 缓存命中率
+        sessionCacheHitRate: calcCacheHitRate(payload.sessionTokens),
+        totalCacheHitRate: calcCacheHitRate(payload.totalTokens),
+        projectCacheHitRate: calcCacheHitRate(payload.projectTokens),
         // 静态系统变量
         hostname: staticSystemInfo.hostname,
         osType: staticSystemInfo.osType,
