@@ -1,10 +1,7 @@
-import { describe, test, expect, beforeEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 
 // ---------------------------------------------------------------------------
-// Mock fs BEFORE importing logger (hoisted by Bun before any import)
-// Note: In full-suite mode, other test files may already have imported
-// src/logger.ts with the real fs module, causing our mock to not intercept.
-// Tests are designed to work via console-fallback capture in that case.
+// Shared mock state
 // ---------------------------------------------------------------------------
 
 const writtenLines: string[] = [];
@@ -19,7 +16,11 @@ function resetFsMock() {
   truncateCalled = false;
 }
 
-mock.module('fs', () => ({
+// ---------------------------------------------------------------------------
+// Mock fs for file-rotation.ts (shouldRotate / rotateFile)
+// ---------------------------------------------------------------------------
+
+const fsMockFactory = () => ({
   appendFileSync: (_path: string, data: string | Uint8Array) => {
     const line = typeof data === 'string' ? data : new TextDecoder().decode(data);
     writtenLines.push(line);
@@ -38,13 +39,88 @@ mock.module('fs', () => ({
   },
   existsSync: () => true,
   mkdirSync: () => {},
+});
+
+mock.module('fs', fsMockFactory);
+mock.module('node:fs', fsMockFactory);
+
+// ---------------------------------------------------------------------------
+// Mock write-buffer so flush directly writes to our mock state.
+// This avoids fs-mock interception issues with transitive module imports.
+// ---------------------------------------------------------------------------
+
+mock.module('../src/write-buffer.js', () => ({
+  WriteBuffer: class {
+    private buffer: string[] = [];
+    private timer: ReturnType<typeof setInterval> | null = null;
+    private _flushHandler: () => void;
+
+    constructor(_opts: any) {
+      this._flushHandler = () => this.flush();
+      this.timer = setInterval(() => this.flush(), 500);
+      process.on('exit', this._flushHandler);
+    }
+
+    append(line: string): void {
+      this.buffer.push(line);
+    }
+
+    flush = (): void => {
+      if (this.buffer.length === 0) return;
+      const content = this.buffer.join('');
+      this.buffer = [];
+      // Write directly to mock state (same as fs mock's appendFileSync)
+      writtenLines.push(content);
+      fileContent += content;
+      mockFileSize = fileContent.length;
+    };
+
+    close(): void {
+      if (this.timer !== null) {
+        clearInterval(this.timer);
+        this.timer = null;
+      }
+      process.removeListener('exit', this._flushHandler);
+      this.flush();
+    }
+
+    get size(): number { return this.buffer.length; }
+    get currentSizeBytes(): number { return 0; }
+    get needsRotation(): boolean { return false; }
+  },
 }));
 
-// Import AFTER mocking so logger uses our fs stubs (when mock takes effect)
+// Import AFTER all mocks are set up
 const { createLogger, DEBUG_ENABLED } = await import('../src/logger.js');
 
 // ---------------------------------------------------------------------------
-// Console capture helper (works whether fs mock intercepts or fallback fires)
+// Helpers
+// ---------------------------------------------------------------------------
+
+interface LoggerWithInternals {
+  debug(message: string): void;
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+  _flush(): void;
+  _close(): void;
+}
+
+/** Track active loggers to clean up WriteBuffer timers between tests */
+const activeLoggers: LoggerWithInternals[] = [];
+
+function createTestLogger(config?: Parameters<typeof createLogger>[0]): LoggerWithInternals {
+  const log = createLogger(config) as unknown as LoggerWithInternals;
+  activeLoggers.push(log);
+  return log;
+}
+
+function flushLogger(log: LoggerWithInternals): void {
+  if (typeof log._flush === 'function') log._flush();
+}
+
+// ---------------------------------------------------------------------------
+// Console capture helper
 // ---------------------------------------------------------------------------
 
 interface ConsoleCapture {
@@ -93,23 +169,32 @@ describe('Logger', () => {
     resetFsMock();
   });
 
+  afterEach(() => {
+    for (const log of activeLoggers) {
+      if (typeof log._close === 'function') log._close();
+    }
+    activeLoggers.length = 0;
+  });
+
   describe('basic write', () => {
-    test('writes info and error lines (via fs or console fallback)', () => {
-      const log = createLogger({ debugEnabled: false });
+    test('writes info and error lines', () => {
+      const log = createTestLogger({ debugEnabled: false });
       const [cap, restore] = captureConsole();
 
       try {
         log.info('hello world');
         log.error('something broke');
+        flushLogger(log);
       } finally {
         restore();
       }
 
       // Either fs mock captured writes OR console fallback fired
-      const fsWorked = writtenLines.length >= 2;
+      const fsWorked = writtenLines.length >= 1;
       if (fsWorked) {
-        expect(writtenLines[0]).toContain('[INFO] hello world');
-        expect(writtenLines[1]).toContain('[ERROR] something broke');
+        const allWritten = writtenLines.join('');
+        expect(allWritten).toContain('[INFO] hello world');
+        expect(allWritten).toContain('[ERROR] something broke');
       } else {
         // Fallback path: info→console.info, error→console.error
         expect(cap.info.length).toBeGreaterThanOrEqual(1);
@@ -120,11 +205,12 @@ describe('Logger', () => {
     });
 
     test('includes prefix and level in each line', () => {
-      const log = createLogger({ prefix: '[test-prefix]' });
+      const log = createTestLogger({ prefix: '[test-prefix]' });
       const [cap, restore] = captureConsole();
 
       try {
         log.info('msg');
+        flushLogger(log);
       } finally {
         restore();
       }
@@ -137,7 +223,7 @@ describe('Logger', () => {
     });
 
     test('supports all four log levels', () => {
-      const log = createLogger({ debugEnabled: true });
+      const log = createTestLogger({ debugEnabled: true });
       const [cap, restore] = captureConsole();
 
       try {
@@ -145,26 +231,25 @@ describe('Logger', () => {
         log.info('i');
         log.warn('w');
         log.error('e');
+        flushLogger(log);
       } finally {
         restore();
       }
 
-      if (writtenLines.length >= 4) {
-        // Fs mock worked — verify all 4 levels
-        expect(writtenLines[0]).toContain('[DEBUG] d');
-        expect(writtenLines[1]).toContain('[INFO] i');
-        expect(writtenLines[2]).toContain('[WARN] w');
-        expect(writtenLines[3]).toContain('[ERROR] e');
+      if (writtenLines.length >= 1) {
+        const allWritten = writtenLines.join('');
+        expect(allWritten).toContain('[DEBUG] d');
+        expect(allWritten).toContain('[INFO] i');
+        expect(allWritten).toContain('[WARN] w');
+        expect(allWritten).toContain('[ERROR] e');
       } else {
         // Console fallback: debug has NO fallback (silent), others do
-        // info → console.info, warn → console.warn, error → console.error
         expect(cap.info).toHaveLength(1);
         expect(cap.info[0]).toContain('[INFO] i');
         expect(cap.warn).toHaveLength(1);
         expect(cap.warn[0]).toContain('[WARN] w');
         expect(cap.error).toHaveLength(1);
         expect(cap.error[0]).toContain('[ERROR] e');
-        // Debug is silently dropped (no console fallback for debug level)
         expect(cap.debug).toHaveLength(0);
       }
     });
@@ -172,12 +257,13 @@ describe('Logger', () => {
 
   describe('DEBUG filtering', () => {
     test('suppresses debug messages when debugEnabled is false (default)', () => {
-      const log = createLogger(); // default: debugEnabled = false
+      const log = createTestLogger(); // default: debugEnabled = false
       const [cap, restore] = captureConsole();
 
       try {
         log.debug('secret info');
         log.info('public info');
+        flushLogger(log);
       } finally {
         restore();
       }
@@ -197,12 +283,13 @@ describe('Logger', () => {
     });
 
     test('emits debug messages when debugEnabled is true', () => {
-      const log = createLogger({ debugEnabled: true });
+      const log = createTestLogger({ debugEnabled: true });
       const [cap, restore] = captureConsole();
 
       try {
         log.debug('visible debug');
         log.info('normal info');
+        flushLogger(log);
       } finally {
         restore();
       }
@@ -213,28 +300,28 @@ describe('Logger', () => {
       expect(hasInfo).toBe(true);
 
       // Debug appears only if fs mock is active; otherwise silently dropped
-      // (debug level has no console fallback — by design)
       if (writtenLines.length > 0) {
         const hasDebug = writtenLines.some((l) => l.includes('[DEBUG] visible debug'));
         expect(hasDebug).toBe(true);
       }
-      // In fallback mode, we just verify no crash occurred + info was emitted
     });
   });
 
   describe('size-based rotation / truncation', () => {
     test('truncates file when size exceeds maxSizeBytes', () => {
       const MAX_SIZE = 200;
-      const log = createLogger({
+
+      // Set up large file BEFORE creating logger so initial statSync captures it
+      fileContent = 'x'.repeat(MAX_SIZE + 100);
+      mockFileSize = fileContent.length;
+
+      const log = createTestLogger({
         debugEnabled: false,
         maxSizeBytes: MAX_SIZE,
       });
 
-      // Simulate existing large file with content
-      fileContent = 'x'.repeat(MAX_SIZE + 100);
-      mockFileSize = fileContent.length;
-
       log.info('trigger rotation');
+      flushLogger(log);
 
       // If fs mock is active, verify truncation behavior
       if (truncateCalled || fileContent.includes('[TRUNCATED]')) {
@@ -247,15 +334,18 @@ describe('Logger', () => {
 
     test('does NOT truncate when file is under limit', () => {
       const MAX_SIZE = 200;
-      const log = createLogger({
+
+      // Set file size under limit BEFORE creating logger
+      mockFileSize = 50;
+      fileContent = 'x'.repeat(50);
+
+      const log = createTestLogger({
         debugEnabled: false,
         maxSizeBytes: MAX_SIZE,
       });
 
-      // File well under limit
-      mockFileSize = 50;
-
       log.info('no rotation needed');
+      flushLogger(log);
 
       // If fs mock is active, verify no truncation
       if (writtenLines.length > 0 || !truncateCalled) {
@@ -266,7 +356,7 @@ describe('Logger', () => {
 
   describe('silent failure fallback', () => {
     test('createLogger does not throw even if log path is invalid', () => {
-      const log = createLogger({
+      const log = createTestLogger({
         debugEnabled: false,
         filePath: '/nonexistent/path/impossible.log',
       });

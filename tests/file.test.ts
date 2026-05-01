@@ -107,6 +107,7 @@ describe('createFileSender', () => {
     };
     const sender = await createFileSender(channel);
     await sender!.send({ subject: 'Hello', body: 'World', eventType: 'idle' });
+    await sender!.close();
 
     const content = nodeFs.readFileSync(filePath, 'utf-8');
     const lines = content.trim().split('\n');
@@ -130,6 +131,7 @@ describe('createFileSender', () => {
     await sender!.send({ msg: 1 });
     await sender!.send({ msg: 2 });
     await sender!.send({ msg: 3 });
+    await sender!.close();
 
     const content = nodeFs.readFileSync(filePath, 'utf-8');
     const lines = content.trim().split('\n');
@@ -151,6 +153,7 @@ describe('createFileSender', () => {
     };
     const sender = await createFileSender(channel);
     await sender!.send({ test: 'auto-dir' });
+    await sender!.close();
 
     expect(nodeFs.existsSync(filePath)).toBe(true);
     const parsed = JSON.parse(nodeFs.readFileSync(filePath, 'utf-8').trim());
@@ -169,16 +172,21 @@ describe('createFileSender', () => {
     };
     const sender = await createFileSender(channel);
 
-    // Write enough data to exceed the max size
-    for (let i = 0; i < 50; i++) {
+    // Write enough data to exceed the max size and trigger rotation.
+    // WriteBuffer flushes at 50 items; rotation check happens at writeCount=50,100,...
+    // At writeCount=50 the file is still empty (buffer not flushed yet).
+    // At writeCount=100 the file has the first 50 writes flushed, which exceeds 200 bytes,
+    // so shouldRotate returns true and rotation occurs.
+    for (let i = 0; i < 110; i++) {
       await sender!.send({ index: i, padding: 'x'.repeat(20) });
     }
+    await sender!.close();
 
     const content = nodeFs.readFileSync(filePath, 'utf-8');
     // File should contain TRUNCATE marker after rotation
     expect(content).toContain('[TRUNCATED]');
-    // File should be smaller than total written data (50 lines * ~50 chars = ~2500 chars)
-    expect(content.length).toBeLessThan(2500);
+    // File should be smaller than total written data (110 lines * ~45 chars = ~4950 chars)
+    expect(content.length).toBeLessThan(4950);
   });
 
   test('silent error handling - does not throw on write failure', async () => {
@@ -193,20 +201,97 @@ describe('createFileSender', () => {
 
     // Should NOT throw — errors are caught and logged
     await expect(sender!.send({ test: 'error' })).resolves.toBeUndefined();
+    // close() also catches flush errors silently
+    await expect(sender!.close()).resolves.toBeUndefined();
   });
 
-  test('close is a no-op', async () => {
-    const filePath = path.join(tempDir, 'close-test.log');
+  test('close flushes pending buffered data', async () => {
+    const filePath = path.join(tempDir, 'close-flush-test.log');
     const channel: Channel = {
       type: 'file',
       enabled: true,
-      name: 'close-file',
+      name: 'close-flush-file',
       config: { filePath, maxSizeBytes: 1048576 },
       events: {},
     };
     const sender = await createFileSender(channel);
-    // Should NOT throw
-    await expect(sender!.close()).resolves.toBeUndefined();
+
+    // Write some data without triggering auto-flush (buffered)
+    for (let i = 0; i < 10; i++) {
+      await sender!.send({ buffered: i });
+    }
+
+    // File may not exist yet (data is in buffer)
+    // After close, all data must be flushed
+    await sender!.close();
+
+    const content = nodeFs.readFileSync(filePath, 'utf-8');
+    const lines = content.trim().split('\n');
+    expect(lines).toHaveLength(10);
+    for (let i = 0; i < 10; i++) {
+      expect(JSON.parse(lines[i]).buffered).toBe(i);
+    }
+  });
+
+  test('buffered writes: fast 10 appends all present after close', async () => {
+    const filePath = path.join(tempDir, 'buffered-writes-test.log');
+    const channel: Channel = {
+      type: 'file',
+      enabled: true,
+      name: 'buffered-writes-file',
+      config: { filePath, maxSizeBytes: 1048576 },
+      events: {},
+    };
+    const sender = await createFileSender(channel);
+
+    // Rapid sequential sends without awaiting between them
+    const promises: Promise<void>[] = [];
+    for (let i = 0; i < 10; i++) {
+      promises.push(sender!.send({ fast: i }));
+    }
+    await Promise.all(promises);
+    await sender!.close();
+
+    const content = nodeFs.readFileSync(filePath, 'utf-8');
+    const lines = content.trim().split('\n');
+    expect(lines).toHaveLength(10);
+
+    const indices = lines.map(l => JSON.parse(l).fast).sort((a, b) => a - b);
+    expect(indices).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  test('JSONL format: each line is valid JSON', async () => {
+    const filePath = path.join(tempDir, 'jsonl-format-test.log');
+    const channel: Channel = {
+      type: 'file',
+      enabled: true,
+      name: 'jsonl-format-file',
+      config: { filePath, maxSizeBytes: 1048576 },
+      events: {},
+    };
+    const sender = await createFileSender(channel);
+
+    const messages = [
+      { type: 'simple', value: 42 },
+      { type: 'nested', data: { a: 1, b: [2, 3] } },
+      { type: 'special', chars: 'hello "world" \\ backslash' },
+    ];
+
+    for (const msg of messages) {
+      await sender!.send(msg);
+    }
+    await sender!.close();
+
+    const content = nodeFs.readFileSync(filePath, 'utf-8');
+    const lines = content.trim().split('\n');
+    expect(lines).toHaveLength(3);
+
+    // Each line must be valid JSON
+    const parsed = lines.map(l => JSON.parse(l));
+    expect(parsed[0].type).toBe('simple');
+    expect(parsed[0].value).toBe(42);
+    expect(parsed[1].data).toEqual({ a: 1, b: [2, 3] });
+    expect(parsed[2].chars).toBe('hello "world" \\ backslash');
   });
 });
 

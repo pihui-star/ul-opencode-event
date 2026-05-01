@@ -497,49 +497,37 @@ function aggregateProjectTokens(
  */
 function fillProjectData(
   payload: EventPayload,
-  tokenDataMap: Map<string, SessionTokenData>,
-  projectPath: string,
+  _tokenDataMap: Map<string, SessionTokenData>,
+  _projectPath: string,
   configLanguage?: string,
   configCost?: import('./types.js').CostConfig,
   resolveCostConfigFn?: typeof import('./cost.js').resolveCostConfig,
   formatCostFn?: typeof import('./cost.js').formatCost,
-  sessionCache?: Map<string, SessionCacheEntry>,
+  _sessionCache?: Map<string, SessionCacheEntry>,
 ): void {
-  // Dual-source aggregation: cache (historical) + tokenDataMap (current running)
-  // Exclude sessions from cache that are already in tokenDataMap to avoid double-counting
-  let cacheAgg: { cost: number; tokens: TokenBreakdown };
-  if (sessionCache && sessionCache.size > 0) {
-    const filteredCache = new Map(sessionCache);
-    for (const sessionId of tokenDataMap.keys()) {
-      filteredCache.delete(sessionId);
-    }
-    cacheAgg = aggregateProjectFromCache(filteredCache, projectPath);
-  } else {
-    cacheAgg = { cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-  }
-
-  const liveAgg = aggregateProjectTokens(tokenDataMap, projectPath);
-
-  const projectAgg = {
-    cost: cacheAgg.cost + liveAgg.cost,
-    tokens: {
-      input: cacheAgg.tokens.input + liveAgg.tokens.input,
-      output: cacheAgg.tokens.output + liveAgg.tokens.output,
-      reasoning: cacheAgg.tokens.reasoning + liveAgg.tokens.reasoning,
-      cacheRead: cacheAgg.tokens.cacheRead + liveAgg.tokens.cacheRead,
-      cacheWrite: cacheAgg.tokens.cacheWrite + liveAgg.tokens.cacheWrite,
-      total: cacheAgg.tokens.total + liveAgg.tokens.total,
-    },
-  };
-
+  // Direct O(1) read from incrementally maintained projectAgg counter
   payload.projectCost = projectAgg.cost;
-  payload.projectTokens = projectAgg.tokens;
+  payload.projectTokens = {
+    input: projectAgg.input,
+    output: projectAgg.output,
+    reasoning: projectAgg.reasoning,
+    cacheRead: projectAgg.cacheRead,
+    cacheWrite: projectAgg.cacheWrite,
+    total: projectAgg.total,
+  };
 
   if (resolveCostConfigFn && formatCostFn) {
     const resolved = resolveCostConfigFn(configLanguage, configCost);
     payload.projectCostFormatted = formatCostFn(projectAgg.cost, resolved.currency, resolved.decimalPlaces, resolved.exchangeRate);
   }
 }
+
+/**
+ * Incremental project-level aggregation counter.
+ * Updated on each message.updated (delta), initialized from preload + sessionCache.
+ * Replaces O(N) full-scan in fillProjectData with O(1) read.
+ */
+let projectAgg = { cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 
 /**
  * Guard flag to ensure auto-update only runs once per plugin load
@@ -565,6 +553,7 @@ function __test_resetFlags(): void {
   isTestEnvironment = true;
   lastCacheWriteTime = 0;
   __test_payloads.length = 0;
+  projectAgg = { cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 }
 
 // Expose test helpers via globalThis (safe for production - only used in tests)
@@ -595,6 +584,9 @@ export const NotificationPlugin: Plugin = async (ctx) => {
  * Actual plugin implementation, wrapped by NotificationPlugin for top-level error safety.
  */
 async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<ReturnType<Plugin>> {
+  // Reset incremental counter for this plugin instance (fresh start per instantiation)
+  projectAgg = { cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+
   let config;
   try {
     config = loadConfig();
@@ -644,15 +636,53 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
   const baseDir = process.env.OPENCODE_DATA_DIR ?? path.join(os.homedir(), '.local', 'share', 'opencode');
 
   // Preload token data from OpenCode database (plugin restart recovery)
-  try {
-    const { preloadTokenData } = await import('./db-preload.js');
-    preloadTokenData(tokenDataMap, baseDir, 10, ctx.directory);
-  } catch {
-    // non-critical: plugin works without preloaded data
-  }
+  // Deferred via setTimeout so bun:sqlite import doesn't block plugin init
+  setTimeout(() => {
+    import('./db-preload.js').then(({ preloadTokenData }) => {
+      preloadTokenData(tokenDataMap, baseDir, 10, ctx.directory);
+      // Initialize projectAgg base from preloaded data (matching projectPath only)
+      const normalizedTarget = path.normalize(ctx.directory);
+      for (const [, sessionData] of tokenDataMap) {
+        if (sessionData.projectPath && path.normalize(sessionData.projectPath) === normalizedTarget) {
+          const tokens = sumAllCompletedTokens(sessionData);
+          const sessionCost = [...sessionData.messages.values()].reduce((sum, td) => sum + td.cost, 0);
+          projectAgg.input += tokens.input;
+          projectAgg.output += tokens.output;
+          projectAgg.reasoning += tokens.reasoning;
+          projectAgg.cacheRead += tokens.cacheRead;
+          projectAgg.cacheWrite += tokens.cacheWrite;
+          projectAgg.total += tokens.total;
+          projectAgg.cost += sessionCost;
+        }
+      }
+    }).catch(() => {
+      // non-critical: plugin works without preloaded data
+    });
+  }, 0);
 
-  // Load session token cache for accurate project-level aggregation
-  let sessionCache = loadSessionCache(baseDir);
+  // Load session token cache for accurate project-level aggregation (deferred)
+  let sessionCache: Map<string, SessionCacheEntry> = new Map();
+  setTimeout(() => {
+    try {
+      sessionCache = loadSessionCache(baseDir);
+      // Supplement projectAgg base from sessionCache (dedup: exclude preload sessions)
+      const normalizedTarget = path.normalize(ctx.directory);
+      for (const [sessionId, entry] of sessionCache) {
+        if (tokenDataMap.has(sessionId)) continue; // already counted by preload
+        if (path.normalize(entry.projectPath) === normalizedTarget) {
+          projectAgg.cost += entry.cost;
+          projectAgg.input += entry.tokens.input;
+          projectAgg.output += entry.tokens.output;
+          projectAgg.reasoning += entry.tokens.reasoning;
+          projectAgg.cacheRead += entry.tokens.cacheRead;
+          projectAgg.cacheWrite += entry.tokens.cacheWrite;
+          projectAgg.total += entry.tokens.total;
+        }
+      }
+    } catch {
+      // non-critical: plugin works without cached session data
+    }
+  }, 0);
 
   // Auto-register /ul-token-rebuild slash command
   try {
@@ -702,6 +732,18 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
         const existingSessionData = tokenDataMap.get(event.properties.info.id);
         if (existingSessionData && !existingSessionData.projectPath && event.properties.info.directory) {
           existingSessionData.projectPath = event.properties.info.directory;
+          // Retroactively add preloaded session data to projectAgg (missed during preload init)
+          if (path.normalize(event.properties.info.directory) === path.normalize(ctx.directory)) {
+            const tokens = sumAllCompletedTokens(existingSessionData);
+            const sessionCost = [...existingSessionData.messages.values()].reduce((sum, td) => sum + td.cost, 0);
+            projectAgg.input += tokens.input;
+            projectAgg.output += tokens.output;
+            projectAgg.reasoning += tokens.reasoning;
+            projectAgg.cacheRead += tokens.cacheRead;
+            projectAgg.cacheWrite += tokens.cacheWrite;
+            projectAgg.total += tokens.total;
+            projectAgg.cost += sessionCost;
+          }
         }
 
         // Auto-update check (runs once, first main session only)
@@ -784,12 +826,42 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
             };
 
             // Overwrite (not accumulate) for same message ID
+            // Incremental projectAgg update: delta = new - old
+            const oldTokenData = sessionData.messages.get(messageId);
+            if (sessionData.projectPath && path.normalize(sessionData.projectPath) === path.normalize(ctx.directory)) {
+              const deltaCost = tokenData.cost - (oldTokenData?.cost ?? 0);
+              const deltaInput = tokenData.tokens.input - (oldTokenData?.tokens.input ?? 0);
+              const deltaOutput = tokenData.tokens.output - (oldTokenData?.tokens.output ?? 0);
+              const deltaReasoning = tokenData.tokens.reasoning - (oldTokenData?.tokens.reasoning ?? 0);
+              const deltaCacheRead = tokenData.tokens.cacheRead - (oldTokenData?.tokens.cacheRead ?? 0);
+              const deltaCacheWrite = tokenData.tokens.cacheWrite - (oldTokenData?.tokens.cacheWrite ?? 0);
+              const deltaTotal = deltaInput + deltaOutput + deltaCacheRead + deltaCacheWrite;
+              projectAgg.cost += deltaCost;
+              projectAgg.input += deltaInput;
+              projectAgg.output += deltaOutput;
+              projectAgg.reasoning += deltaReasoning;
+              projectAgg.cacheRead += deltaCacheRead;
+              projectAgg.cacheWrite += deltaCacheWrite;
+              projectAgg.total += deltaTotal;
+            }
             sessionData.messages.set(messageId, tokenData);
             sessionData.lastModelID = tokenData.modelID;
             sessionData.lastProviderID = tokenData.providerID;
             sessionData.lastMode = tokenData.mode;
             if (!sessionData.projectPath) {
               sessionData.projectPath = sessionMap.get(sessionId)?.directory ?? ctx.directory;
+              // Retroactively add all messages to projectAgg (handles preloaded sessions without directory)
+              if (sessionData.projectPath && path.normalize(sessionData.projectPath) === path.normalize(ctx.directory)) {
+                const allTokens = sumAllCompletedTokens(sessionData);
+                const allCost = [...sessionData.messages.values()].reduce((sum, td) => sum + td.cost, 0);
+                projectAgg.input += allTokens.input;
+                projectAgg.output += allTokens.output;
+                projectAgg.reasoning += allTokens.reasoning;
+                projectAgg.cacheRead += allTokens.cacheRead;
+                projectAgg.cacheWrite += allTokens.cacheWrite;
+                projectAgg.total += allTokens.total;
+                projectAgg.cost += allCost;
+              }
             }
           }
         }

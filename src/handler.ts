@@ -42,6 +42,20 @@ export interface EventHandler {
  */
 const VIRTUAL_NIC_PREFIXES = ['docker', 'wsl', 'vethernet', 'tun', 'vmnet', 'vnic'];
 
+// Module-level caches
+let cachedLocalIP: string | null = null;
+
+let uptimeCache: { value: string; timestamp: number } | null = null;
+const UPTIME_CACHE_TTL = 60_000; // 60 seconds
+
+export function resetIPCache(): void {
+  cachedLocalIP = null;
+}
+
+export function resetUptimeCache(): void {
+  uptimeCache = null;
+}
+
 /**
  * Format system uptime (in seconds) as a human-readable string.
  * Rules: calculate from largest unit (days) to smallest (seconds),
@@ -66,10 +80,25 @@ export function formatSystemUptime(seconds: number): string {
 }
 
 /**
+ * Get cached system uptime string. Refreshes every 60 seconds.
+ */
+function getCachedSystemUptime(): string {
+  const now = Date.now();
+  if (uptimeCache && now - uptimeCache.timestamp < UPTIME_CACHE_TTL) {
+    return uptimeCache.value;
+  }
+  const value = formatSystemUptime(os.uptime());
+  uptimeCache = { value, timestamp: now };
+  return value;
+}
+
+/**
  * Get the first non-internal, non-virtual IPv4 address from network interfaces.
  * Returns "127.0.0.1" if no suitable interface is found.
+ * Result is cached after first call.
  */
 export function getLocalIP(): string {
+  if (cachedLocalIP !== null) return cachedLocalIP;
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     const lowerName = name.toLowerCase();
@@ -80,11 +109,13 @@ export function getLocalIP(): string {
     if (!entries) continue;
     for (const entry of entries) {
       if (!entry.internal && entry.family === 'IPv4') {
-        return entry.address;
+        cachedLocalIP = entry.address;
+        return cachedLocalIP;
       }
     }
   }
-  return '127.0.0.1';
+  cachedLocalIP = '127.0.0.1';
+  return cachedLocalIP;
 }
 
 /**
@@ -287,7 +318,7 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
         opencodeVersion,
         // 动态系统变量
         processPid: String(process.pid),
-        systemUptime: formatSystemUptime(os.uptime()),
+        systemUptime: getCachedSystemUptime(),
         localIP: getLocalIP(),
       };
 

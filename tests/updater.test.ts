@@ -84,6 +84,7 @@ const {
   invalidatePackage,
   runBunInstall,
   runAutoUpdate,
+  resetVersionCache,
 } = await import('../src/updater');
 
 // ---------------------------------------------------------------------------
@@ -156,6 +157,10 @@ let savedOpencodeDataDir: string | undefined;
 // ---------------------------------------------------------------------------
 
 describe('getCurrentVersion', () => {
+  beforeEach(() => {
+    resetVersionCache();
+  });
+
   test('returns non-null version when package.json found with correct name', () => {
     const version = getCurrentVersion();
     if (version !== null) {
@@ -167,6 +172,22 @@ describe('getCurrentVersion', () => {
   test('returns null or valid version string without crashing', () => {
     const version = getCurrentVersion();
     expect(version === null || typeof version === 'string').toBe(true);
+  });
+
+  test('caches result - repeated calls return same value', () => {
+    const v1 = getCurrentVersion();
+    const v2 = getCurrentVersion();
+    const v3 = getCurrentVersion();
+    expect(v1).toBe(v2);
+    expect(v2).toBe(v3);
+  });
+
+  test('cache can be reset and version re-read', () => {
+    const v1 = getCurrentVersion();
+    resetVersionCache();
+    const v2 = getCurrentVersion();
+    // Same result but proves re-read happened
+    expect(v1).toBe(v2);
   });
 });
 

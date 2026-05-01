@@ -2,21 +2,18 @@
  * File channel sender module
  *
  * Writes notification messages as JSON Lines to a local file.
- * Supports automatic file rotation when the file exceeds a configurable size limit.
- * Uses synchronous file I/O for simplicity and reliability.
+ * Uses WriteBuffer for efficient buffered writes with periodic rotation checks.
+ * Rotation is performed by file-rotation.ts (shouldRotate + rotateFile).
  *
- * Zero external dependencies — uses only Node.js built-in fs/path/os modules.
+ * Zero external dependencies — uses only Node.js built-in modules.
  */
 
-import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { Channel, ChannelSender, ChannelFormatter, FormattedMessage, FileConfig, EventPayload } from './types.js';
 import { logger } from './logger.js';
-
-// Use createRequire to get the real fs module, bypassing any test mock.module('fs')
-const nodeRequire = createRequire(import.meta.url);
-const fs = nodeRequire('node:fs') as typeof import('node:fs');
+import { WriteBuffer } from './write-buffer.js';
+import { shouldRotate, rotateFile } from './file-rotation.js';
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -28,8 +25,8 @@ export const DEFAULT_FILE_PATH = path.join(
   os.homedir(), '.local', 'share', 'opencode', 'ul-opencode-event-messages.log'
 );
 
-/** Marker written at the beginning of a rotated (truncated) file */
-const TRUNCATE_MARKER = '[TRUNCATED] ... old messages dropped\n';
+/** Check rotation every N writes to reduce statSync overhead */
+const ROTATION_CHECK_INTERVAL = 50;
 
 // ─── Formatting ──────────────────────────────────────────
 
@@ -60,6 +57,11 @@ export function createFileFormatter(): ChannelFormatter {
  * Factory function that validates channel config and returns a sender
  * or null if the channel is invalid/disabled.
  *
+ * Uses WriteBuffer for buffered writes — data is accumulated in memory
+ * and flushed periodically (every 50 items or 500ms) or on close().
+ * Rotation is checked every 50 writes via shouldRotate() to minimize
+ * statSync overhead.
+ *
  * Validation:
  * - channel.type must be 'file'
  * - channel.enabled must not be false
@@ -78,70 +80,32 @@ export async function createFileSender(channel: Channel): Promise<ChannelSender 
   const maxSize = config.maxSizeBytes ?? DEFAULT_FILE_MAX_SIZE;
   const channelName = channel.name || 'File';
 
+  let writeCount = 0;
+  const buffer = new WriteBuffer({
+    filePath,
+    maxSizeBytes: maxSize,
+    flushInterval: 500,
+  });
+
   return {
     send: async (message: unknown): Promise<void> => {
       try {
         const line = JSON.stringify(message) + '\n';
 
-        // Ensure directory exists
-        const dir = path.dirname(filePath);
-        try {
-          fs.mkdirSync(dir, { recursive: true });
-        } catch {
-          // Directory creation failure handled by appendFileSync error below
+        // Check rotation every N writes to reduce statSync overhead
+        writeCount++;
+        if (writeCount % ROTATION_CHECK_INTERVAL === 0 && shouldRotate(filePath, maxSize)) {
+          rotateFile(filePath);
         }
 
-        // Check file size and rotate if needed
-        try {
-          const stat = fs.statSync(filePath);
-          if (stat.size >= maxSize) {
-            rotateFile(filePath);
-          }
-        } catch {
-          // File may not exist yet — that's fine, we'll create it on append
-        }
-
-        fs.appendFileSync(filePath, line, 'utf-8');
+        buffer.append(line);
       } catch (error) {
         logger.error(`[${channelName}] Failed to write file message: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
 
     close: async (): Promise<void> => {
-      // No persistent connections or resources to clean up
+      buffer.close();
     },
   };
-}
-
-// ─── Rotation ────────────────────────────────────────────
-
-/**
- * Rotate the log file by keeping only the second (newer) half of content.
- *
- * Strategy:
- * 1. Read the entire file
- * 2. Find the midpoint
- * 3. Find the next newline after the midpoint (to avoid splitting a JSON line)
- * 4. Keep everything after that newline
- * 5. Write TRUNCATE marker + kept content back to the file
- *
- * Errors are caught and logged — never throws.
- */
-function rotateFile(filePath: string): void {
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    if (content.length === 0) return;
-
-    const mid = Math.floor(content.length / 2);
-    const nl = content.indexOf('\n', mid);
-    const cut = nl >= 0 ? nl + 1 : mid;
-
-    fs.writeFileSync(
-      filePath,
-      TRUNCATE_MARKER + content.slice(cut),
-      'utf-8'
-    );
-  } catch (error) {
-    logger.error(`File rotation failed for ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
-  }
 }

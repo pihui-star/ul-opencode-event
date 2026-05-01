@@ -1,67 +1,58 @@
 {
-  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\builtin-custom-variables.md",
-  "started_at": "2026-04-20T15:07:16.797Z",
+  "active_plan": "D:\\projects\\ulthon\\ul-opencode-event\\.sisyphus\\plans\\performance-optimization.md",
+  "started_at": "2026-05-01T08:36:05.970Z",
   "session_ids": [
-    "ses_254be1c19ffeGx0ct0cf6yLKv7",
-    "ses_2545e5351ffeuXIqnZDK3bS2pr",
-    "ses_2545d6739ffeb2Ase0nEO2fvRC",
-    "ses_2545d4f2dffed996azyjRT4UE5",
-    "ses_2545d41bdfferiito9YiUbRBOK"
+    "ses_21d728b4cffeFsF3X0awm54ToM",
+    "ses_21c245f2effektSWLBaTF1HQu8",
+    "ses_21c241112ffeSSz7NUe8xivJpG",
+    "ses_21c24110affeYoW04quQyXJVFe",
+    "ses_21c23b4f4ffecDJD8ZLphyjRau"
   ],
   "session_origins": {
-    "ses_254be1c19ffeGx0ct0cf6yLKv7": "direct",
-    "ses_2545e5351ffeuXIqnZDK3bS2pr": "appended",
-    "ses_2545d6739ffeb2Ase0nEO2fvRC": "appended",
-    "ses_2545d4f2dffed996azyjRT4UE5": "appended",
-    "ses_2545d41bdfferiito9YiUbRBOK": "appended"
+    "ses_21d728b4cffeFsF3X0awm54ToM": "direct",
+    "ses_21c245f2effektSWLBaTF1HQu8": "appended",
+    "ses_21c241112ffeSSz7NUe8xivJpG": "appended",
+    "ses_21c24110affeYoW04quQyXJVFe": "appended",
+    "ses_21c23b4f4ffecDJD8ZLphyjRau": "appended"
   },
-  "plan_name": "builtin-custom-variables",
+  "plan_name": "performance-optimization",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "types.ts - 添加 customVariables 类型定义 + 变量名校验常量",
-      "session_id": "ses_2548bb64dffe9bU2IglTv4Anld",
+      "task_title": "通用写缓冲区模块",
+      "session_id": "ses_21d4f0bb4ffek3bNTag5Z8Ev5v",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-20T15:17:49.530Z"
-    },
-    "todo:2": {
-      "task_key": "todo:2",
-      "task_label": "2",
-      "task_title": "config.ts - customVariables 合并 + 校验逻辑",
-      "session_id": "ses_25482a41bffeuVjWHAIpcQd5fH",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-20T15:29:11.552Z"
+      "updated_at": "2026-05-01T08:42:17.764Z"
     },
     "todo:4": {
       "task_key": "todo:4",
       "task_label": "4",
-      "task_title": "handler.ts - 动态系统变量 (localIP, systemUptime, processPid)",
-      "session_id": "ses_25479fbc8ffeEh6zs72v1ZBE8k",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-20T15:48:39.875Z"
-    },
-    "todo:7": {
-      "task_key": "todo:7",
-      "task_label": "7",
-      "task_title": "CLI 测试工具同步更新",
-      "session_id": "ses_25466f731ffeJS8SjjaUZaD8xF",
+      "task_title": "preloadTokenData 延迟执行",
+      "session_id": "ses_21d298f35ffepYtib84AeoJjZ6",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-04-20T15:59:10.814Z"
+      "updated_at": "2026-05-01T09:27:53.913Z"
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "增量项目级聚合器",
+      "session_id": "ses_21d1ee069ffeP4HKEwWpb54rto",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-01T09:42:16.667Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** -- `oracle`",
-      "session_id": "ses_2545d41bdfferiito9YiUbRBOK",
+      "session_id": "ses_21c24110affeYoW04quQyXJVFe",
       "agent": "Sisyphus-Junior",
       "category": "deep",
-      "updated_at": "2026-04-20T16:11:08.154Z"
+      "updated_at": "2026-05-01T14:12:14.273Z"
     }
   }
 }

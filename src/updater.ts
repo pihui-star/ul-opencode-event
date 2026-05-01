@@ -45,11 +45,19 @@ function getUserConfigDir(): string {
 // Exported: version resolution
 // ---------------------------------------------------------------------------
 
+let versionCache: string | null | undefined = undefined;
+
+export function resetVersionCache(): void {
+  versionCache = undefined;
+}
+
 /**
  * Read the current installed version from this module's package.json
  * by walking up from `import.meta.url`.
+ * Result is cached after first call.
  */
 export function getCurrentVersion(): string | null {
+  if (versionCache !== undefined) return versionCache;
   try {
     let dir = path.dirname(fileURLToPath(import.meta.url));
     for (let i = 0; i < 10; i++) {
@@ -58,7 +66,8 @@ export function getCurrentVersion(): string | null {
         const raw = fs.readFileSync(pkgPath, 'utf-8');
         const pkg = JSON.parse(raw) as { name?: string; version?: string };
         if (pkg.name === PACKAGE_NAME) {
-          return pkg.version ?? null;
+          versionCache = pkg.version ?? null;
+          return versionCache;
         }
       } catch {
         // package.json not found here, walk up
@@ -67,9 +76,11 @@ export function getCurrentVersion(): string | null {
       if (parent === dir) break; // filesystem root
       dir = parent;
     }
-    return null;
+    versionCache = null;
+    return versionCache;
   } catch {
-    return null;
+    versionCache = null;
+    return versionCache;
   }
 }
 

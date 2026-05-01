@@ -79,7 +79,7 @@ mock.module('../src/recorder', () => ({
 import os from 'node:os';
 
 // Import handler AFTER all mocks
-import { createEventHandler, formatSystemUptime, getLocalIP } from '../src/handler';
+import { createEventHandler, formatSystemUptime, getLocalIP, resetIPCache, resetUptimeCache } from '../src/handler';
 
 function createMockChannel(overrides: Partial<Channel> = {}): Channel {
   return {
@@ -307,6 +307,10 @@ describe('formatSystemUptime', () => {
 });
 
 describe('getLocalIP', () => {
+  beforeEach(() => {
+    resetIPCache();
+  });
+
   test('returns "127.0.0.1" when no interfaces available', () => {
     const original = os.networkInterfaces;
     os.networkInterfaces = () => ({});
@@ -393,11 +397,142 @@ describe('getLocalIP', () => {
       os.networkInterfaces = original;
     }
   });
+
+  test('caches result - os.networkInterfaces called only once', () => {
+    let callCount = 0;
+    const original = os.networkInterfaces;
+    os.networkInterfaces = () => {
+      callCount++;
+      return {
+        eth0: [
+          { address: '10.0.0.1', netmask: '255.255.255.0', family: 'IPv4', mac: 'aa:bb:cc:dd:ee:ff', internal: false, cidr: '10.0.0.1/24' },
+        ],
+      };
+    };
+    try {
+      const first = getLocalIP();
+      expect(first).toBe('10.0.0.1');
+      expect(callCount).toBe(1);
+
+      const second = getLocalIP();
+      expect(second).toBe('10.0.0.1');
+      expect(callCount).toBe(1);
+    } finally {
+      os.networkInterfaces = original;
+    }
+  });
+
+  test('cache reset allows recomputation', () => {
+    let callCount = 0;
+    const original = os.networkInterfaces;
+    os.networkInterfaces = () => {
+      callCount++;
+      return {
+        eth0: [
+          { address: '10.0.0.1', netmask: '255.255.255.0', family: 'IPv4', mac: 'aa:bb:cc:dd:ee:ff', internal: false, cidr: '10.0.0.1/24' },
+        ],
+      };
+    };
+    try {
+      getLocalIP();
+      expect(callCount).toBe(1);
+
+      resetIPCache();
+
+      getLocalIP();
+      expect(callCount).toBe(2);
+    } finally {
+      os.networkInterfaces = original;
+    }
+  });
+});
+
+describe('systemUptime caching', () => {
+  beforeEach(() => {
+    resetUptimeCache();
+    resetIPCache();
+    sentMessages.length = 0;
+  });
+
+  afterEach(() => {
+    sentMessages.length = 0;
+  });
+
+  test('uptime is cached - os.uptime called only once within TTL', async () => {
+    let uptimeCallCount = 0;
+    const original = os.uptime;
+    os.uptime = () => {
+      uptimeCallCount++;
+      return 100000;
+    };
+
+    try {
+      const config: NotificationConfig = {
+        channels: [
+          createMockChannel({
+            name: 'Uptime Cache Test',
+            templates: {
+              created: { subject: '{{systemUptime}}', body: 'test' },
+              idle: { subject: '{{systemUptime}}', body: 'test' },
+            },
+          }),
+        ],
+      };
+
+      const handler = createEventHandler(config);
+
+      await handler.handle('created', createPayload('created'));
+      expect(uptimeCallCount).toBe(1);
+
+      await handler.handle('idle', createPayload('idle', { message: 'done', duration: '1m' }));
+      expect(uptimeCallCount).toBe(1);
+
+      expect(sentMessages.length).toBe(2);
+      expect(sentMessages[0].subject).toBe('1d 3h 46m 40s');
+      expect(sentMessages[1].subject).toBe('1d 3h 46m 40s');
+    } finally {
+      os.uptime = original;
+    }
+  });
+
+  test('cache reset allows recomputation', async () => {
+    let uptimeValue = 100000;
+    const original = os.uptime;
+    os.uptime = () => uptimeValue;
+
+    try {
+      const config: NotificationConfig = {
+        channels: [
+          createMockChannel({
+            name: 'Uptime Reset Test',
+            templates: {
+              created: { subject: '{{systemUptime}}', body: 'test' },
+            },
+          }),
+        ],
+      };
+
+      const handler = createEventHandler(config);
+
+      await handler.handle('created', createPayload('created'));
+      expect(sentMessages[sentMessages.length - 1].subject).toBe('1d 3h 46m 40s');
+
+      uptimeValue = 200000;
+      resetUptimeCache();
+
+      await handler.handle('created', createPayload('created'));
+      expect(sentMessages[sentMessages.length - 1].subject).toBe('2d 7h 33m 20s');
+    } finally {
+      os.uptime = original;
+    }
+  });
 });
 
 describe('handler dynamic system variables', () => {
   beforeEach(() => {
     sentMessages.length = 0;
+    resetIPCache();
+    resetUptimeCache();
   });
 
   afterEach(() => {

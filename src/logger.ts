@@ -1,17 +1,20 @@
 /**
  * Production-grade file logger module.
- * Zero dependencies, ESM-only, synchronous I/O.
+ * Zero dependencies, ESM-only, uses WriteBuffer for batched I/O.
  *
  * Features:
  * - Log levels: debug / info / warn / error
- * - Auto-rotation: truncates file at configurable size limit (keeps newest half)
+ * - Auto-rotation: uses file-rotation.ts when estimated size exceeds limit
  * - Auto-detects log path from OPENCODE_DATA_DIR or OS default
  * - Silent failure: never throws from write/truncate (catch-all + console fallback)
+ * - Buffered writes via WriteBuffer (500ms flush interval, auto-flush on exit)
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { WriteBuffer } from './write-buffer.js';
+import { shouldRotate, rotateFile } from './file-rotation.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,7 +46,6 @@ export interface Logger {
 
 const DEFAULT_PREFIX = '[ul-opencode-event]';
 const DEFAULT_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
-const TRUNCATE_MARKER = '[TRUNCATED] ... old logs dropped\n';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,8 +67,8 @@ function ensureDir(filePath: string): void {
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
   } catch {
-    // Directory creation failure is non-fatal – appendFileSync will fail
-    // later and be caught by _write's own try/catch.
+    // Directory creation failure is non-fatal – WriteBuffer.flush will also
+    // attempt mkdirSync, and if that also fails, the error is silently caught.
   }
 }
 
@@ -83,45 +85,48 @@ export function createLogger(config?: LoggerConfig): Logger {
   // Ensure log directory exists on creation
   ensureDir(filePath);
 
-  /** Truncate log file by keeping only the second (newer) half of content. */
-  function truncate(): void {
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      if (content.length === 0) return;
+  const buffer = new WriteBuffer({
+    filePath,
+    flushInterval: 500,
+    maxSizeBytes: maxSize,
+  });
 
-      const mid = Math.floor(content.length / 2);
-      const nl = content.indexOf('\n', mid);
-      const cut = nl >= 0 ? nl + 1 : mid;
-
-      fs.writeFileSync(
-        filePath,
-        TRUNCATE_MARKER + content.slice(cut),
-        'utf-8',
-      );
-    } catch {
-      // Truncation is best-effort – ignore failures silently
-    }
+  // Track estimated file size to avoid statSync on every write.
+  // One-time statSync at creation; subsequent updates via byte counting.
+  let estimatedSize = 0;
+  try {
+    const stat = fs.statSync(filePath);
+    estimatedSize = stat.size;
+  } catch {
+    // File doesn't exist yet – start from 0
   }
 
-  /** Core write logic with size-check rotation and silent error handling. */
+  /** Core write logic with estimated-size rotation and silent error handling. */
   function write(level: LogLevel, message: string): void {
     try {
       // Skip debug when disabled
       if (level === 'debug' && !debugEnabled) return;
 
       const line = `${new Date().toISOString()} ${prefix} [${level.toUpperCase()}] ${message}\n`;
+      const lineBytes = Buffer.byteLength(line, 'utf-8');
 
-      // Rotate if file exceeds max size
-      try {
-        const stat = fs.statSync(filePath);
-        if (stat.size >= maxSize) {
-          truncate();
+      // Rotation check: in-memory threshold first, statSync only when estimated
+      // size indicates the file might have exceeded the limit.
+      if (estimatedSize + lineBytes >= maxSize) {
+        buffer.flush();
+        if (shouldRotate(filePath, maxSize)) {
+          rotateFile(filePath);
         }
-      } catch {
-        // File may not exist yet – that's fine, we'll create it on append
+        // Refresh estimate from actual file size after potential rotation
+        try {
+          estimatedSize = fs.statSync(filePath).size;
+        } catch {
+          estimatedSize = 0;
+        }
       }
 
-      fs.appendFileSync(filePath, line, 'utf-8');
+      buffer.append(line);
+      estimatedSize += lineBytes;
     } catch {
       // Fallback to console so nothing is completely lost
       switch (level) {
@@ -140,12 +145,21 @@ export function createLogger(config?: LoggerConfig): Logger {
     }
   }
 
-  return {
+  const result: Logger = {
     debug: (message: string) => write('debug', message),
     info: (message: string) => write('info', message),
     warn: (message: string) => write('warn', message),
     error: (message: string) => write('error', message),
   };
+
+  // Internal methods for testing and graceful shutdown.
+  // These are not part of the Logger interface but are available at runtime.
+  Object.assign(result, {
+    _flush: () => buffer.flush(),
+    _close: () => buffer.close(),
+  });
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
