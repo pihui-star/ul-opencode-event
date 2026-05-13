@@ -203,7 +203,7 @@ describe('Token/Cost/Model template variables', () => {
     expect(body).not.toContain('{{totalCostFormatted}}');
   });
 
-  test('created templates do NOT contain cost, sessionCost, token, or model variables', () => {
+  test('created templates contain modelID and projectRequestCount on Req line', () => {
     for (const locale of ['zh', 'en']) {
       const templates = getDefaultTemplates(locale);
       const body = templates.created.body ?? '';
@@ -213,7 +213,10 @@ describe('Token/Cost/Model template variables', () => {
       expect(body).not.toContain('{{totalTokensTotal}}');
       expect(body).not.toContain('{{sessionTokensTotalHuman}}');
       expect(body).not.toContain('{{totalTokensTotalHuman}}');
-      expect(body).not.toContain('{{modelID}}');
+      expect(body).toContain('{{modelID}}');
+      expect(body).toContain('{{projectRequestCount}}');
+      expect(body).not.toMatch(/Req\(.*\{\{sessionRequestCount\}\}/);
+      expect(body).not.toMatch(/Req\(.*\{\{totalRequestCount\}\}/);
     }
   });
 
@@ -244,6 +247,64 @@ describe('Token/Cost/Model template variables', () => {
         for (const v of tokenVars) {
           expect(body).not.toContain(v);
         }
+      }
+    }
+  });
+
+  const allEventTypes: EventType[] = [
+    'created', 'idle', 'error', 'question', 'permission',
+    'status', 'command', 'fileEdited', 'todo',
+  ];
+
+  const nonCreatedEvents: EventType[] = [
+    'idle', 'error', 'question', 'permission',
+    'status', 'command', 'fileEdited', 'todo',
+  ];
+
+  test('Token line must NOT contain modelID for all events', () => {
+    for (const locale of ['zh', 'en']) {
+      for (const event of allEventTypes) {
+        const body = getDefaultTemplates(locale)[event].body ?? '';
+        expect(body).not.toMatch(/Token\(.*\)[^\n]*\{\{modelID\}\}/);
+      }
+    }
+  });
+
+  test('Req line contains modelID and request count variables for non-created events', () => {
+    for (const locale of ['zh', 'en']) {
+      for (const event of nonCreatedEvents) {
+        const body = getDefaultTemplates(locale)[event].body ?? '';
+        expect(body).toContain('{{modelID}}');
+        expect(body).toContain('{{sessionRequestCount}}');
+        expect(body).toContain('{{totalRequestCount}}');
+        expect(body).toContain('{{projectRequestCount}}');
+      }
+    }
+  });
+
+  test('created event Req line uses only projectRequestCount', () => {
+    for (const locale of ['zh', 'en']) {
+      const body = getDefaultTemplates(locale).created.body ?? '';
+      expect(body).toContain('{{projectRequestCount}}');
+      expect(body).toContain('{{modelID}}');
+      expect(body).not.toMatch(/Req\(.*\{\{sessionRequestCount\}\}/);
+      expect(body).not.toMatch(/Req\(.*\{\{totalRequestCount\}\}/);
+    }
+  });
+
+  test('Token line has correct format without modelID', () => {
+    for (const locale of ['zh', 'en']) {
+      const body = getDefaultTemplates(locale).idle.body ?? '';
+      expect(body).toContain('Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})');
+      expect(body).toContain('{{sessionCacheHitRate}}');
+    }
+  });
+
+  test('old Token line format with modelID is removed', () => {
+    for (const locale of ['zh', 'en']) {
+      for (const event of allEventTypes) {
+        const body = getDefaultTemplates(locale)[event].body ?? '';
+        expect(body).not.toMatch(/Token\([^)]*\)[^\n]*\{\{modelID\}\}/);
       }
     }
   });
