@@ -144,7 +144,7 @@ export function writeCacheEntry(dataDir: string, entry: SessionCacheEntry): void
 export function aggregateProjectFromCache(
   cache: Map<string, SessionCacheEntry>,
   projectPath: string,
-): { cost: number; tokens: TokenBreakdown } {
+): { cost: number; tokens: TokenBreakdown; requestCount: number } {
   const normalized = path.normalize(projectPath);
   let cost = 0;
   let input = 0;
@@ -152,6 +152,7 @@ export function aggregateProjectFromCache(
   let reasoning = 0;
   let cacheRead = 0;
   let cacheWrite = 0;
+  let requestCount = 0;
 
   for (const entry of cache.values()) {
     if (path.normalize(entry.projectPath) === normalized) {
@@ -161,6 +162,7 @@ export function aggregateProjectFromCache(
       reasoning += entry.tokens.reasoning;
       cacheRead += entry.tokens.cacheRead;
       cacheWrite += entry.tokens.cacheWrite;
+      requestCount += entry.requestCount;
     }
   }
 
@@ -174,6 +176,7 @@ export function aggregateProjectFromCache(
       cacheWrite,
       total: input + output + cacheRead + cacheWrite,
     },
+    requestCount,
   };
 }
 
@@ -228,6 +231,7 @@ export function buildCacheEntry(
     modelID: sessionData.lastModelID,
     providerID: sessionData.lastProviderID,
     mode: sessionData.lastMode,
+    requestCount: sessionData.messages.size,
     updatedAt: new Date().toISOString(),
   };
 }

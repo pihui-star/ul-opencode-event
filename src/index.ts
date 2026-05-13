@@ -307,6 +307,8 @@ function fillTokenData(
     payload.sessionTokens = { ...ZERO_TOKENS };
     payload.totalCost = 0;
     payload.totalTokens = { ...ZERO_TOKENS };
+    payload.sessionRequestCount = 0;
+    payload.totalRequestCount = 0;
     if (resolveCostConfigFn && formatCostFn) {
       const resolved = resolveCostConfigFn(configLanguage, configCost);
       payload.costFormatted = formatCostFn(0, resolved.currency, resolved.decimalPlaces, resolved.exchangeRate);
@@ -323,6 +325,11 @@ function fillTokenData(
   payload.modelID = sessionData.lastModelID;
   payload.providerID = sessionData.lastProviderID;
   payload.mode = sessionData.lastMode;
+
+  // Request count: session-level (assistant messages count)
+  payload.sessionRequestCount = sessionData.messages.size;
+  // Initialize total to session level (sub-sessions will be added by aggregateSubSessions)
+  payload.totalRequestCount = sessionData.messages.size;
 
   // Total tokens use cumulative sum of all completed messages (reliable during streaming)
   // sub-sessions added later by aggregateSubSessions
@@ -425,6 +432,7 @@ function aggregateSubSessions(
   let totalReasoning = tt.reasoning;
   let totalCacheRead = tt.cacheRead;
   let totalCacheWrite = tt.cacheWrite;
+  let totalRequestCount = payload.totalRequestCount ?? 0;
 
   // Collect ALL descendants (direct children + grandchildren + deeper)
   const descendantIds = collectDescendantSessionIds(sessionId, sessionMap);
@@ -439,6 +447,7 @@ function aggregateSubSessions(
     totalReasoning += subTokens.reasoning;
     totalCacheRead += subTokens.cacheRead;
     totalCacheWrite += subTokens.cacheWrite;
+    totalRequestCount += sData.messages.size;
   }
 
   payload.totalCost = totalCost;
@@ -450,6 +459,7 @@ function aggregateSubSessions(
     cacheWrite: totalCacheWrite,
     total: totalInput + totalOutput + totalCacheRead + totalCacheWrite,
   };
+  payload.totalRequestCount = totalRequestCount;
 
   // Re-format totalCostFormatted with the aggregated total
   if (resolveCostConfigFn && formatCostFn) {
@@ -515,6 +525,7 @@ function fillProjectData(
     cacheWrite: projectAgg.cacheWrite,
     total: projectAgg.total,
   };
+  payload.projectRequestCount = projectAgg.requestCount;
 
   if (resolveCostConfigFn && formatCostFn) {
     const resolved = resolveCostConfigFn(configLanguage, configCost);
@@ -527,7 +538,7 @@ function fillProjectData(
  * Updated on each message.updated (delta), initialized from preload + sessionCache.
  * Replaces O(N) full-scan in fillProjectData with O(1) read.
  */
-let projectAgg = { cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+let projectAgg = { cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0, requestCount: 0 };
 
 /**
  * Guard flag to ensure auto-update only runs once per plugin load
@@ -553,7 +564,7 @@ function __test_resetFlags(): void {
   isTestEnvironment = true;
   lastCacheWriteTime = 0;
   __test_payloads.length = 0;
-  projectAgg = { cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+  projectAgg = { cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0, requestCount: 0 };
 }
 
 // Expose test helpers via globalThis (safe for production - only used in tests)
@@ -585,7 +596,7 @@ export const NotificationPlugin: Plugin = async (ctx) => {
  */
 async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<ReturnType<Plugin>> {
   // Reset incremental counter for this plugin instance (fresh start per instantiation)
-  projectAgg = { cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+  projectAgg = { cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0, requestCount: 0 };
 
   let config;
   try {
@@ -653,6 +664,7 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
           projectAgg.cacheWrite += tokens.cacheWrite;
           projectAgg.total += tokens.total;
           projectAgg.cost += sessionCost;
+          projectAgg.requestCount += sessionData.messages.size;
         }
       }
     }).catch(() => {
@@ -677,6 +689,7 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
           projectAgg.cacheRead += entry.tokens.cacheRead;
           projectAgg.cacheWrite += entry.tokens.cacheWrite;
           projectAgg.total += entry.tokens.total;
+          projectAgg.requestCount += entry.requestCount || 0;
         }
       }
     } catch {
@@ -743,6 +756,7 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
             projectAgg.cacheWrite += tokens.cacheWrite;
             projectAgg.total += tokens.total;
             projectAgg.cost += sessionCost;
+            projectAgg.requestCount += existingSessionData.messages.size;
           }
         }
 
@@ -843,6 +857,10 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
               projectAgg.cacheRead += deltaCacheRead;
               projectAgg.cacheWrite += deltaCacheWrite;
               projectAgg.total += deltaTotal;
+              // New message (not overwrite) → increment request count
+              if (!oldTokenData) {
+                projectAgg.requestCount += 1;
+              }
             }
             sessionData.messages.set(messageId, tokenData);
             sessionData.lastModelID = tokenData.modelID;
@@ -861,6 +879,7 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
                 projectAgg.cacheWrite += allTokens.cacheWrite;
                 projectAgg.total += allTokens.total;
                 projectAgg.cost += allCost;
+                projectAgg.requestCount += sessionData.messages.size;
               }
             }
           }
