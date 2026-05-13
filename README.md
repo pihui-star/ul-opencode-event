@@ -112,8 +112,11 @@ Project-level config overrides global (channels merged by name). Custom variable
 | `{{sessionCacheHitRate}}` | Current session cache hit rate | All |
 | `{{totalCacheHitRate}}` | Session + sub-sessions cache hit rate | All |
 | `{{projectCacheHitRate}}` | Project-wide cache hit rate | All |
+| `{{sessionRequestCount}}` | Current session API request count | All |
+| `{{totalRequestCount}}` | Total API requests (including sub-sessions) | All |
+| `{{projectRequestCount}}` | Project-wide API request count | All |
 
-> Full variable list (71+ variables) including system info and custom variables: see [Configuration - Template Variables](docs/configuration.md#8-模板变量)
+> Full variable list (74+ variables) including system info and custom variables: see [Configuration - Template Variables](docs/configuration.md#8-模板变量)
 
 See [Configuration - Templates](docs/configuration.md#4-模板系统概述) for customization details.
 

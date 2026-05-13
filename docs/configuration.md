@@ -349,7 +349,17 @@ interface ChannelTemplates {
 >
 > **关于费用格式化**：`sessionCostFormatted`、`totalCostFormatted` 和 `projectCostFormatted` 根据 `currency` 变量自动选择货币符号和格式。中文环境（`language: "zh"`）使用 `¥`，英文环境使用 `$`。
 
-### 8.4 Token 格式化变量（人类可读，所有事件类型可用）
+### 8.4 请求计数变量 (Request Count Variables)
+
+| 模板变量 | 说明 |
+|----------|------|
+| `{{sessionRequestCount}}` | 当前会话 API 请求次数（assistant 消息数） |
+| `{{totalRequestCount}}` | 总计 API 请求次数（含所有子会话） |
+| `{{projectRequestCount}}` | 项目累计 API 请求次数（跨所有会话） |
+
+> **created 事件**：仅项目级 `{{projectRequestCount}}` 有值；会话级和总计级在此事件中未定义（与 Token 变量行为一致）。
+
+### 8.5 Token 格式化变量（人类可读，所有事件类型可用）
 
 以下变量将原始 Token 数值格式化为人类可读的字符串，使用 K/M/B 后缀 + 1 位小数。默认模板使用这些格式化变量。
 
@@ -388,7 +398,7 @@ interface ChannelTemplates {
 
 > **格式化规则**：小于 1000 的数值原样显示（如 `420`）；1000 及以上使用 K（千）、M（百万）、B（十亿）后缀 + 1 位小数（如 `127.1K`、`1.5M`、`2.0B`）。如需精确数值，请在自定义模板中使用对应的原始变量（如 `{{sessionTokensTotal}}`）。
 
-### 8.5 变量速查表
+### 8.6 变量速查表
 
 | 事件类型 | 可用变量 |
 |---------|---------|
@@ -625,6 +635,8 @@ Subject: [{{projectName}}] 任务已启动
 Body:
 任务启动时间: {{timestamp}}
 会话: {{sessionTitle}} ({{sessionId}})
+
+Req({{projectRequestCount}}) {{modelID}}
 ```
 
 #### idle - 任务完成
@@ -637,7 +649,8 @@ Body:
 消息: {{message}}
 耗时: {{duration}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### error - 任务出错
@@ -649,7 +662,8 @@ Body:
 会话: {{sessionTitle}} ({{sessionId}})
 错误信息: {{error}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### question - AI 提问
@@ -662,7 +676,8 @@ OpenCode 在 {{timestamp}} 向您提问
 问题: {{title}}
 {{questionText}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### permission - 权限确认
@@ -674,7 +689,8 @@ Body:
 会话: {{sessionTitle}} ({{sessionId}})
 {{title}} ({{permissionType}})
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### status - 状态变更
@@ -686,7 +702,8 @@ Body:
 会话: {{sessionTitle}} ({{sessionId}})
 状态: {{statusType}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### command - 命令执行
@@ -698,7 +715,8 @@ Body:
 会话: {{sessionTitle}} ({{sessionId}})
 命令: {{commandName}} {{arguments}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### fileEdited - 文件编辑
@@ -709,7 +727,8 @@ Body:
 文件编辑时间: {{timestamp}}
 文件: {{filePath}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### todo - Todo 更新
@@ -721,7 +740,8 @@ Todo 更新时间: {{timestamp}}
 会话: {{sessionTitle}} ({{sessionId}})
 {{todoSummary}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 ### 10.2 英文默认模板（`language: "en"`）
@@ -733,6 +753,8 @@ Subject: [{{projectName}}] Task Started
 Body:
 Task started at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
+
+Req({{projectRequestCount}}) {{modelID}}
 ```
 
 #### idle - Task Completed
@@ -745,7 +767,8 @@ Session: {{sessionTitle}} ({{sessionId}})
 Message: {{message}}
 Duration: {{duration}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### error - Task Error
@@ -757,7 +780,8 @@ Error at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Error: {{error}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### question - Question
@@ -770,7 +794,8 @@ Session: {{sessionTitle}} ({{sessionId}})
 Question: {{title}}
 {{questionText}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### permission - Permission Required
@@ -782,7 +807,8 @@ Permission needed at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 {{title}} ({{permissionType}})
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### status - Status Change
@@ -794,7 +820,8 @@ Session status changed at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Status: {{statusType}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### command - Command Executed
@@ -806,7 +833,8 @@ Command executed at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 Command: {{commandName}} {{arguments}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### fileEdited - File Edited
@@ -817,7 +845,8 @@ Body:
 File edited at {{timestamp}}
 File: {{filePath}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 #### todo - Todos Updated
@@ -829,7 +858,8 @@ Todos updated at {{timestamp}}
 Session: {{sessionTitle}} ({{sessionId}})
 {{todoSummary}}
 
-Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
+Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})
+Req({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
 ```
 
 ---

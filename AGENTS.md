@@ -30,7 +30,7 @@ src/
   template.ts   # 简单的 {{variable}} 模板渲染
   locales.ts    # i18n 默认模板（zh/en），按事件类型组织
   file.ts       # file 渠道发送器，将通知消息写入本地 JSONL 文件
-  recorder.ts   # 系统级事件变量录制器，记录全部模板变量到 JSONL（非渠道，始终开启），约56个字段（含 project* 项目级变量）
+  recorder.ts   # 系统级事件变量录制器，记录全部模板变量到 JSONL（非渠道，始终开启），约59个字段（含 project* 项目级变量）
   session-cache.ts # 会话级 token 缓存管理（加载/写入/去重/轮转/DB同步），遵循 recorder.ts 的 JSONL I/O 模式
   db-preload.ts # SQLite 预加载器，从 opencode.db 恢复 token 数据（插件重启恢复），支持 projectPath 过滤
   logger.ts     # 生产级文件日志，自动轮转，零依赖，同步 I/O
@@ -68,7 +68,7 @@ SDK 事件（`session.created`、`session.idle`、`session.error`）映射为内
 
 事件处理流程：`handler.ts` 接收事件 -> 渲染模板 -> 通过 `formatters.ts` 获取通道格式化器 -> 格式化为通道原生消息结构 -> 通过 `ChannelSender.send()` 发送。
 
-Token 聚合流程：`index.ts` 中 `message.updated` 累积单条消息 token -> `fillTokenData()` 汇总会话级 -> `aggregateSubSessions()` 汇总会话+子会话级 -> `fillProjectData()` 汇总项目级（按 `ctx.directory` 过滤匹配 `projectPath` 的会话）。默认模板 Token 行格式为三段式：`Token(会话/总量/项目) 模型名`。
+Token 聚合流程：`index.ts` 中 `message.updated` 累积单条消息 token -> `fillTokenData()` 汇总会话级 -> `aggregateSubSessions()` 汇总会话+子会话级 -> `fillProjectData()` 汇总项目级（按 `ctx.directory` 过滤匹配 `projectPath` 的会话）。默认模板 Token 行格式为两行：`Token(会话/总量/项目)` 接 `Req(会话/总量/项目) 模型名`。
 
 ### 通道类型
 `smtp`、`dingtalk`、`feishu` 三种通道均已完整实现。每种通道包含：
@@ -98,7 +98,7 @@ Token 数据分为四个聚合层级：
 |------|---------|------|------|
 | `ul-opencode-event.log` | `logger.ts` | 文本日志 | 运行日志、错误追踪、debug 输出（2MB 轮转） |
 | `ul-opencode-event-messages.log` | `file.ts` | JSON Lines | 渠道级消息记录：EventPayload + 渲染后的 subject/body（1MB 轮转，自动注入的默认 file 渠道） |
-| `ul-opencode-event-variables.jsonl` | `recorder.ts` | JSON Lines | 系统级变量记录：handler.ts 中全部模板变量（约56个字段，含 project* 项目级、人类可读 token 格式等衍生字段），始终开启，不受渠道配置影响（2MB 轮转） |
+| `ul-opencode-event-variables.jsonl` | `recorder.ts` | JSON Lines | 系统级变量记录：handler.ts 中全部模板变量（约59个字段，含 project* 项目级、人类可读 token 格式等衍生字段），始终开启，不受渠道配置影响（2MB 轮转） |
 | `ul-opencode-event-session-cache.jsonl` | `session-cache.ts` | JSON Lines | 会话级 token 聚合缓存：已完成会话的 sumAllCompletedTokens 结果，用于项目级聚合。latest-per-session wins 去重，2MB 轮转 |
 
 调试时可直接用 `tail -f` 监控或 `jq` 筛选 JSONL 文件。

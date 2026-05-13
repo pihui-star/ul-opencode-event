@@ -232,14 +232,14 @@ fillProjectData(payload, tokenDataMap, projectPath, cacheData?, ...)
 SDK Event                    内部 EventType    通知模板 Token 行
 ─────────────────────────────────────────────────────────────
 session.created              created           无 Token 行
-session.idle                 idle              Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}}) {{modelID}}
-session.error                error             Token(...)
-question.asked               question          Token(...)
-permission.updated           permission        Token(...)
-session.status               status            Token(...)
-command.executed             command           Token(...)
-file.edited                  fileEdited        Token(...)
-todo.updated                 todo              Token(...)
+session.idle                 idle              Token({{sessionTokensTotalHuman}}/{{totalTokensTotalHuman}}/{{projectTokensTotalHuman}})\nReq({{sessionRequestCount}}/{{totalRequestCount}}/{{projectRequestCount}}) {{modelID}}
+session.error                error             Token(...)\nReq(...)
+question.asked               question          Token(...)\nReq(...)
+permission.updated           permission        Token(...)\nReq(...)
+session.status               status            Token(...)\nReq(...)
+command.executed             command           Token(...)\nReq(...)
+file.edited                  fileEdited        Token(...)\nReq(...)
+todo.updated                 todo              Token(...)\nReq(...)
 message.updated              (不发送通知)       -
 ```
 
@@ -256,7 +256,7 @@ message.updated              (不发送通知)       -
 | `ul-opencode-event-variables.jsonl` | `recorder.ts` | 全部模板变量 | 每次事件处理 |
 | `ul-opencode-event-session-cache.jsonl` | `session-cache.ts` | 已完成会话的 sumAllCompletedTokens | idle/error 事件（始终）；status 事件（60s 节流） |
 
-`recorder.ts` 记录的是 `handler.ts` 中构建的全部模板变量（约 71+ 个字段），包含原始值和人类可读格式（如 `sessionTokensTotalHuman`、`projectTokensTotalHuman`），以及内置系统变量（hostname, localIP 等）和自定义变量。**始终开启，不受通道配置影响**，可用于调试。
+`recorder.ts` 记录的是 `handler.ts` 中构建的全部模板变量（约 74+ 个字段），包含原始值和人类可读格式（如 `sessionTokensTotalHuman`、`projectTokensTotalHuman`），以及内置系统变量（hostname, localIP 等）和自定义变量。**始终开启，不受通道配置影响**，可用于调试。
 
 ---
 

@@ -44,7 +44,7 @@ projectAgg 累加 (模块级计数器)
 通知事件 (idle/error/question/status/...)
   ↓ fillProjectData() — O(1) 读取 projectAgg
   ↓ 写入 payload.projectTokens / payload.projectCost
-  ↓ handler.ts 构造 15 个模板变量
+  ↓ handler.ts 构造 18 个模板变量
   ↓ locales.ts 模板渲染
   ↓ formatters.ts 通道格式化
 邮件 / 钉钉 / 飞书
@@ -59,7 +59,7 @@ projectAgg 累加 (模块级计数器)
 | session.created 回溯 | 预加载会话获得 projectPath 时 | index.ts:735-746 | 处理 preload 时无 directory 信息的会话 |
 | message.updated delta | 每条 assistant 消息更新时 | index.ts:829-845 | 核心: delta = 新值 - 旧值 |
 
-#### 受影响的模板变量（15 个）
+#### 受影响的模板变量（18 个）
 
 所有通知模板中使用 `{{projectTokens*}}` 和 `{{projectCost*}}` 的变量：
 

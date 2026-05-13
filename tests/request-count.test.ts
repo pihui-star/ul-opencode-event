@@ -35,6 +35,56 @@ mock.module('../src/config', () => ({
   },
 }));
 
+// ── Mock: session-cache ───────────────────────────────────────────
+let mockSessionCache: Map<string, Record<string, unknown>> = new Map();
+
+mock.module('../src/session-cache', () => ({
+  loadSessionCache: (_dataDir: string) => mockSessionCache,
+  aggregateProjectFromCache: () => ({
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    requestCount: 0,
+  }),
+  buildCacheEntry: () => null,
+  writeCacheEntry: () => {},
+}));
+
+// ── Mock: db-preload ──────────────────────────────────────────────
+let mockPreloadedSessions: Array<{
+  sessionId: string;
+  projectPath: string;
+  messageCount: number;
+}> = [];
+
+mock.module('../src/db-preload', () => ({
+  preloadTokenData: (
+    tokenDataMap: Map<string, Record<string, unknown>>,
+    _dataDir: string,
+    _limit?: number,
+    _projectPath?: string,
+  ) => {
+    for (const s of mockPreloadedSessions) {
+      const messages = new Map<string, unknown>();
+      for (let i = 0; i < s.messageCount; i++) {
+        messages.set(`msg-${s.sessionId}-${i}`, {
+          cost: 0,
+          tokens: { input: 100, output: 50, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 150 },
+          modelID: 'test-model',
+          providerID: 'test-provider',
+          mode: 'code',
+        });
+      }
+      tokenDataMap.set(s.sessionId, {
+        messages,
+        lastModelID: 'test-model',
+        lastProviderID: 'test-provider',
+        lastMode: 'code',
+        projectPath: s.projectPath,
+      });
+    }
+  },
+}));
+
 // ── Import after mocking ─────────────────────────────────────────
 import { NotificationPlugin } from '../src/index';
 
@@ -142,15 +192,27 @@ async function sendAssistantMessage(
 }
 
 // ── Test Suite ────────────────────────────────────────────────────
-describe('Request count aggregation (RED phase)', () => {
+describe('Request count aggregation', () => {
   beforeEach(() => {
     configMock = null;
+    mockSessionCache = new Map();
+    mockPreloadedSessions = [];
     getTestHelpers().payloads.length = 0;
+    // Reset module-level projectAgg and flags between tests
+    getTestHelpers().resetFlags();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     configMock = null;
+    mockSessionCache = new Map();
+    mockPreloadedSessions = [];
     getTestHelpers().payloads.length = 0;
+    // Drain pending setTimeout callbacks from the completed test to prevent
+    // cross-test contamination of module-level projectAgg. Old callbacks
+    // from previous tests fire during subsequent tests and accumulate
+    // stale values since projectAgg is a shared module-level variable.
+    await new Promise(resolve => setTimeout(resolve, 10));
+    getTestHelpers().resetFlags();
   });
 
   // ── Session-level tests ──────────────────────────────────────────
@@ -434,5 +496,296 @@ describe('Request count aggregation (RED phase)', () => {
     expect(createdPayload!.sessionRequestCount).toBeUndefined();
     expect(createdPayload!.totalRequestCount).toBeUndefined();
     // projectRequestCount may or may not be set; focus on session/total
+  });
+
+  // ── Deep nested sub-sessions ──────────────────────────────────
+
+  test('deep nested sub-sessions: 3-level descendant tree', async () => {
+    configMock = {
+      channels: [createMockChannel()],
+      includeSessionTypes: ['main', 'subagent'],
+    };
+
+    const ctx = makeCtx('/project-nested');
+    const hooks = await NotificationPlugin(ctx);
+
+    // Main session with 2 messages
+    await createSessionWithTokens(hooks, 'sess-grandpa', '/project-nested', '/project-nested', {
+      input: 100, output: 50, cost: 0.01,
+    });
+    await sendAssistantMessage(hooks, 'sess-grandpa', 'msg-grandpa-2', {
+      input: 200, output: 80, cost: 0.02,
+    });
+
+    // Child sub-session with 3 messages
+    await hooks.event({
+      event: createMockEvent('session.created', {
+        info: {
+          id: 'sess-dad',
+          projectID: 'test-project',
+          directory: '/project-nested',
+          title: 'Child Session',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+          parentID: 'sess-grandpa',
+        },
+      }),
+    });
+    await sendAssistantMessage(hooks, 'sess-dad', 'msg-dad-1', {
+      input: 50, output: 25, cost: 0.005,
+    });
+    await sendAssistantMessage(hooks, 'sess-dad', 'msg-dad-2', {
+      input: 60, output: 30, cost: 0.006,
+    });
+    await sendAssistantMessage(hooks, 'sess-dad', 'msg-dad-3', {
+      input: 70, output: 35, cost: 0.007,
+    });
+
+    // Grandchild sub-session with 1 message
+    await hooks.event({
+      event: createMockEvent('session.created', {
+        info: {
+          id: 'sess-kid',
+          projectID: 'test-project',
+          directory: '/project-nested',
+          title: 'Grandchild Session',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+          parentID: 'sess-dad',
+        },
+      }),
+    });
+    await sendAssistantMessage(hooks, 'sess-kid', 'msg-kid-1', {
+      input: 30, output: 15, cost: 0.003,
+    });
+
+    getTestHelpers().payloads.length = 0;
+
+    // Trigger main session idle
+    await hooks.event({
+      event: createMockEvent('session.idle', { sessionID: 'sess-grandpa' }),
+    });
+
+    const payloads = getTestHelpers().payloads;
+    expect(payloads.length).toBe(1);
+    const p = payloads[0];
+
+    // Main session only: 2 messages
+    expect(p.sessionRequestCount).toBe(2);
+    // All descendants: 2 + 3 + 1 = 6
+    expect(p.totalRequestCount).toBe(6);
+    // Project includes all 3 sessions
+    expect(p.projectRequestCount).toBeGreaterThanOrEqual(6);
+  });
+
+  // ── Cache recovery tests ───────────────────────────────────────
+
+  test('cache recovery: mock session cache contributes to projectRequestCount', async () => {
+    // Pre-populate mock session cache with 2 entries
+    mockSessionCache.set('cached-a', {
+      sessionId: 'cached-a',
+      projectPath: '/project-cache',
+      cost: 0.03,
+      tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
+      modelID: 'test-model',
+      providerID: 'test-provider',
+      mode: 'code',
+      requestCount: 3,
+      updatedAt: new Date().toISOString(),
+    });
+    mockSessionCache.set('cached-b', {
+      sessionId: 'cached-b',
+      projectPath: '/project-cache',
+      cost: 0.03,
+      tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
+      modelID: 'test-model',
+      providerID: 'test-provider',
+      mode: 'code',
+      requestCount: 3,
+      updatedAt: new Date().toISOString(),
+    });
+
+    configMock = {
+      channels: [createMockChannel()],
+    };
+
+    const ctx = makeCtx('/project-cache');
+    const hooks = await NotificationPlugin(ctx);
+
+    // Wait for deferred cache loading to fire
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Create 1 new runtime session with 2 messages
+    await createSessionWithTokens(hooks, 'runtime-z', '/project-cache', '/project-cache', {
+      input: 100, output: 50, cost: 0.01,
+    });
+    await sendAssistantMessage(hooks, 'runtime-z', 'msg-z-2', {
+      input: 200, output: 80, cost: 0.02,
+    });
+
+    getTestHelpers().payloads.length = 0;
+
+    await hooks.event({
+      event: createMockEvent('session.idle', { sessionID: 'runtime-z' }),
+    });
+
+    const payloads = getTestHelpers().payloads;
+    expect(payloads.length).toBe(1);
+    const p = payloads[0];
+
+    // Cache entries (3+3) + runtime (2) = 8
+    expect(p.projectRequestCount).toBe(8);
+  });
+
+  // ── Mixed cache + preload + runtime ────────────────────────────
+
+  test('mixed cache + preload + runtime: all sources contribute to projectRequestCount', async () => {
+    // Pre-populate mock session cache with 2 historical sessions
+    mockSessionCache.set('cached-1', {
+      sessionId: 'cached-1',
+      projectPath: '/project-mixed',
+      cost: 0.03,
+      tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
+      modelID: 'test-model',
+      providerID: 'test-provider',
+      mode: 'code',
+      requestCount: 3,
+      updatedAt: new Date().toISOString(),
+    });
+    mockSessionCache.set('cached-2', {
+      sessionId: 'cached-2',
+      projectPath: '/project-mixed',
+      cost: 0.03,
+      tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
+      modelID: 'test-model',
+      providerID: 'test-provider',
+      mode: 'code',
+      requestCount: 3,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Pre-populate mock preload with 1 session (different from cache)
+    mockPreloadedSessions.push({
+      sessionId: 'preloaded-1',
+      projectPath: '/project-mixed',
+      messageCount: 5, // requestCount = 5
+    });
+
+    configMock = {
+      channels: [createMockChannel()],
+    };
+
+    const ctx = makeCtx('/project-mixed');
+    const hooks = await NotificationPlugin(ctx);
+
+    // Wait for deferred preload + cache loading to fire
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Create 1 new runtime session with 2 messages
+    await createSessionWithTokens(hooks, 'runtime-1', '/project-mixed', '/project-mixed', {
+      input: 100, output: 50, cost: 0.01,
+    });
+    await sendAssistantMessage(hooks, 'runtime-1', 'msg-r1-2', {
+      input: 200, output: 80, cost: 0.02,
+    });
+
+    getTestHelpers().payloads.length = 0;
+
+    await hooks.event({
+      event: createMockEvent('session.idle', { sessionID: 'runtime-1' }),
+    });
+
+    const payloads = getTestHelpers().payloads;
+    expect(payloads.length).toBe(1);
+    const p = payloads[0];
+
+    // Cache(3+3) + preload(5) + runtime(2) = 13
+    expect(p.projectRequestCount).toBe(13);
+  });
+
+  // ── Recursive descendant collection ────────────────────────────
+
+  test('collectDescendantSessionIds: 4-level chain all found', async () => {
+    configMock = {
+      channels: [createMockChannel()],
+      includeSessionTypes: ['main', 'subagent'],
+    };
+
+    const ctx = makeCtx('/project-chain');
+    const hooks = await NotificationPlugin(ctx);
+
+    // Level 0 (main): 1 message
+    await createSessionWithTokens(hooks, 'sess-l0', '/project-chain', '/project-chain', {
+      input: 10, output: 5, cost: 0.001,
+    });
+
+    // Level 1 (child of L0): 1 message
+    await hooks.event({
+      event: createMockEvent('session.created', {
+        info: {
+          id: 'sess-l1',
+          projectID: 'test-project',
+          directory: '/project-chain',
+          title: 'Level 1',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+          parentID: 'sess-l0',
+        },
+      }),
+    });
+    await sendAssistantMessage(hooks, 'sess-l1', 'msg-l1', {
+      input: 10, output: 5, cost: 0.001,
+    });
+
+    // Level 2 (child of L1): 1 message
+    await hooks.event({
+      event: createMockEvent('session.created', {
+        info: {
+          id: 'sess-l2',
+          projectID: 'test-project',
+          directory: '/project-chain',
+          title: 'Level 2',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+          parentID: 'sess-l1',
+        },
+      }),
+    });
+    await sendAssistantMessage(hooks, 'sess-l2', 'msg-l2', {
+      input: 10, output: 5, cost: 0.001,
+    });
+
+    // Level 3 (child of L2): 1 message
+    await hooks.event({
+      event: createMockEvent('session.created', {
+        info: {
+          id: 'sess-l3',
+          projectID: 'test-project',
+          directory: '/project-chain',
+          title: 'Level 3',
+          version: '1.0',
+          time: { created: Date.now(), updated: Date.now() },
+          parentID: 'sess-l2',
+        },
+      }),
+    });
+    await sendAssistantMessage(hooks, 'sess-l3', 'msg-l3', {
+      input: 10, output: 5, cost: 0.001,
+    });
+
+    getTestHelpers().payloads.length = 0;
+
+    await hooks.event({
+      event: createMockEvent('session.idle', { sessionID: 'sess-l0' }),
+    });
+
+    const payloads = getTestHelpers().payloads;
+    expect(payloads.length).toBe(1);
+    const p = payloads[0];
+
+    // Main session only: 1 message
+    expect(p.sessionRequestCount).toBe(1);
+    // All 4 sessions (1 message each): 3 descendants found recursively
+    expect(p.totalRequestCount).toBe(4);
   });
 });
