@@ -209,6 +209,12 @@ export interface EventPayload {
   projectCost?: number;
   /** 项目累计 Token 用量 */
   projectTokens?: TokenBreakdown;
+  /** API request count for current session (assistant messages count) */
+  sessionRequestCount?: number;
+  /** API request count including all sub-sessions */
+  totalRequestCount?: number;
+  /** API request count across all sessions in this project */
+  projectRequestCount?: number;
   /** 项目累计费用格式化字符串（含货币符号） */
   projectCostFormatted?: string;
 }
@@ -314,6 +320,8 @@ export interface SessionCacheEntry {
   providerID: string;
   /** Mode from the last message */
   mode: string;
+  /** Number of API requests (assistant messages) in this session */
+  requestCount: number;
   /** ISO 8601 timestamp of when this cache entry was written */
   updatedAt: string;
 }
