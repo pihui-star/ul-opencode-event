@@ -15,6 +15,7 @@ import { logger, DEBUG_ENABLED } from './logger.js';
 import { runAutoUpdate, getCurrentVersion } from './updater.js';
 import { loadSessionCache, aggregateProjectFromCache, buildCacheEntry, writeCacheEntry } from './session-cache.js';
 // cost.js imported lazily inside NotificationPlugin to follow lazy-import convention
+import { parseTokenFields, parseMessageCost } from './utils/token-parse.js';
 
 /**
  * Resolve session type from SDK Session info.
@@ -818,22 +819,10 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
               tokenDataMap.set(sessionId, sessionData);
             }
 
-            const sdkTokens = msgInfo.tokens as { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } | undefined;
-            const tkInput = Number(sdkTokens?.input) || 0;
-            const tkOutput = Number(sdkTokens?.output) || 0;
-            const tkReasoning = Number(sdkTokens?.reasoning) || 0;
-            const tkCacheRead = Number(sdkTokens?.cache?.read) || 0;
-            const tkCacheWrite = Number(sdkTokens?.cache?.write) || 0;
+            const sdkTokens = msgInfo.tokens as Parameters<typeof parseTokenFields>[0];
             const tokenData: TokenData = {
-              cost: Number(msgInfo.cost) || 0,
-              tokens: {
-                input: tkInput,
-                output: tkOutput,
-                reasoning: tkReasoning,
-                cacheRead: tkCacheRead,
-                cacheWrite: tkCacheWrite,
-                total: tkInput + tkOutput + tkCacheRead + tkCacheWrite,
-              },
+              cost: parseMessageCost(msgInfo as { cost?: number | null }),
+              tokens: parseTokenFields(sdkTokens),
               modelID: (msgInfo.modelID as string) ?? '',
               providerID: (msgInfo.providerID as string) ?? '',
               mode: (msgInfo.mode as string) ?? '',
