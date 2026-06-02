@@ -336,7 +336,10 @@ export interface CostConfig {
   exchangeRate?: number;
   /** 小数位数（默认 4） */
   decimalPlaces?: number;
-  /** 是否启用在线汇率获取（默认 false） */
+  /**
+   * 是否启用在线汇率获取（默认 false）
+   * @experimental 实验性功能,当前版本未实现在线汇率获取
+   */
   enableOnlineRate?: boolean;
 }
 
