@@ -667,8 +667,8 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
           projectAgg.requestCount += sessionData.messages.size;
         }
       }
-    }).catch(() => {
-      // non-critical: plugin works without preloaded data
+    }).catch((err: unknown) => {
+      logger.error(`Token data preload failed: ${err}`);
     });
   }, 0);
 
