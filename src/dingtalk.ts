@@ -10,6 +10,7 @@
 
 import type { Channel, ChannelSender, ChannelFormatter, FormattedMessage, DingtalkConfig } from './types.js';
 import { logger, DEBUG_ENABLED } from './logger.js';
+import { hmacSha256Base64, webhookPost } from './utils/webhook.js';
 
 // ─── Signing ───────────────────────────────────────────────
 
@@ -29,22 +30,7 @@ export async function generateSign(secret: string, timestamp: string): Promise<s
 
   const stringToSign = `${timestamp}\n${secret}`;
 
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(secret);
-  const data = encoder.encode(stringToSign);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, data);
-
-  // Convert ArrayBuffer to base64 without Buffer (pure browser/Node compat)
-  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+  return hmacSha256Base64(secret, stringToSign);
 }
 
 // ─── Formatting ────────────────────────────────────────────
@@ -212,20 +198,10 @@ export async function createDingTalkSender(channel: Channel): Promise<ChannelSen
       }
 
       // Send via fetch with timeout
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
       logger.debug(`DingTalk webhook POST ${targetUrl}`);
 
       try {
-        const response = await fetch(targetUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(msg),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timer);
+        const response = await webhookPost(targetUrl, msg, FETCH_TIMEOUT_MS);
 
         logger.debug(`DingTalk response: ${response.status} ${response.statusText}`);
 
@@ -246,8 +222,6 @@ export async function createDingTalkSender(channel: Channel): Promise<ChannelSen
         // Success (errcode === 0 or no errcode in response)
         logger.debug(`[${channelName}] DingTalk message sent successfully`);
       } catch (error) {
-        clearTimeout(timer);
-
         // Network error or abort - log error
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`DingTalk send failed: ${message}`);

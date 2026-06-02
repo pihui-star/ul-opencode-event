@@ -10,6 +10,7 @@
 
 import type { Channel, ChannelSender, ChannelFormatter, FormattedMessage, FeishuConfig } from './types.js';
 import { logger } from './logger.js';
+import { hmacSha256Base64, webhookPost } from './utils/webhook.js';
 
 // ─── Signing ───────────────────────────────────────────────
 
@@ -33,24 +34,8 @@ export async function generateFeishuSign(secret: string, timestamp: string): Pro
 
   const stringToSign = `${timestamp}\n${secret}`;
 
-  const encoder = new TextEncoder();
-  // Feishu: key = timestamp + "\n" + secret
-  const keyData = encoder.encode(stringToSign);
-  // Feishu: message = "" (empty)
-  const data = encoder.encode('');
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, data);
-
-  // Convert ArrayBuffer to base64 without Buffer (pure browser/Node compat)
-  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+  // Feishu: key = timestamp + "\n" + secret, data = "" (empty)
+  return hmacSha256Base64(stringToSign, '');
 }
 
 // ─── Formatting ────────────────────────────────────────────
@@ -213,20 +198,10 @@ export async function createFeishuSender(channel: Channel): Promise<ChannelSende
       }
 
       // Send via fetch with timeout
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
       logger.debug(`Feishu webhook POST ${webhookUrl}`);
 
       try {
-        const response = await fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timer);
+        const response = await webhookPost(webhookUrl, body, FETCH_TIMEOUT_MS);
 
         logger.debug(`Feishu response: ${response.status} ${response.statusText}`);
 
@@ -247,8 +222,6 @@ export async function createFeishuSender(channel: Channel): Promise<ChannelSende
         // Success (code === 0 or no code in response)
         logger.debug(`[${channelName}] Feishu message sent successfully`);
       } catch (error) {
-        clearTimeout(timer);
-
         // Network error or abort - log error
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Feishu send failed: ${message}`);
