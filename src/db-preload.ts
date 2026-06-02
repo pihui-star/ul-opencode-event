@@ -2,18 +2,18 @@
  * SQLite preloader - restores token data from OpenCode database on plugin restart.
  * Reads recent assistant messages from opencode.db to repopulate tokenDataMap.
  */
-import { Database } from 'bun:sqlite';
 import * as path from 'node:path';
 import { logger, DEBUG_ENABLED } from './logger.js';
 import type { SessionTokenData, TokenData } from './types.js';
 
-export function preloadTokenData(
+export async function preloadTokenData(
   tokenDataMap: Map<string, SessionTokenData>,
   dataDir: string,
   limit = 10,
   projectPath?: string,
-): void {
+): Promise<void> {
   try {
+    const { Database } = await import('bun:sqlite');
     const dbPath = path.join(dataDir, 'opencode.db');
     const db = new Database(dbPath, { readonly: true });
     try {

@@ -77,7 +77,7 @@ describe('preloadTokenData', () => {
     dbClosed = false;
   });
 
-  test('normal preload populates tokenDataMap from DB rows', () => {
+  test('normal preload populates tokenDataMap from DB rows', async () => {
     const tokenDataMap = new Map<string, SessionTokenData>();
     mockRows = [
       {
@@ -93,7 +93,7 @@ describe('preloadTokenData', () => {
         }),
       },
     ];
-    preloadTokenData(tokenDataMap, tempDir);
+    await preloadTokenData(tokenDataMap, tempDir);
     expect(tokenDataMap.size).toBe(1);
     const session = tokenDataMap.get('sess-abc')!;
     expect(session.messages.size).toBe(1);
@@ -108,14 +108,14 @@ describe('preloadTokenData', () => {
     expect(dbClosed).toBe(true);
   });
 
-  test('skips when DB file does not exist', () => {
+  test('skips when DB file does not exist', async () => {
     const tokenDataMap = new Map<string, SessionTokenData>();
-    preloadTokenData(tokenDataMap, nonexistentDir);
+    await preloadTokenData(tokenDataMap, nonexistentDir);
     expect(tokenDataMap.size).toBe(0);
     expect(dbConstructed).toBe(false);
   });
 
-  test('skips rows with invalid JSON without crashing', () => {
+  test('skips rows with invalid JSON without crashing', async () => {
     const tokenDataMap = new Map<string, SessionTokenData>();
     mockRows = [
       { id: 'msg-bad', session_id: 'sess-x', data: 'not-valid-json' },
@@ -132,13 +132,13 @@ describe('preloadTokenData', () => {
         }),
       },
     ];
-    preloadTokenData(tokenDataMap, tempDir);
+    await preloadTokenData(tokenDataMap, tempDir);
     expect(tokenDataMap.size).toBe(1);
     expect(tokenDataMap.get('sess-x')!.messages.has('msg-bad')).toBe(false);
     expect(tokenDataMap.get('sess-x')!.messages.has('msg-good')).toBe(true);
   });
 
-  test('converts nested cache.read to flat cacheRead', () => {
+  test('converts nested cache.read to flat cacheRead', async () => {
     const tokenDataMap = new Map<string, SessionTokenData>();
     mockRows = [
       {
@@ -154,14 +154,14 @@ describe('preloadTokenData', () => {
         }),
       },
     ];
-    preloadTokenData(tokenDataMap, tempDir);
+    await preloadTokenData(tokenDataMap, tempDir);
     const td = tokenDataMap.get('sess-cache')!.messages.get('msg-cache')!;
     expect(td.tokens.cacheRead).toBe(42);
     expect(td.tokens.cacheWrite).toBe(7);
     expect(td.tokens.total).toBe(200 + 100 + 42 + 7);
   });
 
-  test('coerces null, undefined, NaN and empty-string token values to 0', () => {
+  test('coerces null, undefined, NaN and empty-string token values to 0', async () => {
     const tokenDataMap = new Map<string, SessionTokenData>();
     mockRows = [
       {
@@ -177,7 +177,7 @@ describe('preloadTokenData', () => {
         }),
       },
     ];
-    preloadTokenData(tokenDataMap, tempDir);
+    await preloadTokenData(tokenDataMap, tempDir);
     const td = tokenDataMap.get('sess-safe')!.messages.get('msg-safe')!;
     expect(td.tokens.input).toBe(0);
     expect(td.tokens.output).toBe(0);
@@ -188,7 +188,7 @@ describe('preloadTokenData', () => {
     expect(td.cost).toBe(0);
   });
 
-  test('tracks lastModelID/lastProviderID/lastMode from the last row', () => {
+  test('tracks lastModelID/lastProviderID/lastMode from the last row', async () => {
     const tokenDataMap = new Map<string, SessionTokenData>();
     mockRows = [
       {
@@ -202,7 +202,7 @@ describe('preloadTokenData', () => {
         data: JSON.stringify({ role: 'assistant', tokens: { input: 20 }, cost: 0.5, modelID: 'model-b', providerID: 'prov-b', mode: 'mode-b' }),
       },
     ];
-    preloadTokenData(tokenDataMap, tempDir);
+    await preloadTokenData(tokenDataMap, tempDir);
     const session = tokenDataMap.get('sess-multi')!;
     expect(session.messages.size).toBe(2);
     expect(session.lastModelID).toBe('model-b');
@@ -210,7 +210,7 @@ describe('preloadTokenData', () => {
     expect(session.lastMode).toBe('mode-b');
   });
 
-  test('skips rows where role is not assistant', () => {
+  test('skips rows where role is not assistant', async () => {
     const tokenDataMap = new Map<string, SessionTokenData>();
     mockRows = [
       {
@@ -219,7 +219,7 @@ describe('preloadTokenData', () => {
         data: JSON.stringify({ role: 'user', tokens: { input: 99, output: 99 }, cost: 99, modelID: 'm', providerID: 'p', mode: 'x' }),
       },
     ];
-    preloadTokenData(tokenDataMap, tempDir);
+    await preloadTokenData(tokenDataMap, tempDir);
     expect(tokenDataMap.size).toBe(0);
   });
 });

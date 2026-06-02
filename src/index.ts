@@ -649,8 +649,8 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
   // Preload token data from OpenCode database (plugin restart recovery)
   // Deferred via setTimeout so bun:sqlite import doesn't block plugin init
   setTimeout(() => {
-    import('./db-preload.js').then(({ preloadTokenData }) => {
-      preloadTokenData(tokenDataMap, baseDir, 10, ctx.directory);
+    import('./db-preload.js').then(async ({ preloadTokenData }) => {
+      await preloadTokenData(tokenDataMap, baseDir, 10, ctx.directory);
       // Initialize projectAgg base from preloaded data (matching projectPath only)
       const normalizedTarget = path.normalize(ctx.directory);
       for (const [, sessionData] of tokenDataMap) {
