@@ -11,15 +11,13 @@ import * as nodemailer from 'nodemailer';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
+import { resolveHostViaLookup, shouldRetryWithLookup } from './utils/dns.js';
 import type { Channel, SMTPConfig, DingtalkConfig, FeishuConfig, NotificationConfig } from './types.js';
 import { validateCustomVariables } from './config.js';
 import { generateSign, createDingTalkFormatter } from './dingtalk.js';
 import { generateFeishuSign, createFeishuFormatter } from './feishu.js';
 
 const CLI_PREFIX = '[ul-opencode-event-cli]';
-const LOOKUP_TIMEOUT_MS = 1200;
 
 /** Format large numbers in human-readable form (e.g., 57.7M, 3.1K) */
 function humanize(n: number): string {
@@ -282,49 +280,6 @@ function createTransporter(channel: Channel, hostOverride?: string): nodemailer.
   return nodemailer.createTransport(transportOptions);
 }
 
-function shouldRetryWithLookup(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes('querya etimeout') ||
-    normalized.includes('queryaaaa etimeout') ||
-    normalized.includes('enotfound') ||
-    normalized.includes('eai_again')
-  );
-}
-
-async function resolveHostViaLookup(host: string): Promise<string | null> {
-  if (isIP(host) !== 0) {
-    return host;
-  }
-
-  const withTimeout = <T>(task: Promise<T>, timeoutMs: number): Promise<T> => {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`lookup timeout after ${timeoutMs}ms`)), timeoutMs);
-      task.then(
-        value => {
-          clearTimeout(timer);
-          resolve(value);
-        },
-        error => {
-          clearTimeout(timer);
-          reject(error);
-        }
-      );
-    });
-  };
-
-  try {
-    const addr = await withTimeout(lookup(host, { family: 4 }), LOOKUP_TIMEOUT_MS);
-    return addr.address;
-  } catch {}
-
-  try {
-    const addr = await withTimeout(lookup(host, { family: 6 }), LOOKUP_TIMEOUT_MS);
-    return addr.address;
-  } catch {}
-
-  return null;
-}
 
 /**
  * Test channel connection (SMTP or DingTalk)

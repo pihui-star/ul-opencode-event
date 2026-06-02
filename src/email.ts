@@ -9,12 +9,9 @@
  * to return fake IPs (e.g., 198.18.x.x). We proactively resolve DNS before creating
  * the transport to bypass proxy interference, matching cli.ts behavior.
  */
-import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
 import { logger, DEBUG_ENABLED } from './logger.js';
+import { resolveHostViaLookup, shouldRetryWithLookup } from './utils/dns.js';
 import type { Channel, ChannelSender, SMTPConfig } from './types.js';
-
-const LOOKUP_TIMEOUT_MS = 1200;
 
 // Lazy-loaded nodemailer cache
 let nodemailerModule: typeof import('nodemailer') | null = null;
@@ -31,66 +28,6 @@ export interface EmailSender {
   close: () => Promise<void>;
 }
 
-/**
- * Resolve hostname via DNS lookup with timeout, trying IPv4 first then IPv6.
- * Returns null if resolution fails or host is already an IP.
- *
- * This uses node:dns/promises.lookup directly (not nodemailer's internal resolver)
- * to get real IP addresses even when system DNS is proxied/hijacked.
- */
-async function resolveHostViaLookup(host: string): Promise<string | null> {
-  if (isIP(host) !== 0) {
-    return host;
-  }
-
-  const withTimeout = <T>(task: Promise<T>, timeoutMs: number): Promise<T> => {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`lookup timeout after ${timeoutMs}ms`)), timeoutMs);
-      task.then(
-        value => { clearTimeout(timer); resolve(value); },
-        error => { clearTimeout(timer); reject(error); }
-      );
-    });
-  };
-
-  // Try IPv4 first (most SMTP servers support it)
-  try {
-    const addr = await withTimeout(lookup(host, { family: 4 }), LOOKUP_TIMEOUT_MS);
-    logger.debug(`DNS resolved ${host} -> ${addr.address}`);
-    return addr.address;
-  } catch {
-    // IPv4 failed, try IPv6
-  }
-
-  try {
-    const addr = await withTimeout(lookup(host, { family: 6 }), LOOKUP_TIMEOUT_MS);
-    logger.debug(`DNS resolved ${host} -> ${addr.address}`);
-    return addr.address;
-  } catch {
-    // Both failed
-  }
-
-  logger.debug(`DNS lookup failed for ${host}, using original (fallback)`);
-  return null;
-}
-
-/**
- * Check if an error message suggests we should retry with a pre-resolved IP address.
- * Covers DNS failures AND connection-refused errors (proxy TUN fake IP scenario).
- */
-function shouldRetryWithLookup(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes('econnrefused') ||
-    normalized.includes('econnreset') ||
-    normalized.includes('etimedout') ||
-    normalized.includes('querya etimeout') ||
-    normalized.includes('queryaaaa etimeout') ||
-    normalized.includes('enotfound') ||
-    normalized.includes('eai_again') ||
-    normalized.includes('getaddrinfo')
-  );
-}
 
 /**
  * Build nodemailer transport options, optionally using a pre-resolved host.
