@@ -345,7 +345,7 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
 
         // Check if this event type is enabled for the channel
         // 显式配置优先，未配置时使用默认值
-        const eventConfig = channel.events[eventType];
+        const eventConfig = channel.events?.[eventType];
         const eventEnabled = eventConfig ?? EVENT_DEFAULTS[eventType];
         if (!eventEnabled) {
           continue;
