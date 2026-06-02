@@ -6,7 +6,7 @@
  * Supports SMTP and DingTalk channels via a unified ChannelSender interface.
  */
 import os from 'node:os';
-import type { NotificationConfig, EventPayload, EventType, TemplateConfig, ChannelSender, TokenBreakdown } from './types.js';
+import type { NotificationConfig, EventPayload, EventType, TemplateConfig, Channel, ChannelSender, TokenBreakdown } from './types.js';
 import { renderTemplate } from './template.js';
 import { getDefaultTemplates } from './locales.js';
 import { getFormatter } from './formatters.js';
@@ -41,6 +41,17 @@ export interface EventHandler {
  * Case-insensitive comparison.
  */
 const VIRTUAL_NIC_PREFIXES = ['docker', 'wsl', 'vethernet', 'tun', 'vmnet', 'vnic'];
+
+/**
+ * Channel factory registry - maps channel type to async factory function.
+ * Uses dynamic imports to maintain lazy loading per AGENTS.md conventions.
+ */
+const CHANNEL_FACTORIES: Record<string, (channel: Channel) => Promise<ChannelSender | null>> = {
+  smtp: async (ch) => { const m = await import('./email.js'); return m.createEmailSender(ch); },
+  dingtalk: async (ch) => { const m = await import('./dingtalk.js'); return m.createDingTalkSender(ch); },
+  feishu: async (ch) => { const m = await import('./feishu.js'); return m.createFeishuSender(ch); },
+  file: async (ch) => { const m = await import('./file.js'); return m.createFileSender(ch); },
+};
 
 // Module-level caches
 let cachedLocalIP: string | null = null;
@@ -180,52 +191,17 @@ export function createEventHandler(config: NotificationConfig): EventHandler {
         sendersInitialized = true;
         for (let i = 0; i < config.channels.length; i++) {
           const channel = config.channels[i];
-          if (channel.type === 'smtp' && channel.enabled !== false) {
-            try {
-              // Dynamic import to avoid blocking plugin loading
-              const emailModule = await import('./email.js');
-              const sender = await emailModule.createEmailSender(channel);
-              if (sender) {
-                const key = channel.name || `channel-${i}`;
-                senders.set(key, sender);
-              }
-            } catch (error) {
-              logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
-            }
-          } else if (channel.type === 'dingtalk' && channel.enabled !== false) {
-            try {
-              // Dynamic import to avoid blocking plugin loading
-              const dingtalkModule = await import('./dingtalk.js');
-              const sender = await dingtalkModule.createDingTalkSender(channel);
-              if (sender) {
-                const key = channel.name || `channel-${i}`;
-                senders.set(key, sender);
-              }
-            } catch (error) {
-              logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
-            }
-          } else if (channel.type === 'feishu' && channel.enabled !== false) {
-            try {
-              const feishuModule = await import('./feishu.js');
-              const sender = await feishuModule.createFeishuSender(channel);
-              if (sender) {
-                const key = channel.name || `channel-${i}`;
-                senders.set(key, sender);
-              }
-            } catch (error) {
-              logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
-            }
-          } else if (channel.type === 'file' && channel.enabled !== false) {
-            try {
-              const fileModule = await import('./file.js');
-              const sender = await fileModule.createFileSender(channel);
-              if (sender) {
-                const key = channel.name || `channel-${i}`;
-                senders.set(key, sender);
-              }
-            } catch (error) {
-              logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
-            }
+          if (channel.enabled === false) continue;
+          const factory = CHANNEL_FACTORIES[channel.type];
+          if (!factory) {
+            logger.warn(`Unknown channel type '${channel.type}' for channel '${channel.name ?? String(i)}', skipping`);
+            continue;
+          }
+          try {
+            const sender = await factory(channel);
+            if (sender) senders.set(channel.name || `channel-${i}`, sender);
+          } catch (error) {
+            logger.error(`Failed to initialize channel '${channel.name ?? String(i)}': ${error instanceof Error ? error.message : String(error)}`);
           }
         }
       }
