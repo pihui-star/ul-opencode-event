@@ -57,7 +57,9 @@ function __test_resetFlags(): void {
 }
 
 // Expose test helpers via globalThis (safe for production - only used in tests)
-declare module globalThis {
+// eslint-disable-next-line @typescript-eslint/no-namespace
+declare namespace globalThis {
+  // eslint-disable-next-line no-var
   var __ul_opencode_event_test: {
     payloads: EventPayload[];
     resetFlags: () => void;
