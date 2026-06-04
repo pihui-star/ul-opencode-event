@@ -25,7 +25,7 @@
 - **macOS / Linux**: `~/.config/opencode/ul-opencode-event.json`
 - **Windows**: `%USERPROFILE%\.config\opencode\ul-opencode-event.json`
 
-> **推荐**：全局安装插件时使用全局配置，项目安装时使用项目配置。两者可以共存，项目配置优先于全局配置。
+> **提示**：全局配置适合所有项目共享通知通道，项目配置适合为单个项目定制。两者可以共存，项目配置优先于全局配置。
 
 ---
 
@@ -969,27 +969,32 @@ A: 会。`recorder.ts` 会记录所有模板变量（包括自定义变量和内
 
 ---
 
-## 14. 全局安装与项目安装
+## 14. 插件安装
 
-### 全局安装
+插件由 OpenCode 自动管理安装和更新，无需手动 `npm install`。
 
-```bash
-npm install -g @ulthon/ul-opencode-event
+### 安装方式
+
+在 `~/.config/opencode/opencode.json` 中添加：
+
+```json
+{
+  "plugin": ["@ulthon/ul-opencode-event"]
+}
 ```
 
-全局安装时，使用全局配置文件 `~/.config/opencode/ul-opencode-event.json`。所有项目共享同一份通知配置。
+OpenCode 启动时自动从 npm 拉取插件并安装到 OpenCode 的包缓存目录中，后续也由自动更新机制维护版本。
 
-### 项目安装
+> **不要全局安装**（`npm install -g`）。全局安装的副本不会被 OpenCode 加载，也不会被自动更新。
 
-```bash
-npm install @ulthon/ul-opencode-event
-```
+### 全局配置与项目配置
 
-项目安装时，使用项目目录下的配置文件。可以为不同项目配置不同的通知通道和模板。
+插件安装方式与配置文件级别无关。无论怎样安装，都可以同时使用全局和项目级配置：
 
-### 共存机制
+- **全局配置**：`~/.config/opencode/ul-opencode-event.json`，所有项目共享
+- **项目配置**：项目目录下 `.opencode/ul-opencode-event.json` 或 `./ul-opencode-event.json`，按通道 `name` 合并
 
-全局和项目配置可以共存。合并规则如下：
+合并规则如下：
 
 1. 通道按 `name` 字段合并（见[配置合并规则](#2-配置合并规则)）
 2. 顶层字段以项目配置为准

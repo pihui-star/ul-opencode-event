@@ -28,17 +28,18 @@ OpenCode multi-channel notification plugin that keeps you informed wherever you 
 
 ## Quick Start
 
-```bash
-npm install @ulthon/ul-opencode-event
-cp node_modules/@ulthon/ul-opencode-event/examples/ul-opencode-event.json ./
-# Edit config with your SMTP credentials
-npx @ulthon/ul-opencode-event test
-```
-
 Add to `~/.config/opencode/opencode.json`:
 
 ```json
 { "plugin": ["@ulthon/ul-opencode-event"] }
+```
+
+OpenCode automatically installs the plugin from npm on startup. Then create a config file and test:
+
+```bash
+# Create config: ~/.config/opencode/ul-opencode-event.json
+# Edit with your SMTP/DingTalk/Feishu credentials
+npx @ulthon/ul-opencode-event test
 ```
 
 ## Configuration
@@ -175,7 +176,6 @@ npx @ulthon/ul-opencode-event test --no-send     # Verify connection only
 
 ```bash
 npm run build && node dist/cli.js test
-# Or: npm link && npx @ulthon/ul-opencode-event test
 ```
 
 ## License

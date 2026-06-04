@@ -29,49 +29,39 @@ OpenCode 多通道通知插件，让你在任何地方都能收到 AI 编程助�
 ## 快速开始
 
 ```bash
-# 1. 全局安装（推荐）
-npm install -g @ulthon/ul-opencode-event
+# 1. 启用插件 -- 在 ~/.config/opencode/opencode.json 中添加:
+# { "plugin": ["@ulthon/ul-opencode-event"] }
+# OpenCode 启动时会自动从 npm 安装插件
 
-# 2. 创建全局配置文件
+# 2. 创建配置文件
 # Windows: %USERPROFILE%\.config\opencode\ul-opencode-event.json
 # macOS/Linux: ~/.config/opencode/ul-opencode-event.json
 
 # 3. 编辑配置，填入 SMTP / 钉钉 / 飞书的相关信息
 
-# 4. 测试连接
-ul-opencode-event test
-
-# 5. 启用插件 -- 在 ~/.config/opencode/opencode.json 中添加:
-# { "plugin": ["@ulthon/ul-opencode-event"] }
+# 4. 测试连接（npx 会自动拉取已安装的版本）
+npx @ulthon/ul-opencode-event test
 ```
 
 ## 安装
 
-### 全局安装（推荐）
+### 通过 OpenCode 插件配置安装（推荐）
 
-```bash
-npm install -g @ulthon/ul-opencode-event
-```
-
-全局安装后，可在任意项目中使用，配置文件统一放在 `~/.config/opencode/ul-opencode-event.json`。
-
-### 项目安装
-
-```bash
-npm install @ulthon/ul-opencode-event
-```
-
-项目安装后，配置文件放在项目根目录或 `.opencode/` 目录下。
-
-### 启用插件
-
-在 `~/.config/opencode/opencode.json` 中添加：
+插件由 OpenCode 自动管理安装和更新，无需手动安装。在 `~/.config/opencode/opencode.json` 中添加：
 
 ```json
 {
   "plugin": ["@ulthon/ul-opencode-event"]
 }
 ```
+
+OpenCode 启动时自动从 npm 拉取插件，后续也由 OpenCode 的自动更新机制维护版本。
+
+> **不要全局安装**（`npm install -g`）。全局安装的副本不会被 OpenCode 加载，也不会被自动更新，纯属浪费。
+
+### 启用插件
+
+见上方，在 `~/.config/opencode/opencode.json` 的 `plugin` 数组中添加包名即可。
 
 ## 配置
 
@@ -145,13 +135,13 @@ npm install @ulthon/ul-opencode-event
 
 ```bash
 # 测试所有通道（验证配置 -> 测试连接 -> 发送测试消息）
-ul-opencode-event test
+npx @ulthon/ul-opencode-event test
 
 # 测试指定通道
-ul-opencode-event test --channel "我的邮箱"
+npx @ulthon/ul-opencode-event test --channel "我的邮箱"
 
 # 仅验证连接，不发送消息
-ul-opencode-event test --no-send
+npx @ulthon/ul-opencode-event test --no-send
 ```
 
 ### 测试输出示例
@@ -199,15 +189,8 @@ ul-opencode-event test --no-send
 # 构建
 npm run build
 
-# 本地测试
+# 本地测试 CLI
 node dist/cli.js test
-
-# 使用 npm link
-npm link
-ul-opencode-event test
-
-# 取消链接
-npm unlink -g @ulthon/ul-opencode-event
 ```
 
 ## 许可证
