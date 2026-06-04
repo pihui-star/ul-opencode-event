@@ -18,6 +18,7 @@ OpenCode 多通道通知插件，让你在任何地方都能收到 AI 编程助�
 | SMTP (邮件) | 已发布 | 通过任意 SMTP 服务器发送邮件通知 |
 | 钉钉 | 已发布 | 钉钉群自定义机器人，支持 Markdown 格式和 @人 |
 | 飞书 | 已发布 | 飞书群自定义机器人，支持交互式卡片格式 |
+| 文件 (File) | 已发布（自动） | 本地 JSONL 文件，默认自动注入，无需配置 |
 | Webhook | 计划中 | HTTP webhook，支持自定义集成 |
 | Telegram | 计划中 | Telegram 机器人通知 |
 | Slack | 计划中 | Slack incoming webhooks |
@@ -131,6 +132,12 @@ npm install @ulthon/ul-opencode-event
 | `created` | false | 新会话创建时触发 |
 | `idle` | true | 会话完成时触发（AI 完成响应） |
 | `error` | true | 会话出错时触发 |
+| `question` | true | AI 提问时触发 |
+| `permission` | true | 需要权限确认时触发 |
+| `status` | false | 会话状态变更时触发 |
+| `command` | false | 命令执行时触发 |
+| `fileEdited` | false | 文件编辑时触发 |
+| `todo` | false | Todo 列表更新时触发 |
 
 ## CLI 工具
 
@@ -174,6 +181,7 @@ ul-opencode-event test --no-send
 | [SMTP 邮箱通道配置](./docs/channels/smtp-channel.md) | SMTP 完整配置字段、IPv4/IPv6 控制 |
 | [钉钉通道配置](./docs/channels/dingtalk-channel.md) | 钉钉机器人 Webhook、加签、@人功能 |
 | [飞书通道配置](./docs/channels/feishu-channel.md) | 飞书机器人 Webhook、签名校验、卡片格式 |
+| [文件通道配置](./docs/channels/file-channel.md) | JSONL 输出、自动注入、文件轮转 |
 | [模板配置](./docs/configuration.md#4-模板系统概述) | 自定义消息模板、变量说明、多语言支持 |
 | [通知渠道开发指南](./docs/channels/channel-development.md) | 如何开发自定义通知渠道 |
 

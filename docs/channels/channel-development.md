@@ -35,10 +35,10 @@
                      │                 │
           ┌──────────┼─────────────────┼──────────┐
           ▼          ▼                 ▼          ▼
-    ┌──────────┐ ┌──────────┐  ┌──────────┐ ┌──────────┐
-    │ email.ts │ │dingtalk.ts│  │ feishu.ts│  │ xxx.ts   │
-    │ SMTP发送  │ │ Webhook  │  │ Webhook  │  │ (未来)   │
-    └──────────┘ └──────────┘  └──────────┘ └──────────┘
+    ┌──────────┐ ┌──────────┐  ┌──────────┐ ┌──────────┐ ┌──────────┐
+    │ email.ts │ │dingtalk.ts│  │ feishu.ts│  │ file.ts  │  │ xxx.ts   │
+    │ SMTP发送  │ │ Webhook  │  │ Webhook  │  │ JSONL文件 │  │ (未来)   │
+    └──────────┘ └──────────┘  └──────────┘  └──────────┘  └──────────┘
 ```
 
 ### 1.2 数据流
@@ -68,14 +68,25 @@ sender.send(formattedMessage)                   ← xxx.ts → HTTP/SMTP/...
 
 | 文件 | 职责 | 通用/特有 |
 |------|------|-----------|
+| `index.ts` | 插件入口 - 纯 re-export 薄壳，导出 `NotificationPlugin` | **通用** |
+| `plugin-core.ts` | 插件核心逻辑：NotificationPlugin 生命周期、事件路由、sessionMap 管理、message.updated token 累积 | **通用** |
+| `event-mapper.ts` | SDK 事件到 EventPayload 的映射，调用 token 聚合 | **通用** |
+| `token-aggregator.ts` | Token/cost 聚合：session 级、总计级（含子会话）、项目级 | **通用** |
 | `types.ts` | 所有类型定义：Channel、ChannelConfig 联合类型、ChannelSender / ChannelFormatter 接口、EventPayload、各渠道 Config 接口 | **通用** |
 | `handler.ts` | 多通道事件分发器。延迟创建 sender，遍历 channels 执行"过滤-渲染-格式化-发送"流水线 | **通用** |
 | `formatters.ts` | Formatter 注册中心。`getFormatter(type, channel)` 按渠道类型返回对应 formatter 实例 | **通用** |
 | `template.ts` | `{{variable}}` 模板渲染引擎 | **通用** |
 | `locales.ts` | i18n 默认模板（zh/en），按事件类型组织 | **通用** |
 | `config.ts` | JSON 配置加载、全局+项目合并、校验（含 SUPPORTED_CHANNEL_TYPES 白名单） | **通用** |
+| `cost.ts` | 费用计算和货币格式化（纯函数） | **通用** |
+| `logger.ts` | 生产级文件日志，自动轮转 | **通用** |
+| `recorder.ts` | 系统级变量录制器，记录全部模板变量到 JSONL | **通用** |
+| `session-cache.ts` | 会话级 token 缓存管理（加载/写入/去重/轮转） | **通用** |
+| `db-preload.ts` | 从 opencode.db SQLite 预加载 token 数据（插件重启恢复） | **通用** |
 | `email.ts` | SMTP 发送器实现。含 DNS 预解析（代理环境适配）、nodemailer 延迟导入 | SMTP 特有 |
 | `dingtalk.ts` | 钉钉 Webhook 发送器 + Markdown 格式化器 | **钉钉特有** |
+| `feishu.ts` | 飞书 Webhook 发送器 + 交互式卡片格式化器 | **飞书特有** |
+| `file.ts` | 文件通道发送器，将通知消息写入本地 JSONL 文件 | **文件特有** |
 | `cli.ts` | 独立 CLI 测试工具。可静态 import 重模块（与库代码不同） | **通用** |
 
 ---

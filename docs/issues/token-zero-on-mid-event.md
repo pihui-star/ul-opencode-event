@@ -18,7 +18,7 @@ OpenCode 的事件钩子不提供 session 级聚合 token 数据，插件自行�
 
 #### 1. 事件数据源
 
-OpenCode SDK 中 token 数据的**唯一来源**是 `message.updated` 事件（`index.ts:564-611`）。每次收到 `message.updated`，插件将 assistant message 的 token 数据写入 `tokenDataMap`。
+OpenCode SDK 中 token 数据的**唯一来源**是 `message.updated` 事件（`plugin-core.ts`）。每次收到 `message.updated`，插件将 assistant message 的 token 数据写入 `tokenDataMap`。
 
 `question.asked` 事件（`EventQuestionAsked`）的 `properties` 类型是 `QuestionRequest`，只包含 `id, sessionID, questions, tool?`，**不包含任何 token/cost 字段**。
 
@@ -34,7 +34,7 @@ assistant message 在流式传输过程中 token 值经历以下阶段：
 
 #### 3. aggregateSessionTokens 的策略问题
 
-`aggregateSessionTokens`（`index.ts:35-61`）从 `tokenDataMap` 中读取 token 时，**只取 Map 中最后插入的 message** 的 token：
+`aggregateSessionTokens`（`token-aggregator.ts`）从 `tokenDataMap` 中读取 token 时，**只取 Map 中最后插入的 message** 的 token：
 
 ```
 Map 中数据：
@@ -137,13 +137,13 @@ function sumAllCompletedTokens(sessionData: SessionTokenData): TokenBreakdown {
 
 | 文件 | 位置 | 说明 |
 |------|------|------|
-| `src/index.ts` | `sumAllCompletedTokens` | 累加 session 中所有 token 非零消息的 token 字段 |
-| `src/index.ts:35-61` | `aggregateSessionTokens` | 从 tokenDataMap 聚合 token，取最后一条非零 message（sessionTokens 用） |
-| `src/index.ts:242-291` | `fillTokenData` | 将聚合结果填充到 EventPayload，totalTokens 使用 sumAllCompletedTokens |
-| `src/index.ts:361-410` | `aggregateSubSessions` | 汇总子会话 token，base 改为 totalTokens，子会话贡献也用 sumAllCompletedTokens |
-| `src/index.ts:564-611` | `message.updated` 处理 | token 数据写入 tokenDataMap 的唯一入口 |
-| `src/index.ts:132-148` | `question.asked` 处理 | 调用 fillTokenData 读取 token |
-| `src/types.ts:270-279` | `SessionTokenData` | session 级 token 数据结构 |
+| `src/token-aggregator.ts` | `sumAllCompletedTokens` | 累加 session 中所有 token 非零消息的 token 字段 |
+| `src/token-aggregator.ts` | `aggregateSessionTokens` | 从 tokenDataMap 聚合 token，取最后一条非零 message（sessionTokens 用） |
+| `src/token-aggregator.ts` | `fillTokenData` | 将聚合结果填充到 EventPayload，totalTokens 使用 sumAllCompletedTokens |
+| `src/token-aggregator.ts` | `aggregateSubSessions` | 汇总子会话 token，base 改为 totalTokens，子会话贡献也用 sumAllCompletedTokens |
+| `src/plugin-core.ts` | `message.updated` 处理 | token 数据写入 tokenDataMap 的唯一入口 |
+| `src/event-mapper.ts` | `eventToPayload` | 调用 fillTokenData 读取 token，处理所有事件类型（含 question.asked） |
+| `src/types.ts` | `SessionTokenData` | session 级 token 数据结构 |
 | `src/db-preload.ts` | 全文 | 从 SQLite 预加载 token 数据到 tokenDataMap |
 
 ## 插件重启恢复

@@ -11,7 +11,7 @@ OpenCode SDK
     |
     | Event (SSE)
     v
-Plugin.event()                       -- index.ts
+Plugin.event()                       -- plugin-core.ts
     |
     ├── session.created  → sessionMap.set() + projectPath 回填
     ├── session.updated  → sessionMap.set()
@@ -58,7 +58,7 @@ Plugin.event()                       -- index.ts
 |----------|------|------|
 | `message.updated` | 写入 `tokenDataMap`，**不发送通知** | token/cost 数据的唯一来源 |
 
-`message.updated` 的处理逻辑（`index.ts:564-611`）：
+`message.updated` 的处理逻辑（`plugin-core.ts`）：
 
 ```
 收到 message.updated
@@ -153,7 +153,7 @@ Token 聚合采用**双策略**方案（v0.1.45 修复）：
 
 ### 3.4 填充
 
-`fillTokenData`（`index.ts:242-291`）将聚合结果写入 EventPayload：
+`fillTokenData`（`token-aggregator.ts`）将聚合结果写入 EventPayload：
 
 ```
 fillTokenData(payload, tokenDataMap, ...)
@@ -173,7 +173,7 @@ fillTokenData(payload, tokenDataMap, ...)
 
 ### 3.5 子会话聚合
 
-`aggregateSubSessions`（`index.ts:361-410`）在 `fillTokenData` 之后调用，将所有子会话（子代理）的 token 累加到 `totalTokens`：
+`aggregateSubSessions`（`token-aggregator.ts`）在 `fillTokenData` 之后调用，将所有子会话（子代理）的 token 累加到 `totalTokens`：
 
 ```
 aggregateSubSessions(payload, tokenDataMap, sessionMap, ...)
@@ -189,7 +189,7 @@ aggregateSubSessions(payload, tokenDataMap, sessionMap, ...)
 
 ### 3.6 项目级聚合
 
-`aggregateProjectTokens` + `fillProjectData`（`index.ts:465-514`）在 `aggregateSubSessions` 之后调用，将当前项目的所有会话 token 累加到 `projectTokens`。项目级聚合采用**双数据源**方案，确保重启后的历史会话也能被计入：
+`aggregateProjectTokens` + `fillProjectData`（`token-aggregator.ts`）在 `aggregateSubSessions` 之后调用，将当前项目的所有会话 token 累加到 `projectTokens`。项目级聚合采用**双数据源**方案，确保重启后的历史会话也能被计入：
 
 ```
 fillProjectData(payload, tokenDataMap, projectPath, cacheData?, ...)
@@ -272,10 +272,10 @@ message.updated              (不发送通知)       -
 
 ### 6.3 调用位置
 
-在 `src/index.ts` 中，`tokenDataMap` 创建之后、任何事件处理之前调用：
+在 `src/plugin-core.ts` 中，`tokenDataMap` 创建之后、任何事件处理之前调用：
 
 ```
-index.ts 初始化流程：
+plugin-core.ts 初始化流程：
     tokenDataMap = new Map()
          |
          v
@@ -325,7 +325,7 @@ JSON.parse(m.data) → 提取 tokens 字段
 |------|------|
 | `src/db-preload.ts` | 预加载函数实现 |
 | `src/bun-sqlite.d.ts` | `bun:sqlite` 类型声明 |
-| `src/index.ts:557-564` | 调用入口 |
+| `src/plugin-core.ts` | 调用入口 |
 
 ---
 

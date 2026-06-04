@@ -6,6 +6,7 @@
 - [SMTP 邮件通道配置](channels/smtp-channel.md)
 - [钉钉机器人通道配置](channels/dingtalk-channel.md)
 - [飞书机器人通道配置](channels/feishu-channel.md)
+- [文件通道配置](channels/file-channel.md)
 
 ---
 
@@ -1021,5 +1022,6 @@ UL_OPENCODE_EVENT_DEBUG=1 npx @ulthon/ul-opencode-event test
 - [SMTP 邮件通道配置](channels/smtp-channel.md)
 - [钉钉机器人通道配置](channels/dingtalk-channel.md)
 - [飞书机器人通道配置](channels/feishu-channel.md)
+- [文件通道配置](channels/file-channel.md)
 - [通道开发指南](channels/channel-development.md)
 - [事件数据流架构](architecture/event-data-flow.md)

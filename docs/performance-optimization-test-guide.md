@@ -10,9 +10,9 @@
 
 | 改动类别 | 具体改动 | 涉及文件 | 核心机制 |
 |---------|---------|---------|---------|
-| 启动阻塞消除 | preload/sessionCache 延迟加载 | `src/index.ts` | `setTimeout(fn, 0)` + 动态 import |
+| 启动阻塞消除 | preload/sessionCache 延迟加载 | `src/plugin-core.ts` | `setTimeout(fn, 0)` + 动态 import |
 | 写 I/O 缓冲化 | logger/file channel 批量写入 | `src/logger.ts` `src/file.ts` | `WriteBuffer` (500ms 间隔) |
-| 聚合计算优化 | projectAgg 增量计数器 | `src/index.ts` | delta(新值-旧值) 替代全量扫描 |
+| 聚合计算优化 | projectAgg 增量计数器 | `src/plugin-core.ts` | delta(新值-旧值) 替代全量扫描 |
 
 ### 新增模块
 

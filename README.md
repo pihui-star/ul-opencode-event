@@ -18,6 +18,7 @@ OpenCode multi-channel notification plugin that keeps you informed wherever you 
 | SMTP (Email) | Available | Email notifications via any SMTP server |
 | DingTalk | Available | DingTalk robot notifications |
 | Feishu | Available | Feishu robot notifications |
+| File | Available (auto) | Local JSONL file, auto-injected by default |
 | Webhook | Planned | HTTP webhook for custom integrations |
 | Telegram | Planned | Telegram bot notifications |
 | Slack | Planned | Slack incoming webhooks |
@@ -84,6 +85,7 @@ Project-level config overrides global (channels merged by name). Custom variable
 
 - **DingTalk**: See [docs/channels/dingtalk-channel.md](docs/channels/dingtalk-channel.md) for robot setup, @mentions, and FAQ.
 - **Feishu**: See [docs/channels/feishu-channel.md](docs/channels/feishu-channel.md) for robot setup, card format, and FAQ.
+- **File**: See [docs/channels/file-channel.md](docs/channels/file-channel.md) for JSONL output, auto-injection, and rotation.
 
 ### Events
 
@@ -92,6 +94,12 @@ Project-level config overrides global (channels merged by name). Custom variable
 | `created` | false | When a new session starts |
 | `idle` | true | When a session completes |
 | `error` | true | When a session encounters an error |
+| `question` | true | When AI asks a question |
+| `permission` | true | When permission confirmation is needed |
+| `status` | false | When session status changes |
+| `command` | false | When a command is executed |
+| `fileEdited` | false | When a file is edited |
+| `todo` | false | When the todo list is updated |
 
 ### Template Variables
 
@@ -138,6 +146,7 @@ npx @ulthon/ul-opencode-event test --no-send     # Verify connection only
 | [SMTP Channel](docs/channels/smtp-channel.md) | Email configuration, IPv4/IPv6, FAQ |
 | [DingTalk Channel](docs/channels/dingtalk-channel.md) | Configuration, @mentions, FAQ |
 | [Feishu Channel](docs/channels/feishu-channel.md) | Configuration, card format, FAQ |
+| [File Channel](docs/channels/file-channel.md) | JSONL output, auto-injection, rotation |
 | [Template Configuration](docs/configuration.md#4-模板系统概述) | Template variables and customization |
 | [Channel Development](docs/channels/channel-development.md) | Developing new notification channels |
 
