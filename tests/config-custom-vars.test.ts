@@ -11,6 +11,7 @@ const mockFs = {
 mock.module('fs', () => mockFs);
 
 const { loadConfig, validateCustomVariables } = await import('../src/config');
+const { logger } = await import('../src/logger');
 
 describe('validateCustomVariables', () => {
   test('returns empty object for undefined input', () => {
@@ -28,8 +29,8 @@ describe('validateCustomVariables', () => {
 
   test('filters out keys with hyphens (invalid VARIABLE_NAME_REGEX)', () => {
     const warnSpy = mock(() => {});
-    const origWarn = console.warn;
-    console.warn = warnSpy;
+    const origWarn = logger.warn;
+    logger.warn = warnSpy;
 
     try {
       const input = { 'my-var': 'value', validKey: 'ok' };
@@ -41,14 +42,14 @@ describe('validateCustomVariables', () => {
       expect(warnMsg).toContain('my-var');
       expect(warnMsg).toContain('invalid key');
     } finally {
-      console.warn = origWarn;
+      logger.warn = origWarn;
     }
   });
 
   test('filters out keys with spaces', () => {
     const warnSpy = mock(() => {});
-    const origWarn = console.warn;
-    console.warn = warnSpy;
+    const origWarn = logger.warn;
+    logger.warn = warnSpy;
 
     try {
       const input = { 'my key': 'value', validKey: 'ok' };
@@ -57,14 +58,14 @@ describe('validateCustomVariables', () => {
       expect(result).toEqual({ validKey: 'ok' });
       expect(warnSpy).toHaveBeenCalled();
     } finally {
-      console.warn = origWarn;
+      logger.warn = origWarn;
     }
   });
 
   test('filters out non-string values (number)', () => {
     const warnSpy = mock(() => {});
-    const origWarn = console.warn;
-    console.warn = warnSpy;
+    const origWarn = logger.warn;
+    logger.warn = warnSpy;
 
     try {
       const input = { count: 123, name: 'test' } as Record<string, unknown>;
@@ -76,14 +77,14 @@ describe('validateCustomVariables', () => {
       expect(warnMsg).toContain('count');
       expect(warnMsg).toContain('not a string');
     } finally {
-      console.warn = origWarn;
+      logger.warn = origWarn;
     }
   });
 
   test('filters out non-string values (boolean)', () => {
     const warnSpy = mock(() => {});
-    const origWarn = console.warn;
-    console.warn = warnSpy;
+    const origWarn = logger.warn;
+    logger.warn = warnSpy;
 
     try {
       const input = { active: true, name: 'test' } as Record<string, unknown>;
@@ -92,7 +93,7 @@ describe('validateCustomVariables', () => {
       expect(result).toEqual({ name: 'test' });
       expect(warnSpy).toHaveBeenCalled();
     } finally {
-      console.warn = origWarn;
+      logger.warn = origWarn;
     }
   });
 
@@ -120,8 +121,8 @@ describe('validateCustomVariables', () => {
 
   test('handles multiple invalid entries - returns only valid ones', () => {
     const warnSpy = mock(() => {});
-    const origWarn = console.warn;
-    console.warn = warnSpy;
+    const origWarn = logger.warn;
+    logger.warn = warnSpy;
 
     try {
       const input = {
@@ -135,7 +136,7 @@ describe('validateCustomVariables', () => {
 
       expect(result).toEqual({ valid: 'ok', name: 'test' });
     } finally {
-      console.warn = origWarn;
+      logger.warn = origWarn;
     }
   });
 });
@@ -214,8 +215,8 @@ describe('loadConfig - customVariables merge', () => {
 
   test('invalid keys are filtered during merge', () => {
     const warnSpy = mock(() => {});
-    const origWarn = console.warn;
-    console.warn = warnSpy;
+    const origWarn = logger.warn;
+    logger.warn = warnSpy;
 
     try {
       setupProjectConfig({
@@ -234,14 +235,14 @@ describe('loadConfig - customVariables merge', () => {
       const warnMsg = warnSpy.mock.calls[0][0] as string;
       expect(warnMsg).toContain('my-var');
     } finally {
-      console.warn = origWarn;
+      logger.warn = origWarn;
     }
   });
 
   test('non-string values are filtered during merge', () => {
     const warnSpy = mock(() => {});
-    const origWarn = console.warn;
-    console.warn = warnSpy;
+    const origWarn = logger.warn;
+    logger.warn = warnSpy;
 
     try {
       setupProjectConfig({
@@ -257,7 +258,7 @@ describe('loadConfig - customVariables merge', () => {
 
       expect(config.customVariables).toEqual({ name: 'valid' });
     } finally {
-      console.warn = origWarn;
+      logger.warn = origWarn;
     }
   });
 

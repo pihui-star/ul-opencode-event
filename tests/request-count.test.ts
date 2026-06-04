@@ -1,5 +1,8 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
 import type { Channel, SessionType } from '../src/types';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
 // ── Mock: email ──────────────────────────────────────────────────
 mock.module('../src/email', () => ({
@@ -36,18 +39,11 @@ mock.module('../src/config', () => ({
 }));
 
 // ── Mock: session-cache ───────────────────────────────────────────
-let mockSessionCache: Map<string, Record<string, unknown>> = new Map();
-
-mock.module('../src/session-cache', () => ({
-  loadSessionCache: (_dataDir: string) => mockSessionCache,
-  aggregateProjectFromCache: () => ({
-    cost: 0,
-    tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    requestCount: 0,
-  }),
-  buildCacheEntry: () => null,
-  writeCacheEntry: () => {},
-}));
+// NOTE: We do NOT mock ../src/session-cache here because mock.module is
+// process-global in Bun and would poison the real module for session-cache.test.ts.
+// Instead, cache recovery tests write real data to a temp JSONL file that the
+// real loadSessionCache reads.
+// aggregateProjectFromCache naturally returns zeros when no cache file exists.
 
 // ── Mock: db-preload ──────────────────────────────────────────────
 let mockPreloadedSessions: Array<{
@@ -195,7 +191,6 @@ async function sendAssistantMessage(
 describe('Request count aggregation', () => {
   beforeEach(() => {
     configMock = null;
-    mockSessionCache = new Map();
     mockPreloadedSessions = [];
     getTestHelpers().payloads.length = 0;
     // Reset module-level projectAgg and flags between tests
@@ -204,7 +199,6 @@ describe('Request count aggregation', () => {
 
   afterEach(async () => {
     configMock = null;
-    mockSessionCache = new Map();
     mockPreloadedSessions = [];
     getTestHelpers().payloads.length = 0;
     // Drain pending setTimeout callbacks from the completed test to prevent
@@ -581,88 +575,108 @@ describe('Request count aggregation', () => {
   // ── Cache recovery tests ───────────────────────────────────────
 
   test('cache recovery: mock session cache contributes to projectRequestCount', async () => {
-    // Pre-populate mock session cache with 2 entries
-    mockSessionCache.set('cached-a', {
-      sessionId: 'cached-a',
-      projectPath: '/project-cache',
-      cost: 0.03,
-      tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
-      modelID: 'test-model',
-      providerID: 'test-provider',
-      mode: 'code',
-      requestCount: 3,
-      updatedAt: new Date().toISOString(),
-    });
-    mockSessionCache.set('cached-b', {
-      sessionId: 'cached-b',
-      projectPath: '/project-cache',
-      cost: 0.03,
-      tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
-      modelID: 'test-model',
-      providerID: 'test-provider',
-      mode: 'code',
-      requestCount: 3,
-      updatedAt: new Date().toISOString(),
-    });
+    // Write real JSONL cache entries to a temp directory so loadSessionCache picks them up.
+    // baseDir is computed inside NotificationPlugin() from OPENCODE_DATA_DIR.
+    const tempCacheDir = path.join(os.tmpdir(), `rc-cache-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    const cacheEntries = [
+      {
+        sessionId: 'cached-a',
+        projectPath: '/project-cache',
+        cost: 0.03,
+        tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
+        modelID: 'test-model',
+        providerID: 'test-provider',
+        mode: 'code',
+        requestCount: 3,
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: 'cached-b',
+        projectPath: '/project-cache',
+        cost: 0.03,
+        tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
+        modelID: 'test-model',
+        providerID: 'test-provider',
+        mode: 'code',
+        requestCount: 3,
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+    fs.mkdirSync(tempCacheDir, { recursive: true });
+    const cacheFile = path.join(tempCacheDir, 'ul-opencode-event-session-cache.jsonl');
+    fs.writeFileSync(cacheFile, cacheEntries.map(e => JSON.stringify(e)).join('\n') + '\n', 'utf-8');
 
-    configMock = {
-      channels: [createMockChannel()],
-    };
+    const prevDataDir = process.env.OPENCODE_DATA_DIR;
+    process.env.OPENCODE_DATA_DIR = tempCacheDir;
+    try {
+      configMock = {
+        channels: [createMockChannel()],
+      };
 
-    const ctx = makeCtx('/project-cache');
-    const hooks = await NotificationPlugin(ctx);
+      const ctx = makeCtx('/project-cache');
+      const hooks = await NotificationPlugin(ctx);
 
-    // Wait for deferred cache loading to fire
-    await new Promise(resolve => setTimeout(resolve, 50));
+      // Wait for deferred cache loading to fire
+      await new Promise(resolve => setTimeout(resolve, 50));
 
-    // Create 1 new runtime session with 2 messages
-    await createSessionWithTokens(hooks, 'runtime-z', '/project-cache', '/project-cache', {
-      input: 100, output: 50, cost: 0.01,
-    });
-    await sendAssistantMessage(hooks, 'runtime-z', 'msg-z-2', {
-      input: 200, output: 80, cost: 0.02,
-    });
+      // Create 1 new runtime session with 2 messages
+      await createSessionWithTokens(hooks, 'runtime-z', '/project-cache', '/project-cache', {
+        input: 100, output: 50, cost: 0.01,
+      });
+      await sendAssistantMessage(hooks, 'runtime-z', 'msg-z-2', {
+        input: 200, output: 80, cost: 0.02,
+      });
 
-    getTestHelpers().payloads.length = 0;
+      getTestHelpers().payloads.length = 0;
 
-    await hooks.event({
-      event: createMockEvent('session.idle', { sessionID: 'runtime-z' }),
-    });
+      await hooks.event({
+        event: createMockEvent('session.idle', { sessionID: 'runtime-z' }),
+      });
 
-    const payloads = getTestHelpers().payloads;
-    expect(payloads.length).toBe(1);
-    const p = payloads[0];
+      const payloads = getTestHelpers().payloads;
+      expect(payloads.length).toBe(1);
+      const p = payloads[0];
 
-    // Cache entries (3+3) + runtime (2) = 8
-    expect(p.projectRequestCount).toBe(8);
+      // Cache entries (3+3) + runtime (2) = 8
+      expect(p.projectRequestCount).toBe(8);
+    } finally {
+      process.env.OPENCODE_DATA_DIR = prevDataDir;
+      try { fs.rmSync(tempCacheDir, { recursive: true, force: true }); } catch {}
+    }
   });
 
   // ── Mixed cache + preload + runtime ────────────────────────────
 
   test('mixed cache + preload + runtime: all sources contribute to projectRequestCount', async () => {
-    // Pre-populate mock session cache with 2 historical sessions
-    mockSessionCache.set('cached-1', {
-      sessionId: 'cached-1',
-      projectPath: '/project-mixed',
-      cost: 0.03,
-      tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
-      modelID: 'test-model',
-      providerID: 'test-provider',
-      mode: 'code',
-      requestCount: 3,
-      updatedAt: new Date().toISOString(),
-    });
-    mockSessionCache.set('cached-2', {
-      sessionId: 'cached-2',
-      projectPath: '/project-mixed',
-      cost: 0.03,
-      tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
-      modelID: 'test-model',
-      providerID: 'test-provider',
-      mode: 'code',
-      requestCount: 3,
-      updatedAt: new Date().toISOString(),
-    });
+    // Write real JSONL cache entries to a temp directory so loadSessionCache picks them up.
+    const tempCacheDir = path.join(os.tmpdir(), `rc-mixed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    const cacheEntries = [
+      {
+        sessionId: 'cached-1',
+        projectPath: '/project-mixed',
+        cost: 0.03,
+        tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
+        modelID: 'test-model',
+        providerID: 'test-provider',
+        mode: 'code',
+        requestCount: 3,
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: 'cached-2',
+        projectPath: '/project-mixed',
+        cost: 0.03,
+        tokens: { input: 300, output: 150, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 450 },
+        modelID: 'test-model',
+        providerID: 'test-provider',
+        mode: 'code',
+        requestCount: 3,
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+    fs.mkdirSync(tempCacheDir, { recursive: true });
+    const cacheFile = path.join(tempCacheDir, 'ul-opencode-event-session-cache.jsonl');
+    fs.writeFileSync(cacheFile, cacheEntries.map(e => JSON.stringify(e)).join('\n') + '\n', 'utf-8');
 
     // Pre-populate mock preload with 1 session (different from cache)
     mockPreloadedSessions.push({
@@ -671,36 +685,43 @@ describe('Request count aggregation', () => {
       messageCount: 5, // requestCount = 5
     });
 
-    configMock = {
-      channels: [createMockChannel()],
-    };
+    const prevDataDir = process.env.OPENCODE_DATA_DIR;
+    process.env.OPENCODE_DATA_DIR = tempCacheDir;
+    try {
+      configMock = {
+        channels: [createMockChannel()],
+      };
 
-    const ctx = makeCtx('/project-mixed');
-    const hooks = await NotificationPlugin(ctx);
+      const ctx = makeCtx('/project-mixed');
+      const hooks = await NotificationPlugin(ctx);
 
-    // Wait for deferred preload + cache loading to fire
-    await new Promise(resolve => setTimeout(resolve, 50));
+      // Wait for deferred preload + cache loading to fire
+      await new Promise(resolve => setTimeout(resolve, 50));
 
-    // Create 1 new runtime session with 2 messages
-    await createSessionWithTokens(hooks, 'runtime-1', '/project-mixed', '/project-mixed', {
-      input: 100, output: 50, cost: 0.01,
-    });
-    await sendAssistantMessage(hooks, 'runtime-1', 'msg-r1-2', {
-      input: 200, output: 80, cost: 0.02,
-    });
+      // Create 1 new runtime session with 2 messages
+      await createSessionWithTokens(hooks, 'runtime-1', '/project-mixed', '/project-mixed', {
+        input: 100, output: 50, cost: 0.01,
+      });
+      await sendAssistantMessage(hooks, 'runtime-1', 'msg-r1-2', {
+        input: 200, output: 80, cost: 0.02,
+      });
 
-    getTestHelpers().payloads.length = 0;
+      getTestHelpers().payloads.length = 0;
 
-    await hooks.event({
-      event: createMockEvent('session.idle', { sessionID: 'runtime-1' }),
-    });
+      await hooks.event({
+        event: createMockEvent('session.idle', { sessionID: 'runtime-1' }),
+      });
 
-    const payloads = getTestHelpers().payloads;
-    expect(payloads.length).toBe(1);
-    const p = payloads[0];
+      const payloads = getTestHelpers().payloads;
+      expect(payloads.length).toBe(1);
+      const p = payloads[0];
 
-    // Cache(3+3) + preload(5) + runtime(2) = 13
-    expect(p.projectRequestCount).toBe(13);
+      // Cache(3+3) + preload(5) + runtime(2) = 13
+      expect(p.projectRequestCount).toBe(13);
+    } finally {
+      process.env.OPENCODE_DATA_DIR = prevDataDir;
+      try { fs.rmSync(tempCacheDir, { recursive: true, force: true }); } catch {}
+    }
   });
 
   // ── Recursive descendant collection ────────────────────────────

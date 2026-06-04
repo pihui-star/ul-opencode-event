@@ -1,12 +1,15 @@
-import { describe, test, expect, afterAll, afterEach, beforeAll } from 'bun:test';
+import { describe, test, expect, mock, afterAll, afterEach, beforeAll } from 'bun:test';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-// Use createRequire to get the REAL fs module, just like recorder.ts does.
-// This prevents mock.module('fs') from other test files (logger.test.ts, updater.test.ts)
-// from breaking our fs operations.
+// Override any fs/node:fs mocks from earlier test files with real modules
 const nodeRequire = createRequire(import.meta.url);
+const realFs = nodeRequire('node:fs');
+mock.module('fs', () => ({ ...realFs }));
+mock.module('node:fs', () => ({ ...realFs }));
+
+// Use createRequire to get the REAL fs module, just like recorder.ts does.
 const fs = nodeRequire('node:fs') as typeof import('node:fs');
 
 // ---------------------------------------------------------------------------

@@ -8,3 +8,4 @@ coverage/
 .env.*
 nul
 token-usage-output.txt
+/.omo

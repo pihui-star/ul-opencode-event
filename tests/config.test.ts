@@ -14,6 +14,7 @@ mock.module('fs', () => mockFs);
 
 // Import after mocking
 const { loadConfig } = await import('../src/config');
+const { logger } = await import('../src/logger');
 
 /**
  * Helper: filter out auto-injected file channel so tests only assert on user-configured channels.
@@ -371,8 +372,8 @@ describe('loadConfig', () => {
   describe('validation', () => {
     test('filters out unsupported channel type and warns', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         const config = {
@@ -408,14 +409,14 @@ describe('loadConfig', () => {
         expect(warnMsg).toContain('Slack Channel');
         expect(warnMsg).toContain('smtp, dingtalk, feishu, file');
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
 
     test('returns only valid channels when mixed with unsupported type', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         const config = {
@@ -460,7 +461,7 @@ describe('loadConfig', () => {
         const warnMsg = warnSpy.mock.calls[0][0] as string;
         expect(warnMsg).toContain('Unknown channel type: "invalid"');
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
   });
@@ -526,8 +527,8 @@ describe('loadConfig', () => {
 
     test('disabled unsupported channel type does not produce warn', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         const config = {
@@ -559,7 +560,7 @@ describe('loadConfig', () => {
         );
         expect(unsupportedWarns).toHaveLength(0);
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
 
@@ -887,8 +888,8 @@ describe('loadConfig', () => {
   describe('validateIncludeSessionTypes (via loadConfig)', () => {
     test('filters invalid values and warns', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         const rawConfig = {
@@ -911,7 +912,7 @@ describe('loadConfig', () => {
         expect(warnMsg).toContain('Invalid session type');
         expect(warnMsg).toContain('foobar');
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
 
@@ -971,8 +972,8 @@ describe('loadConfig', () => {
 
     test('non-array value returns default with warning', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         // Use a raw object to bypass TypeScript type checking for invalid value
@@ -995,14 +996,14 @@ describe('loadConfig', () => {
         const warnMsg = warnSpy.mock.calls[0][0] as string;
         expect(warnMsg).toContain('must be an array');
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
 
     test('all invalid values returns default', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         const config: NotificationConfig = {
@@ -1023,7 +1024,7 @@ describe('loadConfig', () => {
         // Should have warned for each invalid item
         expect(warnSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
   });
@@ -1031,8 +1032,8 @@ describe('loadConfig', () => {
   describe('includeSubagentEvents deprecation warning', () => {
     test('warns when old field present in global config', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         const globalConfig = {
@@ -1054,14 +1055,14 @@ describe('loadConfig', () => {
         expect(warnMsg).toContain('deprecated');
         expect(warnMsg).toContain('includeSubagentEvents');
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
 
     test('warns when old field present in project config', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         const projectConfig = {
@@ -1082,14 +1083,14 @@ describe('loadConfig', () => {
         const warnMsg = warnSpy.mock.calls[0][0] as string;
         expect(warnMsg).toContain('deprecated');
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
 
     test('new field takes priority when both present', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         const config = {
@@ -1116,7 +1117,7 @@ describe('loadConfig', () => {
         );
         expect(deprecationWarnings.length).toBeGreaterThan(0);
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
   });
@@ -1207,8 +1208,8 @@ describe('loadConfig', () => {
     // 7. invalid currency -> default + warn
     test('invalid currency uses default and warns', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         setupProjectConfig({ channels: [], cost: { currency: 'EUR' } });
@@ -1222,15 +1223,15 @@ describe('loadConfig', () => {
         expect(warnMsg).toBeDefined();
         expect(warnMsg).toContain('EUR');
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
 
     // 8. exchangeRate <= 0 -> default + warn
     test('exchangeRate <= 0 uses default and warns', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         setupProjectConfig({ channels: [], cost: { exchangeRate: -1 } });
@@ -1243,15 +1244,15 @@ describe('loadConfig', () => {
           .find((m: string) => m.includes('exchangeRate'));
         expect(warnMsg).toBeDefined();
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
 
     // 9a. decimalPlaces < 1 -> default + warn
     test('decimalPlaces < 1 uses default and warns', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         setupProjectConfig({ channels: [], cost: { decimalPlaces: 0 } });
@@ -1264,15 +1265,15 @@ describe('loadConfig', () => {
           .find((m: string) => m.includes('decimalPlaces'));
         expect(warnMsg).toBeDefined();
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
 
     // 9b. decimalPlaces > 8 -> default + warn
     test('decimalPlaces > 8 uses default and warns', () => {
       const warnSpy = mock(() => {});
-      const origWarn = console.warn;
-      console.warn = warnSpy;
+      const origWarn = logger.warn;
+      logger.warn = warnSpy;
 
       try {
         setupProjectConfig({ channels: [], cost: { decimalPlaces: 10 } });
@@ -1285,7 +1286,7 @@ describe('loadConfig', () => {
           .find((m: string) => m.includes('decimalPlaces'));
         expect(warnMsg).toBeDefined();
       } finally {
-        console.warn = origWarn;
+        logger.warn = origWarn;
       }
     });
 

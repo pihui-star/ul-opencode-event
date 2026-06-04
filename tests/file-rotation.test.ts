@@ -1,7 +1,15 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import * as fs from 'node:fs';
+import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { createRequire } from 'node:module';
+
+// Override any fs/node:fs mocks from earlier test files with real modules
+const nodeRequire = createRequire(import.meta.url);
+const realFs = nodeRequire('node:fs');
+mock.module('fs', () => ({ ...realFs }));
+mock.module('node:fs', () => ({ ...realFs }));
+
+import * as fs from 'node:fs';
 import { shouldRotate, rotateFile } from '../src/file-rotation.js';
 
 const tmpDir = path.join(os.tmpdir(), 'file-rotation-test-' + process.pid);

@@ -59,11 +59,6 @@ mock.module('../src/email', () => ({
   },
 }));
 
-// Mock recorder (no-op)
-mock.module('../src/recorder', () => ({
-  recordEventVariables: () => {},
-}));
-
 // Import handler AFTER all mocks
 import { createEventHandler } from '../src/handler';
 

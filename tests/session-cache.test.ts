@@ -1,19 +1,26 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-// Use createRequire to get the real fs module, matching session-cache.ts pattern
+// Override any fs/node:fs mocks from earlier test files with real modules
 const nodeRequire = createRequire(import.meta.url);
+const realFs = nodeRequire('node:fs');
+mock.module('fs', () => ({ ...realFs }));
+mock.module('node:fs', () => ({ ...realFs }));
+
+// Use createRequire to get the real fs module, matching session-cache.ts pattern
 const fs = nodeRequire('node:fs') as typeof import('node:fs');
 
-import {
-  loadSessionCache,
-  writeCacheEntry,
-  buildCacheEntry,
-  aggregateProjectFromCache,
-  syncFromDB,
-} from '../src/session-cache.js';
+// Use createRequire to load the REAL session-cache module, bypassing any
+// mock.module('../src/session-cache', ...) registered by earlier test files
+// (e.g., request-count.test.ts). createRequire bypasses mock.module().
+const _sc = nodeRequire('../src/session-cache.js');
+const loadSessionCache = _sc.loadSessionCache as typeof import('../src/session-cache.js').loadSessionCache;
+const writeCacheEntry = _sc.writeCacheEntry as typeof import('../src/session-cache.js').writeCacheEntry;
+const buildCacheEntry = _sc.buildCacheEntry as typeof import('../src/session-cache.js').buildCacheEntry;
+const aggregateProjectFromCache = _sc.aggregateProjectFromCache as typeof import('../src/session-cache.js').aggregateProjectFromCache;
+const syncFromDB = _sc.syncFromDB as typeof import('../src/session-cache.js').syncFromDB;
 import type { SessionCacheEntry, TokenBreakdown, SessionTokenData, TokenData } from '../src/types.js';
 
 // ---------------------------------------------------------------------------

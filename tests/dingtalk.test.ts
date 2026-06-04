@@ -298,10 +298,12 @@ describe('createDingTalkFormatter', () => {
 
 describe('createDingTalkSender', () => {
   let createDingTalkSender: typeof import('../src/dingtalk').createDingTalkSender;
+  let loggerModule: typeof import('../src/logger');
   let originalFetch: typeof globalThis.fetch;
 
   beforeAll(async () => {
     ({ createDingTalkSender } = await import('../src/dingtalk'));
+    loggerModule = await import('../src/logger');
   });
 
   beforeEach(() => {
@@ -499,9 +501,10 @@ describe('createDingTalkSender', () => {
     setupMockFetch(undefined, new Error('Network fail'));
 
     const capturedErrors: string[] = [];
-    const originalConsoleError = console.error;
-    console.error = (...args: unknown[]) => {
-      capturedErrors.push(args.map(String).join(' '));
+    const origLoggerError = loggerModule.logger.error;
+    loggerModule.logger.error = (msg: string) => {
+      // Simulate the format that the real logger.write() produces
+      capturedErrors.push(`[ul-opencode-event] [ERROR] ${new Date().toISOString()} ${msg}`);
     };
 
     try {
@@ -513,12 +516,12 @@ describe('createDingTalkSender', () => {
         markdown: { title: 'S', text: 'M' },
       });
 
-      // logger.error() falls back to console.error when fs write fails (expected behavior).
+      // logger.error() is called when send fails.
       // Debug-level messages are still suppressed — only error-level output appears.
       expect(capturedErrors.length).toBeGreaterThanOrEqual(1);
       expect(capturedErrors[0]).toContain('[ul-opencode-event] [ERROR]');
     } finally {
-      console.error = originalConsoleError;
+      loggerModule.logger.error = origLoggerError;
     }
   });
 

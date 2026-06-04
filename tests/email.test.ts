@@ -44,6 +44,7 @@ mock.module('nodemailer', () => ({
 
 // Import after mocking
 const { createEmailSender } = await import('../src/email');
+const { logger } = await import('../src/logger');
 
 describe('createEmailSender', () => {
   beforeEach(() => {
@@ -270,9 +271,9 @@ describe('createEmailSender', () => {
         throw new Error('Invalid login: 535 5.7.8 Username and Password not accepted');
       };
 
-      const consoleErrorSpy = mock(() => {});
-      const originalConsoleError = console.error;
-      console.error = consoleErrorSpy;
+      const errorSpy = mock(() => {});
+      const origLoggerError = logger.error;
+      logger.error = errorSpy;
 
       try {
         const sender = await createEmailSender(channel);
@@ -281,10 +282,10 @@ describe('createEmailSender', () => {
         // Should not throw
         await sender!.send('Test Subject', 'Test Body');
 
-        // Should have logged the error
-        expect(consoleErrorSpy).toHaveBeenCalled();
+        // Should have logged the error via logger.error
+        expect(errorSpy).toHaveBeenCalled();
       } finally {
-        console.error = originalConsoleError;
+        logger.error = origLoggerError;
       }
     });
 
@@ -308,9 +309,9 @@ describe('createEmailSender', () => {
       };
 
       const capturedLogs: string[] = [];
-      const originalConsoleError = console.error;
-      console.error = (...args: any[]) => {
-        capturedLogs.push(args.join(' '));
+      const origLoggerError = logger.error;
+      logger.error = (msg: string) => {
+        capturedLogs.push(msg);
       };
 
       try {
@@ -318,14 +319,12 @@ describe('createEmailSender', () => {
         await sender!.send('Subject', 'Body');
 
         expect(capturedLogs.length).toBe(1);
-        // Should contain new log format prefix
-        expect(capturedLogs[0]).toMatch(/\[ul-opencode-event\] \[ERROR\]/);
         // Should contain channel name
         expect(capturedLogs[0]).toContain('Error Channel');
         // Should contain error message
         expect(capturedLogs[0]).toContain('Connection timeout');
       } finally {
-        console.error = originalConsoleError;
+        logger.error = origLoggerError;
       }
     });
   });

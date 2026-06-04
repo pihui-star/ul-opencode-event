@@ -35,7 +35,15 @@ const realOs = require('node:os');
 // This overrides logger.test.ts's partial mock.
 mock.module('fs', () => ({ ...realFs }));
 mock.module('path', () => ({ ...realPath }));
-mock.module('os', () => ({ ...realOs }));
+// Override os.homedir() to return a fake path so readPluginList() doesn't
+// read the real ~/.config/opencode/opencode.json (which may contain a pinned
+// version like @ulthon/ul-opencode-event@0.1.57 that causes isPinnedVersion()
+// to return true, breaking runAutoUpdate tests).
+const fakeHomeDir = realPath.join(realOs.tmpdir(), 'ul-opencode-event-test-home');
+mock.module('os', () => ({
+  ...realOs,
+  homedir: () => fakeHomeDir,
+}));
 
 // Mock child_process for controlled runBunInstall tests
 mock.module('child_process', () => ({
@@ -71,8 +79,21 @@ const nodePath = require('node:path') as typeof import('node:path');
 const nodeOs = require('node:os') as typeof import('node:os');
 
 // ---------------------------------------------------------------------------
-// Import the module under test
+// Bypass the stub mock from index.test.ts.
+//
+// index.test.ts registers mock.module('../src/updater', () => stub) which
+// intercepts ALL imports of that module — even via file:// URL, because Bun
+// resolves to the same canonical path.
+//
+// Strategy: Copy the real source to a temp file with a DIFFERENT name within
+// the same src/ directory, then import from there. No mock is registered for
+// the temp file name, so we get the real module. Its internal imports
+// (fs, path, os, child_process, ./logger.js) resolve correctly because it's
+// in the same directory.
 // ---------------------------------------------------------------------------
+const srcDir = nodePath.resolve(nodePath.dirname(import.meta.url.replace(/^file:\/\/\//, '').replace(/\//g, '\\')), '..', 'src');
+const updaterTmpCopy = nodePath.join(srcDir, `_updater_test_copy_${Date.now()}.ts`);
+nodeFs.copyFileSync(nodePath.join(srcDir, 'updater.ts'), updaterTmpCopy);
 
 const {
   getCurrentVersion,
@@ -85,7 +106,10 @@ const {
   runBunInstall,
   runAutoUpdate,
   resetVersionCache,
-} = await import('../src/updater');
+} = await import(updaterTmpCopy);
+
+// Clean up the temp file (module already loaded in memory)
+try { nodeFs.unlinkSync(updaterTmpCopy); } catch {}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -299,10 +323,25 @@ describe('cache functions', () => {
 });
 
 describe('runBunInstall', () => {
+  let savedDataDir: string | undefined;
+
   beforeEach(() => {
     spawnCapture = null;
     spawnExitCode = 0;
     spawnShouldError = false;
+    // Redirect getCacheDir() to a temp dir so detectPackageManager() doesn't
+    // find the real ~/.cache/opencode/packages/bun.lock (which makes it pick
+    // 'bun' instead of falling through to the execFileSync mock).
+    savedDataDir = process.env.OPENCODE_DATA_DIR;
+    process.env.OPENCODE_DATA_DIR = createTmpDir();
+  });
+
+  afterEach(() => {
+    if (savedDataDir !== undefined) {
+      process.env.OPENCODE_DATA_DIR = savedDataDir;
+    } else {
+      delete process.env.OPENCODE_DATA_DIR;
+    }
   });
 
   test('returns true when package install succeeds (exit code 0)', async () => {
