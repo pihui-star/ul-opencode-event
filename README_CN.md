@@ -1,14 +1,16 @@
 # @ulthon/ul-opencode-event
 
-**远程开发也能收到 OpenCode 通知，随时随地掌握任务状态。**
+**远程开发也能收到 OpenCode 通知 -- 同时精准掌握 Token 用量。**
 
-OpenCode 多通道通知插件，让你在任何地方都能收到 AI 编程助手的状态更新。特别适合远程开发场景 -- 即使不在电脑前，也能第一时间知道任务完成或出错。
+OpenCode 多通道通知与用量分析插件。通过邮件、钉钉、飞书接收任务完成或错误提醒 -- 每条通知自带多层级 Token 消耗和 API 请求统计数据。
 
 ## 为什么选择 ul-opencode-event？
 
+- **多通道通知** -- 支持 SMTP 邮件、钉钉机器人、飞书机器人，后续将支持 Webhook、Telegram、Slack 等更多渠道。
+- **Token 用量统计** -- 在消息 / 会话 / 总计 / 项目四个层级追踪 Token 消耗和 API 请求次数，随时掌握用量。
 - **远程开发友好** -- 桌面通知在你离开时就失效了。本插件通过邮件、钉钉、飞书等渠道发送通知，让你随时掌握 AI 编程助手的任务进度。
-- **多渠道支持** -- 目前已支持 SMTP 邮件、钉钉机器人、飞书机器人，后续还将支持 Webhook、Telegram、Slack 等更多渠道。
-- **实时提醒** -- 会话完成（`idle`）或出错（`error`）时立即通知，不错过任何关键事件。
+- **实时提醒** -- 会话完成（`idle`）、出错（`error`）、AI 提问（`question`）、权限确认（`permission`）等关键事件即时通知。
+- **丰富模板变量** -- 74+ 个变量，涵盖 Token 统计、缓存命中率、系统信息等，支持中英文双语模板。
 - **配置简单** -- JSON 配置文件，支持全局和项目级配置，按通道名称自动合并。
 
 ## 开发计划
@@ -24,7 +26,23 @@ OpenCode 多通道通知插件，让你在任何地方都能收到 AI 编程助�
 | Slack | 计划中 | Slack incoming webhooks |
 | 企业微信 | 计划中 | 企业微信机器人 |
 
-**想要其他渠道？** 在 [Gitee 仓库](https://gitee.com/augushong/ul-opencode-event) 提 issue 告诉我们！
+**想要其他渠道？** 在 [Gitee 仓库](https://gitee.com/ulthon/ul-opencode-event) 提 issue 告诉我们！
+
+## Token 用量统计
+
+每条通知都自动包含详细的用量数据，无需额外配置。
+
+| 指标 | 统计范围 | 示例变量 |
+|------|---------|---------|
+| Token 数量 | 会话 / 总计 / 项目 | `{{sessionTokens}}`、`{{totalTokens}}`、`{{projectTokens}}` |
+| 缓存命中率 | 会话 / 总计 / 项目 | `{{sessionCacheHitRate}}`、`{{totalCacheHitRate}}`、`{{projectCacheHitRate}}` |
+| API 请求次数 | 会话 / 总计 / 项目 | `{{sessionRequestCount}}`、`{{totalRequestCount}}`、`{{projectRequestCount}}` |
+| 模型名称 | 每条消息 | `{{modelName}}` |
+| 费用估算 | 每会话 | `{{sessionCost}}`、`{{totalCost}}` |
+
+数据通过 JSONL 会话缓存和 `opencode.db` 自动预加载实现跨重启持久化。
+
+> 完整变量列表（74+ 个变量）：见[模板变量文档](docs/configuration.md#8-模板变量)
 
 ## 快速开始
 

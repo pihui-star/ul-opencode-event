@@ -1,15 +1,17 @@
 # @ulthon/ul-opencode-event
 
-**Never miss an OpenCode notification, even when you're away from your desk.**
+**Never miss an OpenCode notification — and always know your token spend.**
 
-OpenCode multi-channel notification plugin that keeps you informed wherever you are. Get notified when tasks complete or errors occur via email, DingTalk, or Feishu.
+OpenCode multi-channel notification and usage analytics plugin. Get notified when tasks complete or errors occur via email, DingTalk, or Feishu — with multi-level token and request tracking built into every alert.
 
 ## Why ul-opencode-event?
 
-- **Remote Development Friendly** - Get notified when your AI coding agent finishes a task
-- **Multi-Channel Support** - SMTP email, DingTalk robot, Feishu robot, with more planned
-- **Real-time Alerts** - Immediate notifications on session `idle` or `error` events
-- **Easy Configuration** - Simple JSON config with template variables
+- **Multi-Channel Notifications** - SMTP email, DingTalk robot, Feishu robot, with more planned
+- **Token Usage Analytics** - Tracks token consumption and API requests at message / session / total / project levels
+- **Remote Development Friendly** - Get notified when your AI coding agent finishes a task or hits an error
+- **Real-time Alerts** - Immediate notifications on session `idle`, `error`, `question`, `permission`, and more
+- **Rich Template Variables** - 74+ variables including token stats, cache hit rates, and system info, with i18n (zh/en)
+- **Easy Configuration** - Simple JSON config with global + project-level merge
 
 ## Roadmap
 
@@ -24,7 +26,23 @@ OpenCode multi-channel notification plugin that keeps you informed wherever you 
 | Slack | Planned | Slack incoming webhooks |
 | WeChat Work | Planned | Enterprise WeChat |
 
-**Have a channel request?** Open an issue on our [Gitee repo](https://gitee.com/augushong/ul-opencode-event)!
+**Have a channel request?** Open an issue on our [Gitee repo](https://gitee.com/ulthon/ul-opencode-event)!
+
+## Token Usage Analytics
+
+Every notification includes detailed usage data — no extra setup required.
+
+| Metric | Scope | Example Variable |
+|--------|-------|-----------------|
+| Token count | Session / Total / Project | `{{sessionTokens}}`, `{{totalTokens}}`, `{{projectTokens}}` |
+| Cache hit rate | Session / Total / Project | `{{sessionCacheHitRate}}`, `{{totalCacheHitRate}}`, `{{projectCacheHitRate}}` |
+| API requests | Session / Total / Project | `{{sessionRequestCount}}`, `{{totalRequestCount}}`, `{{projectRequestCount}}` |
+| Model name | Per message | `{{modelName}}` |
+| Cost estimate | Per session | `{{sessionCost}}`, `{{totalCost}}` |
+
+Data persists across plugin restarts via JSONL session cache and automatic DB preload from `opencode.db`.
+
+> Full variable list (74+ variables): see [Template Variables](docs/configuration.md#8-模板变量)
 
 ## Quick Start
 
