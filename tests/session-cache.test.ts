@@ -278,13 +278,16 @@ describe('session-cache', () => {
   // =========================================================================
 
   describe('buildCacheEntry', () => {
-    it('builds entry from session data with multiple messages', () => {
-      const sessionData = makeSessionData([
-        { tokens: { input: 100, output: 50, reasoning: 10, cacheRead: 20, cacheWrite: 5 }, cost: 0.01 },
-        { tokens: { input: 200, output: 100, reasoning: 20, cacheRead: 40, cacheWrite: 10 }, cost: 0.02 },
-      ]);
-
-      const entry = buildCacheEntry('sess-build-1', sessionData);
+    it('builds an entry from a usage snapshot', () => {
+      const entry = buildCacheEntry('sess-build-1', {
+        cost: 0.03,
+        tokens: { input: 300, output: 150, reasoning: 30, cacheRead: 60, cacheWrite: 15, total: 525 },
+        requestCount: 2,
+        projectPath: '/test/project',
+        modelID: 'test-model',
+        providerID: 'test-provider',
+        mode: 'code',
+      });
 
       expect(entry).not.toBeNull();
       expect(entry!.sessionId).toBe('sess-build-1');
@@ -293,116 +296,41 @@ describe('session-cache', () => {
       expect(entry!.tokens.reasoning).toBe(30);
       expect(entry!.tokens.cacheRead).toBe(60);
       expect(entry!.tokens.cacheWrite).toBe(15);
-      expect(entry!.tokens.total).toBe(300 + 150 + 60 + 15); // 525
+      expect(entry!.tokens.total).toBe(525);
       expect(entry!.cost).toBeCloseTo(0.03);
+      expect(entry!.requestCount).toBe(2);
       expect(entry!.modelID).toBe('test-model');
+      expect(entry!.providerID).toBe('test-provider');
+      expect(entry!.mode).toBe('code');
       expect(entry!.projectPath).toBe('/test/project');
     });
 
-    it('returns null for zero-token sessions', () => {
-      const sessionData = makeSessionData([
-        { tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } },
-      ]);
-
-      const entry = buildCacheEntry('sess-zero', sessionData);
+    it('returns null for sessions without any usage', () => {
+      const entry = buildCacheEntry('sess-zero', {
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        requestCount: 0,
+      });
       expect(entry).toBeNull();
     });
 
-    it('returns null for empty messages map', () => {
-      const sessionData = makeSessionData([]);
-
-      const entry = buildCacheEntry('sess-empty', sessionData);
-      expect(entry).toBeNull();
-    });
-
-    it('handles single message session', () => {
-      const sessionData = makeSessionData([
-        { tokens: { input: 500, output: 250, reasoning: 100, cacheRead: 50, cacheWrite: 25 }, cost: 0.05, modelID: 'gpt-4' },
-      ]);
-
-      const entry = buildCacheEntry('sess-single', sessionData);
-
+    it('keeps the cost even when the token total is zero', () => {
+      const entry = buildCacheEntry('sess-cost-only', {
+        cost: 0.5,
+        tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        requestCount: 1,
+      });
       expect(entry).not.toBeNull();
-      expect(entry!.tokens.input).toBe(500);
-      expect(entry!.tokens.output).toBe(250);
-      expect(entry!.tokens.total).toBe(500 + 250 + 50 + 25); // 825
-      expect(entry!.modelID).toBe('gpt-4');
-    });
-
-    it('excludes reasoning from total (matches sumAllCompletedTokens)', () => {
-      const sessionData = makeSessionData([
-        { tokens: { input: 100, output: 50, reasoning: 99999, cacheRead: 20, cacheWrite: 5 } },
-      ]);
-
-      const entry = buildCacheEntry('sess-reasoning', sessionData);
-
-      expect(entry).not.toBeNull();
-      // total = input + output + cacheRead + cacheWrite (NOT reasoning)
-      expect(entry!.tokens.total).toBe(100 + 50 + 20 + 5); // 175
-      expect(entry!.tokens.reasoning).toBe(99999);
-    });
-
-    it('only sums messages with non-zero tokens', () => {
-      const sessionData = makeSessionData([
-        { tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 }, cost: 0.001 },
-        { tokens: { input: 100, output: 50, reasoning: 0, cacheRead: 0, cacheWrite: 0 }, cost: 0.01 },
-        { tokens: { input: 0, output: 0, reasoning: 5, cacheRead: 0, cacheWrite: 0 }, cost: 0.002 },
-      ]);
-
-      const entry = buildCacheEntry('sess-partial', sessionData);
-
-      expect(entry).not.toBeNull();
-      // First and third messages have zero non-reasoning tokens, so only second counts
-      expect(entry!.tokens.input).toBe(100);
-      expect(entry!.tokens.output).toBe(50);
-      // Third message: input+output+cacheRead+cacheWrite = 0, so it is skipped entirely
-      // reasoning from skipped messages is NOT accumulated
-      expect(entry!.tokens.reasoning).toBe(0);
-      expect(entry!.cost).toBeCloseTo(0.01); // only second message's cost
-    });
-
-    it('only accumulates messages where input+output+cacheRead+cacheWrite > 0', () => {
-      const sessionData = makeSessionData([
-        // This message has reasoning but zero others - should be skipped
-        { tokens: { input: 0, output: 0, reasoning: 999, cacheRead: 0, cacheWrite: 0 }, cost: 5.0 },
-        // This message has real tokens
-        { tokens: { input: 200, output: 100, reasoning: 50, cacheRead: 10, cacheWrite: 5 }, cost: 0.02 },
-      ]);
-
-      const entry = buildCacheEntry('sess-filter', sessionData);
-
-      expect(entry).not.toBeNull();
-      // Only second message accumulated
-      expect(entry!.tokens.input).toBe(200);
-      expect(entry!.tokens.output).toBe(100);
-      expect(entry!.tokens.reasoning).toBe(50);
-      expect(entry!.tokens.cacheRead).toBe(10);
-      expect(entry!.tokens.cacheWrite).toBe(5);
-      expect(entry!.cost).toBeCloseTo(0.02);
-    });
-
-    it('uses last message modelID/providerID/mode', () => {
-      const sessionData = makeSessionData([
-        { tokens: { input: 10, output: 5 }, modelID: 'model-a' },
-        { tokens: { input: 20, output: 10 }, modelID: 'model-b' },
-        { tokens: { input: 30, output: 15 }, modelID: 'model-c' },
-      ]);
-
-      const entry = buildCacheEntry('sess-models', sessionData);
-
-      expect(entry).not.toBeNull();
-      expect(entry!.modelID).toBe('model-c');
-      expect(entry!.providerID).toBe('test-provider');
-      expect(entry!.mode).toBe('code');
+      expect(entry!.cost).toBeCloseTo(0.5);
     });
 
     it('sets updatedAt to current ISO timestamp', () => {
-      const sessionData = makeSessionData([
-        { tokens: { input: 10, output: 5 } },
-      ]);
-
       const before = new Date().toISOString();
-      const entry = buildCacheEntry('sess-ts', sessionData);
+      const entry = buildCacheEntry('sess-ts', {
+        cost: 0.1,
+        tokens: { input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 15 },
+        requestCount: 1,
+      });
       const after = new Date().toISOString();
 
       expect(entry).not.toBeNull();
@@ -410,25 +338,12 @@ describe('session-cache', () => {
       expect(entry!.updatedAt <= after).toBe(true);
     });
 
-    it('handles undefined projectPath gracefully', () => {
-      const map = new Map<string, TokenData>();
-      map.set('msg-1', {
-        cost: 0,
+    it('handles a missing projectPath gracefully', () => {
+      const entry = buildCacheEntry('sess-no-path', {
+        cost: 0.1,
         tokens: { input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 15 },
-        modelID: 'm',
-        providerID: 'p',
-        mode: 'code',
+        requestCount: 1,
       });
-
-      const sessionData: SessionTokenData = {
-        messages: map,
-        lastModelID: 'm',
-        lastProviderID: 'p',
-        lastMode: 'code',
-        // projectPath is intentionally undefined
-      };
-
-      const entry = buildCacheEntry('sess-no-path', sessionData);
 
       expect(entry).not.toBeNull();
       expect(entry!.projectPath).toBe('');

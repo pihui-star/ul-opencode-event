@@ -40,15 +40,20 @@ OpenCode 多通道通知与用量分析插件。通过邮件、钉钉、飞书�
 | 模型名称 | 每条消息 | `{{modelName}}` |
 | 费用估算 | 每会话 | `{{sessionCost}}`、`{{totalCost}}` |
 
-数据通过 JSONL 会话缓存和 `opencode.db` 自动预加载实现跨重启持久化。
+数据通过 `opencode.db`（OpenCode 数据库）与 JSONL 会话缓存实现跨重启持久化。
 
 > 完整变量列表（74+ 个变量）：见[模板变量文档](docs/configuration.md#8-模板变量)
+
+## 环境要求
+
+- **OpenCode 2.x**（v2 插件 API —— `@opencode/plugin` + `Plugin.define`）。
+  不支持 OpenCode 1.x：v2 不再运行 v1 插件实现。
 
 ## 快速开始
 
 ```bash
 # 1. 启用插件 -- 在 ~/.config/opencode/opencode.json 中添加:
-# { "plugin": ["@ulthon/ul-opencode-event"] }
+# { "plugins": ["@ulthon/ul-opencode-event"] }
 # OpenCode 启动时会自动从 npm 安装插件
 
 # 2. 创建配置文件
@@ -69,17 +74,18 @@ npx @ulthon/ul-opencode-event test
 
 ```json
 {
-  "plugin": ["@ulthon/ul-opencode-event"]
+  "plugins": ["@ulthon/ul-opencode-event"]
 }
 ```
 
-OpenCode 启动时自动从 npm 拉取插件，后续也由 OpenCode 的自动更新机制维护版本。
+OpenCode 启动时自动从 npm 拉取插件，后续也由 OpenCode 的自动更新机制维护版本
+（`opencode plugin update`）。
 
 > **不要全局安装**（`npm install -g`）。全局安装的副本不会被 OpenCode 加载，也不会被自动更新，纯属浪费。
 
 ### 启用插件
 
-见上方，在 `~/.config/opencode/opencode.json` 的 `plugin` 数组中添加包名即可。
+见上方，在 `~/.config/opencode/opencode.json` 的 `plugins` 数组中添加包名即可。
 
 ## 配置
 

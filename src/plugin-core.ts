@@ -1,195 +1,522 @@
 /**
- * Plugin Core Module
- * Contains the NotificationPlugin function, plugin lifecycle,
- * and module-level state (flags, test helpers).
+ * Plugin Core Module (OpenCode v2)
  *
- * Dependencies: token-aggregator, event-mapper
- * Lazy imports: cost.js (via dynamic import in function body)
- * Deferred imports: db-preload.js (via setTimeout + dynamic import)
+ * Implements the OpenCode v2 plugin contract:
+ *   export default Plugin.define({ id, setup(ctx) })
+ *
+ * - Events: ctx.event.subscribe() replaces the v1 `event` hook
+ * - Tools : ctx.tool.transform() replaces the v1 `tool` map
+ * - Cleanup: the function returned by setup() is called when the plugin unloads
+ *
+ * Token/cost data source:
+ *   OpenCode database (`session_v2`) as primary source, live server events
+ *   (`session.usage.updated` / `session.step.ended`) as the fresher overlay.
  */
-import { type Plugin, tool } from '@opencode-ai/plugin';
-import type { Session } from '@opencode-ai/sdk';
-import * as path from 'path';
+import { Plugin } from '@opencode/plugin';
+import * as path from 'node:path';
 import * as os from 'node:os';
 import { loadConfig } from './config.js';
 import { createEventHandler, type EventHandler } from './handler.js';
 import { getDefaultTimezone } from './locales.js';
-import type { EventPayload, SessionTokenData, TokenData, SessionCacheEntry } from './types.js';
+import type { EventPayload, SessionMeta, SessionCacheEntry, NotificationConfig } from './types.js';
 import { DEFAULT_SESSION_TYPES } from './types.js';
 import { logger, DEBUG_ENABLED } from './logger.js';
 import { runAutoUpdate, getCurrentVersion } from './updater.js';
-import { loadSessionCache, buildCacheEntry, writeCacheEntry } from './session-cache.js';
-import { parseTokenFields, parseMessageCost } from './utils/token-parse.js';
+import { loadSessionCache, buildCacheEntry, writeCacheEntry, cacheToUsageRows } from './session-cache.js';
+import { parseTokenFields } from './utils/token-parse.js';
+import { fillTokenData } from './token-aggregator.js';
+import { eventToPayload, type V2Event } from './event-mapper.js';
 import {
-  projectAgg,
-  resetProjectAgg,
-  sumAllCompletedTokens,
-  aggregateSubSessions,
-  fillProjectData,
-} from './token-aggregator.js';
-import { eventToPayload } from './event-mapper.js';
+  readProjectUsage,
+  readSessionDirectory,
+  mergeLiveUsage,
+  aggregateUsage,
+  createLiveUsage,
+  type LiveUsage,
+} from './usage.js';
+
+/** Stable plugin id - also used as the plugin storage scope. */
+export const PLUGIN_ID = 'ul-opencode-event';
+
+/** Server events the plugin subscribes to. */
+const SUBSCRIBED_EVENT_TYPES = [
+  'session.created',
+  'session.idle',
+  'session.execution.failed',
+  'session.status',
+  'session.usage.updated',
+  'session.step.ended',
+  'session.model.selected',
+  'session.agent.selected',
+  'session.renamed',
+  'permission.asked',
+  'form.created',
+  'session.shell.ended',
+  'filesystem.changed',
+] as const;
+
+/** Events that trigger a notification. */
+const NOTIFICATION_EVENT_TYPES = new Set<string>([
+  'session.created',
+  'session.idle',
+  'session.execution.failed',
+  'session.status',
+  'permission.asked',
+  'form.created',
+  'session.shell.ended',
+  'filesystem.changed',
+]);
 
 /**
- * Guard flag to ensure auto-update only runs once per plugin load
+ * Events already processed by one of the plugin instances.
+ *
+ * OpenCode instantiates a plugin once per location and every instance
+ * receives the whole event stream, so a notification would be sent once per
+ * instance. Claiming the event id keeps it to exactly one notification.
  */
-let hasCheckedUpdate = false;
-let hasShownStartupToast = false;
-let lastCacheWriteTime = 0;
-let isTestEnvironment = false;
+const claimedEventIds = new Set<string>();
+const CLAIMED_EVENT_LIMIT = 1000;
 
 /**
- * Test-only: captured payloads for verification in tests.
- * Exposed via globalThis (not module export) to avoid OpenCode's getLegacyPlugins
- * iterating over non-plugin exports and causing duplicate plugin invocations.
+ * Claim an event for processing. Returns false when another instance
+ * already handled it.
  */
-const __test_payloads: EventPayload[] = [];
-
-/**
- * Test-only: reset module-level flags so toast tests can run independently.
- */
-function __test_resetFlags(): void {
-  hasCheckedUpdate = false;
-  hasShownStartupToast = false;
-  isTestEnvironment = true;
-  lastCacheWriteTime = 0;
-  __test_payloads.length = 0;
-  resetProjectAgg();
-}
-
-// Expose test helpers via globalThis (safe for production - only used in tests)
-// eslint-disable-next-line @typescript-eslint/no-namespace
-declare namespace globalThis {
-  // eslint-disable-next-line no-var
-  var __ul_opencode_event_test: {
-    payloads: EventPayload[];
-    resetFlags: () => void;
-  };
-}
-globalThis.__ul_opencode_event_test = {
-  payloads: __test_payloads,
-  resetFlags: __test_resetFlags,
-};
-
-/**
- * Notification Plugin for OpenCode
- * Listens for session events and sends notifications via configured channels
- */
-export const NotificationPlugin: Plugin = async (ctx) => {
-  try {
-    return await NotificationPluginImpl(ctx);
-  } catch (error) {
-    logger.error(`NotificationPlugin fatal error: ${error}`);
-    return {};
+function claimEvent(event: V2Event): boolean {
+  const id = (event as unknown as { id?: string }).id;
+  if (!id) return true;
+  if (claimedEventIds.has(id)) return false;
+  claimedEventIds.add(id);
+  if (claimedEventIds.size > CLAIMED_EVENT_LIMIT) {
+    const oldest = claimedEventIds.values().next().value;
+    if (oldest) claimedEventIds.delete(oldest);
   }
-};
+  return true;
+}
+
+/** Directory holding the cross-process event claim markers. */
+const CLAIM_DIR_NAME = 'ul-opencode-event-claims';
+/** Marker files older than this are removed. */
+const CLAIM_TTL_MS = 60 * 60 * 1000;
+let lastClaimPrune = 0;
 
 /**
- * Actual plugin implementation, wrapped by NotificationPlugin for top-level error safety.
+ * Claim an event across processes.
+ *
+ * OpenCode may run one server process per location, so in-memory state cannot
+ * guarantee "exactly once". A marker file created with exclusive access can.
+ * Used as a backstop for events that carry no location information.
  */
-async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<ReturnType<Plugin>> {
-  // Reset incremental counter for this plugin instance (fresh start per instantiation)
-  resetProjectAgg();
+async function claimEventOnDisk(eventId: string, baseDir: string): Promise<boolean> {
+  try {
+    const fs = (await import('node:fs')).default ?? (await import('node:fs'));
+    const dir = path.join(baseDir, CLAIM_DIR_NAME);
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, eventId.replace(/[^a-zA-Z0-9._-]/g, '_'));
+    const fd = fs.openSync(file, 'wx');
+    fs.closeSync(fd);
 
-  let config;
+    // Prune expired markers from time to time
+    const now = Date.now();
+    if (now - lastClaimPrune > 60_000) {
+      lastClaimPrune = now;
+      try {
+        for (const name of fs.readdirSync(dir)) {
+          const marker = path.join(dir, name);
+          try {
+            if (now - fs.statSync(marker).mtimeMs > CLAIM_TTL_MS) {
+              fs.rmSync(marker, { force: true });
+            }
+          } catch {
+            // ignore individual failures
+          }
+        }
+      } catch {
+        // ignore pruning failures
+      }
+    }
+    return true;
+  } catch (err) {
+    if ((err as { code?: string }).code === 'EEXIST') return false;
+    // Fail open - the claim mechanism must never block a notification
+    return true;
+  }
+}
+
+/**
+ * Normalize a directory for comparison (case-insensitive on Windows).
+ */
+function normalizeDir(dir: string): string {
+  const normalized = path.normalize(dir);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+/** Minimal shape of the v2 Session.Info we rely on. */
+interface SessionInfoLike {
+  id: string;
+  title?: string;
+  parentID?: string;
+  agent?: string;
+  model?: { id?: string; providerID?: string };
+  time?: { created?: number | string };
+  location?: { directory?: string };
+}
+
+function toSessionMeta(info: SessionInfoLike): SessionMeta {
+  const meta: SessionMeta = {
+    id: info.id,
+    title: info.title,
+    parentID: info.parentID,
+    directory: info.location?.directory,
+    modelID: info.model?.id,
+    providerID: info.model?.providerID,
+    mode: info.agent,
+  };
+  const created = info.time?.created;
+  if (typeof created === 'number') {
+    meta.createdAt = created;
+  } else if (typeof created === 'string') {
+    const parsed = Date.parse(created);
+    if (!Number.isNaN(parsed)) meta.createdAt = parsed;
+  }
+  return meta;
+}
+
+/**
+ * Plugin setup - called by OpenCode when the plugin is loaded.
+ */
+export async function setupPlugin(ctx: Plugin.Context): Promise<(() => void) | void> {
+  let config: NotificationConfig;
   try {
     config = loadConfig();
   } catch (error) {
     logger.error(`Failed to initialize plugin config: ${error}`);
-    setTimeout(() => {
-      try {
-        ctx.client.tui.showToast({
-          body: {
-            title: 'ul-opencode-event Config Error',
-            message: `配置加载失败: ${String(error).substring(0, 100)}\n详见日志: ~/.local/share/opencode/ul-opencode-event.log`,
-            variant: 'error',
-            duration: 8000,
-          },
-        }).catch(() => {});
-      } catch {}
-      runAutoUpdate(ctx, true).catch((err: unknown) => {
-        logger.error(`Auto-update check failed: ${err}`);
-      });
-    }, 0);
-    return {};
+    logger.error('ul-opencode-event Config Error: 配置加载失败, 详见日志: ~/.local/share/opencode/ul-opencode-event.log');
+    runAutoUpdate(ctx, true).catch((err: unknown) => {
+      logger.error(`Auto-update check failed: ${err}`);
+    });
+    return;
   }
-  
+
   if (config.channels.length === 0) {
     logger.warn('Plugin loaded but no enabled channels found');
-    const version = getCurrentVersion();
-    setTimeout(() => {
-      try {
-        ctx.client.tui.showToast({
-          body: {
-            title: `ul-opencode-event ${version ? `v${version}` : ''}`,
-            message: '插件已加载但没有启用的通知通道\n请检查配置文件',
-            variant: 'warning',
-            duration: 5000,
-          },
-        }).catch(() => {});
-      } catch {}
-    }, 0);
-    return {};
+    return;
   }
 
   const { resolveCostConfig, formatCost } = await import('./cost.js');
-
   const eventHandler: EventHandler = createEventHandler(config);
-  const sessionMap = new Map<string, Session>();
-  const tokenDataMap = new Map<string, SessionTokenData>();
+
+  const directory = ctx.location.directory;
   const baseDir = process.env.OPENCODE_DATA_DIR ?? path.join(os.homedir(), '.local', 'share', 'opencode');
+  const timezone = config.timezone ?? getDefaultTimezone(config.language);
+  const allowedSessionTypes = config.includeSessionTypes ?? DEFAULT_SESSION_TYPES;
 
-  // Preload token data from OpenCode database (plugin restart recovery)
-  // Deferred via setTimeout so bun:sqlite import doesn't block plugin init
-  setTimeout(() => {
-    import('./db-preload.js').then(async ({ preloadTokenData }) => {
-      await preloadTokenData(tokenDataMap, baseDir, 10, ctx.directory);
-      // Initialize projectAgg base from preloaded data (matching projectPath only)
-      const normalizedTarget = path.normalize(ctx.directory);
-      for (const [, sessionData] of tokenDataMap) {
-        if (sessionData.projectPath && path.normalize(sessionData.projectPath) === normalizedTarget) {
-          const tokens = sumAllCompletedTokens(sessionData);
-          const sessionCost = [...sessionData.messages.values()].reduce((sum, td) => sum + td.cost, 0);
-          projectAgg.input += tokens.input;
-          projectAgg.output += tokens.output;
-          projectAgg.reasoning += tokens.reasoning;
-          projectAgg.cacheRead += tokens.cacheRead;
-          projectAgg.cacheWrite += tokens.cacheWrite;
-          projectAgg.total += tokens.total;
-          projectAgg.cost += sessionCost;
-          projectAgg.requestCount += sessionData.messages.size;
-        }
-      }
-    }).catch((err: unknown) => {
-      logger.error(`Token data preload failed: ${err}`);
-    });
-  }, 0);
+  const sessionMap = new Map<string, SessionMeta>();
+  const sessionDirectories = new Map<string, string>();
+  const liveUsage = new Map<string, LiveUsage>();
+  let sessionCache: Map<string, SessionCacheEntry> = loadSessionCache(baseDir);
 
-  // Load session token cache for accurate project-level aggregation (deferred)
-  let sessionCache: Map<string, SessionCacheEntry> = new Map();
-  setTimeout(() => {
+  logger.info(
+    `[ul-opencode-event] Plugin loaded v${getCurrentVersion() ?? 'unknown'} for ${directory} ` +
+      `with ${config.channels.length} channel(s)`,
+  );
+
+  // ------------------------------------------------------------------
+  // Session metadata tracking
+  // ------------------------------------------------------------------
+
+  const trackSession = (sessionID: string, patch: Partial<SessionMeta>): void => {
+    if (!sessionID) return;
+    const current = sessionMap.get(sessionID) ?? { id: sessionID };
+    sessionMap.set(sessionID, { ...current, ...patch });
+  };
+
+  /** Fetch session metadata from the server when it was not seen live. */
+  const ensureSessionMeta = async (sessionID: string): Promise<SessionMeta | undefined> => {
+    if (!sessionID) return undefined;
+    const cached = sessionMap.get(sessionID);
+    if (cached) return cached;
     try {
-      sessionCache = loadSessionCache(baseDir);
-      // Supplement projectAgg base from sessionCache (dedup: exclude preload sessions)
-      const normalizedTarget = path.normalize(ctx.directory);
-      for (const [sessionId, entry] of sessionCache) {
-        if (tokenDataMap.has(sessionId)) continue; // already counted by preload
-        if (path.normalize(entry.projectPath) === normalizedTarget) {
-          projectAgg.cost += entry.cost;
-          projectAgg.input += entry.tokens.input;
-          projectAgg.output += entry.tokens.output;
-          projectAgg.reasoning += entry.tokens.reasoning;
-          projectAgg.cacheRead += entry.tokens.cacheRead;
-          projectAgg.cacheWrite += entry.tokens.cacheWrite;
-          projectAgg.total += entry.tokens.total;
-          projectAgg.requestCount += entry.requestCount || 0;
-        }
+      const info = (await ctx.session.get({ sessionID })) as unknown as SessionInfoLike;
+      const meta = toSessionMeta(info);
+      sessionMap.set(sessionID, meta);
+      if (meta.directory) sessionDirectories.set(sessionID, meta.directory);
+      return meta;
+    } catch (err) {
+      if (DEBUG_ENABLED) {
+        logger.debug(`[ul-opencode-event] Could not load session ${sessionID}: ${err}`);
       }
-    } catch {
-      // non-critical: plugin works without cached session data
+      return undefined;
     }
-  }, 0);
+  };
 
-  // Auto-register /ul-token-rebuild slash command
+  // ------------------------------------------------------------------
+  // Live usage tracking
+  // ------------------------------------------------------------------
+
+  const updateLiveUsage = (sessionID: string, patch: (usage: LiveUsage) => void): void => {
+    if (!sessionID) return;
+    const usage = liveUsage.get(sessionID) ?? createLiveUsage();
+    patch(usage);
+    liveUsage.set(sessionID, usage);
+  };
+
+  /**
+   * Build the session / total / project usage snapshot.
+   * Database first, live events as overlay, JSONL cache as last resort.
+   */
+  const collectUsage = async (projectDir: string, sessionID: string) => {
+    let rows = await readProjectUsage(baseDir, projectDir);
+    if (rows.size === 0 && sessionCache.size > 0) {
+      rows = cacheToUsageRows(sessionCache, projectDir);
+    }
+    mergeLiveUsage(rows, pickProjectLiveUsage(projectDir));
+    return aggregateUsage(rows, sessionID);
+  };
+
+  /**
+   * Live usage of the sessions that belong to the given project.
+   * Sessions of other projects must not leak into the project totals.
+   */
+  const pickProjectLiveUsage = (projectDir: string): Map<string, LiveUsage> => {
+    const target = normalizeDir(projectDir);
+    const picked = new Map<string, LiveUsage>();
+    for (const [sessionID, usage] of liveUsage) {
+      const known = sessionDirectories.get(sessionID);
+      if (known && normalizeDir(known) !== target) continue;
+      picked.set(sessionID, usage);
+    }
+    return picked;
+  };
+
+  // ------------------------------------------------------------------
+  // Notification pipeline
+  // ------------------------------------------------------------------
+
+  const notify = async (event: V2Event, eventLocation?: string): Promise<void> => {
+    const data = (event.data ?? {}) as Record<string, unknown>;
+    const rawSessionID = typeof data.sessionID === 'string' ? data.sessionID : '';
+    const eventId = (event as unknown as { id?: string }).id;
+    const sessionInfo = await ensureSessionMeta(rawSessionID);
+
+    // Resolve the project the event belongs to. OpenCode creates one plugin
+    // instance per location and every instance sees the whole event stream -
+    // the instance owning the location is the one that notifies.
+    const knownDirectory =
+      eventLocation ??
+      sessionDirectories.get(rawSessionID) ??
+      (await ensureSessionMeta(rawSessionID))?.directory ??
+      (await readSessionDirectory(baseDir, rawSessionID));
+    const projectDir = knownDirectory ?? directory;
+
+    if (knownDirectory && normalizeDir(knownDirectory) !== normalizeDir(directory)) {
+      logger.info(
+        `[ul-opencode-event] Skipping event of another location (${knownDirectory} != ${directory})`,
+      );
+      return;
+    }
+
+    if (!knownDirectory) {
+      // The event carries no location - make sure only one instance notifies.
+      if (eventId) {
+        if (!claimEvent(event)) return;
+        if (!(await claimEventOnDisk(eventId, baseDir))) return;
+      }
+    }
+
+    const projectName = config.projectName || path.basename(projectDir) || 'unknown-project';
+
+    const payload: EventPayload | null = eventToPayload(event, projectName, sessionInfo, timezone, projectDir);
+    if (!payload) return;
+
+    const usage = await collectUsage(projectDir, payload.sessionId);
+    fillTokenData(
+      payload,
+      usage.session,
+      usage.total,
+      usage.project,
+      config.language,
+      config.cost,
+      resolveCostConfig,
+      formatCost,
+    );
+
+    // Model / provider / mode come from the session metadata
+    if (sessionInfo?.modelID) payload.modelID = sessionInfo.modelID;
+    if (sessionInfo?.providerID) payload.providerID = sessionInfo.providerID;
+    if (sessionInfo?.mode) payload.mode = sessionInfo.mode;
+
+    // Filter by session type whitelist (default: only 'main' sessions)
+    if (!allowedSessionTypes.includes(payload.sessionType)) {
+      if (DEBUG_ENABLED) {
+        logger.debug(`Skipping ${payload.sessionType} event ${payload.eventType} for session ${payload.sessionId}`);
+      }
+      return;
+    }
+
+    if (DEBUG_ENABLED) {
+      logger.debug(`Handling event ${payload.eventType} for session ${payload.sessionId}`);
+    }
+
+    try {
+      await eventHandler.handle(payload.eventType, payload);
+    } catch (error) {
+      logger.error(`Failed to handle event ${payload.eventType}: ${error}`);
+    }
+
+    // Persist the session aggregate so project totals survive a restart
+    if (payload.eventType === 'idle' || payload.eventType === 'error') {
+      const entry = buildCacheEntry(payload.sessionId, {
+        cost: usage.session.cost,
+        tokens: usage.session.tokens,
+        requestCount: usage.session.requestCount,
+        projectPath: projectDir,
+        modelID: payload.modelID,
+        providerID: payload.providerID,
+        mode: payload.mode,
+      });
+      if (entry) {
+        writeCacheEntry(baseDir, entry);
+        sessionCache.set(entry.sessionId, entry);
+      }
+    }
+  };
+
+  // ------------------------------------------------------------------
+  // Event dispatch
+  // ------------------------------------------------------------------
+
+  const handleEvent = async (event: V2Event): Promise<void> => {
+    const data = (event.data ?? {}) as Record<string, unknown>;
+    const sessionID = typeof data.sessionID === 'string' ? data.sessionID : '';
+    const eventLocation = (event as unknown as { location?: { directory?: string } }).location?.directory;
+    const eventId = (event as unknown as { id?: string }).id;
+    logger.info(
+      `[EVENT] type=${event.type}` +
+        (sessionID ? ` sessionID=${sessionID}` : '') +
+        ` id=${eventId ?? '-'}` +
+        ` loc=${eventLocation ?? '-'}`,
+    );
+
+    switch (event.type) {
+      case 'session.created': {
+        const created = data as {
+          sessionID?: string;
+          title?: string;
+          parentID?: string;
+          location?: { directory?: string };
+        };
+        const sessionDirectory = created.location?.directory;
+        if (sessionDirectory) {
+          sessionDirectories.set(created.sessionID ?? sessionID, sessionDirectory);
+        }
+        trackSession(created.sessionID ?? sessionID, {
+          title: created.title,
+          parentID: created.parentID,
+          directory: sessionDirectory,
+          createdAt: Date.now(),
+        });
+        break;
+      }
+      case 'session.renamed': {
+        const renamed = data as { sessionID?: string; title?: string };
+        trackSession(renamed.sessionID ?? sessionID, { title: renamed.title });
+        break;
+      }
+      case 'session.model.selected': {
+        const selected = data as { sessionID?: string; model?: { id?: string; providerID?: string } };
+        trackSession(selected.sessionID ?? sessionID, {
+          modelID: selected.model?.id,
+          providerID: selected.model?.providerID,
+        });
+        break;
+      }
+      case 'session.agent.selected': {
+        const selected = data as { sessionID?: string; agent?: string };
+        trackSession(selected.sessionID ?? sessionID, { mode: selected.agent });
+        break;
+      }
+      case 'session.usage.updated': {
+        const usage = data as { sessionID?: string; cost?: number; tokens?: Parameters<typeof parseTokenFields>[0] };
+        const tokens = parseTokenFields(usage.tokens);
+        const cost = Number(usage.cost) || 0;
+        updateLiveUsage(usage.sessionID ?? sessionID, (u) => {
+          u.absolute = { cost, tokens };
+        });
+        break;
+      }
+      case 'session.step.ended': {
+        const step = data as {
+          sessionID?: string;
+          assistantMessageID?: string;
+          cost?: number;
+          tokens?: Parameters<typeof parseTokenFields>[0];
+        };
+        const tokens = parseTokenFields(step.tokens);
+        const cost = Number(step.cost) || 0;
+        updateLiveUsage(step.sessionID ?? sessionID, (u) => {
+          u.stepCost += cost;
+          u.stepTokens.input += tokens.input;
+          u.stepTokens.output += tokens.output;
+          u.stepTokens.reasoning += tokens.reasoning;
+          u.stepTokens.cacheRead += tokens.cacheRead;
+          u.stepTokens.cacheWrite += tokens.cacheWrite;
+          u.stepTokens.total += tokens.total;
+          u.stepCount += 1;
+        });
+        break;
+      }
+      default:
+        break;
+    }
+
+    if (NOTIFICATION_EVENT_TYPES.has(event.type)) {
+      await notify(event, eventLocation);
+    }
+  };
+
+  // ------------------------------------------------------------------
+  // Tool registration (ul-token-rebuild)
+  // ------------------------------------------------------------------
+
+  try {
+    await ctx.tool.transform((editor) => {
+      editor.add({
+        name: 'ul-token-rebuild',
+        description:
+          '从 OpenCode 数据库重建会话 token 缓存。扫描本项目的历史会话，把缺失的会话聚合数据写入缓存文件。' +
+          '用于首次安装、缓存丢失后恢复、或定期刷新项目级 token 聚合准确度。',
+        input: {
+          type: 'object',
+          properties: {},
+          additionalProperties: false,
+        },
+        execute: async () => {
+          try {
+            const { syncFromDB } = await import('./session-cache.js');
+            const result = await syncFromDB(baseDir, directory, sessionCache);
+            sessionCache = loadSessionCache(baseDir);
+            return {
+              content:
+                `Token cache rebuild complete.\n` +
+                `- New sessions synced: ${result.newSessions}\n` +
+                `- Total cached sessions: ${result.totalSessions}\n` +
+                `- Total tokens: input=${result.totalTokens.input}, output=${result.totalTokens.output}, ` +
+                `cacheRead=${result.totalTokens.cacheRead}, cacheWrite=${result.totalTokens.cacheWrite}`,
+            };
+          } catch (err) {
+            return { content: `Token cache rebuild failed: ${err}` };
+          }
+        },
+      });
+    });
+  } catch (err) {
+    logger.error(`Failed to register ul-token-rebuild tool: ${err}`);
+  }
+
+  // ------------------------------------------------------------------
+  // Slash command registration
+  // ------------------------------------------------------------------
+
   try {
     const commandDir = path.join(os.homedir(), '.config', 'opencode', 'command');
     const commandFile = path.join(commandDir, 'ul-token-rebuild.md');
@@ -197,286 +524,84 @@ async function NotificationPluginImpl(ctx: Parameters<Plugin>[0]): Promise<Retur
     const cmdFs = (await import('node:fs')).default || (await import('node:fs'));
     if (!cmdFs.existsSync(commandFile)) {
       cmdFs.mkdirSync(commandDir, { recursive: true });
-      cmdFs.writeFileSync(commandFile, [
-        '---',
-        'description: 从数据库重建 token 缓存，提升项目级聚合准确度',
-        '---',
-        '直接调用 ul-token-rebuild 工具，不要委派给其他 agent。执行后向用户报告同步结果。',
-        '',
-      ].join('\n'), 'utf-8');
+      cmdFs.writeFileSync(
+        commandFile,
+        [
+          '---',
+          'description: 从数据库重建 token 缓存，提升项目级聚合准确度',
+          '---',
+          '直接调用 ul-token-rebuild 工具，不要委派给其他 agent。执行后向用户报告同步结果。',
+          '',
+        ].join('\n'),
+        'utf-8',
+      );
     }
   } catch (cmdErr) {
     // Non-critical: command registration failure should not block plugin
     logger.warn(`Failed to register slash command: ${cmdErr}`);
   }
 
-  if (DEBUG_ENABLED) {
-    logger.debug(`Plugin initialized for ${ctx.directory} with ${config.channels.length} channels`);
+  // ------------------------------------------------------------------
+  // Idle hook (OpenCode v2 replacement for the v1 `session.idle` event)
+  // ------------------------------------------------------------------
+
+  try {
+    await ctx.session.hook('experimental.idle', async (event) => {
+      logger.info(`[EVENT] type=session.idle (hook) sessionID=${event.sessionID}`);
+      await notify({ type: 'session.idle', data: { sessionID: event.sessionID } });
+    });
+  } catch (err) {
+    logger.error(`Failed to register session idle hook: ${err}`);
   }
 
-  return {
-    event: async ({ event }) => {
-      if (DEBUG_ENABLED) {
-        const props = event.properties as Record<string, unknown>;
-        const info = (props as { info?: { id?: string; title?: string } }).info;
-        logger.debug(`[EVENT] type=${event.type}` +
-          (info?.id ? ` session.id=${info.id}` : '') +
-          (props.sessionID ? ` sessionID=${String(props.sessionID)}` : '') +
-          (info?.title ? ` title="${info.title}"` : ' title=(empty/missing)'));
+  // ------------------------------------------------------------------
+  // Event subscription
+  // ------------------------------------------------------------------
+
+  const controller = new AbortController();
+  void (async () => {
+    try {
+      for await (const event of ctx.event.subscribe({
+        types: [...SUBSCRIBED_EVENT_TYPES],
+        signal: controller.signal,
+      })) {
+        await handleEvent(event as unknown as V2Event);
       }
-
-      if (event.type === 'session.created') {
-        sessionMap.set(event.properties.info.id, event.properties.info);
-
-        // Extract OpenCode version from session info and pass to handler
-        if (event.properties.info.version) {
-          eventHandler.setOpenCodeVersion(event.properties.info.version);
-        }
-
-        // Backfill projectPath for sessions that already exist in tokenDataMap (from preloading)
-        const existingSessionData = tokenDataMap.get(event.properties.info.id);
-        if (existingSessionData && !existingSessionData.projectPath && event.properties.info.directory) {
-          existingSessionData.projectPath = event.properties.info.directory;
-          // Retroactively add preloaded session data to projectAgg (missed during preload init)
-          if (path.normalize(event.properties.info.directory) === path.normalize(ctx.directory)) {
-            const tokens = sumAllCompletedTokens(existingSessionData);
-            const sessionCost = [...existingSessionData.messages.values()].reduce((sum, td) => sum + td.cost, 0);
-            projectAgg.input += tokens.input;
-            projectAgg.output += tokens.output;
-            projectAgg.reasoning += tokens.reasoning;
-            projectAgg.cacheRead += tokens.cacheRead;
-            projectAgg.cacheWrite += tokens.cacheWrite;
-            projectAgg.total += tokens.total;
-            projectAgg.cost += sessionCost;
-            projectAgg.requestCount += existingSessionData.messages.size;
-          }
-        }
-
-        // Auto-update check (runs once, first main session only)
-        if (!hasCheckedUpdate) {
-          hasCheckedUpdate = true;
-          const info = event.properties.info;
-          const isCliMode = process.env.OPENCODE_CLI_RUN_MODE === 'true';
-          const isSubSession = info.parentID !== undefined && info.parentID !== '';
-          if (!isCliMode && !isSubSession) {
-            setTimeout(() => {
-              runAutoUpdate(ctx, config.auto_update ?? true).catch((err) => {
-                logger.error(`Auto-update check failed: ${err}`);
-              });
-            }, 0);
-          }
-        }
-
-        // Startup toast (version + channel count, once per process)
-        if (!hasShownStartupToast) {
-          hasShownStartupToast = true;
-          const info = event.properties.info;
-          const isCliMode = process.env.OPENCODE_CLI_RUN_MODE === 'true';
-          const isSubSession = info.parentID !== undefined && info.parentID !== '';
-          if (!isCliMode && !isSubSession) {
-            setTimeout(() => {
-              const version = getCurrentVersion();
-              const channelCount = config.channels.length;
-              const channelTypes = [...new Set(config.channels.map(c => c.type))].join(', ');
-              const title = `ul-opencode-event ${version ? `v${version}` : ''}`;
-              const message = `${channelCount} channel${channelCount !== 1 ? 's' : ''} loaded (${channelTypes})`;
-              try {
-                ctx.client.tui.showToast({
-                  body: { title, message, variant: 'success', duration: 3000 },
-                }).catch(() => {});
-              } catch {}
-            }, 0);
-          }
-        }
-      } else if (event.type === 'session.updated') {
-        sessionMap.set(event.properties.info.id, event.properties.info);
-      } else if (event.type === 'message.updated') {
-        // Handle assistant message token data accumulation
-        const msgInfo = (event.properties as { info: Record<string, unknown> }).info;
-        if (msgInfo?.role === 'assistant') {
-          const sessionId = msgInfo.sessionID as string | undefined;
-          const messageId = msgInfo.id as string | undefined;
-          if (sessionId && messageId) {
-            let sessionData = tokenDataMap.get(sessionId);
-            if (!sessionData) {
-              sessionData = {
-                messages: new Map(),
-                lastModelID: '',
-                lastProviderID: '',
-                lastMode: '',
-                // Tag with project path from sessionMap or fallback to ctx.directory
-                projectPath: sessionMap.get(sessionId)?.directory ?? ctx.directory,
-              };
-              tokenDataMap.set(sessionId, sessionData);
-            }
-
-            const sdkTokens = msgInfo.tokens as Parameters<typeof parseTokenFields>[0];
-            const tokenData: TokenData = {
-              cost: parseMessageCost(msgInfo as { cost?: number | null }),
-              tokens: parseTokenFields(sdkTokens),
-              modelID: (msgInfo.modelID as string) ?? '',
-              providerID: (msgInfo.providerID as string) ?? '',
-              mode: (msgInfo.mode as string) ?? '',
-            };
-
-            // Overwrite (not accumulate) for same message ID
-            // Incremental projectAgg update: delta = new - old
-            const oldTokenData = sessionData.messages.get(messageId);
-            if (sessionData.projectPath && path.normalize(sessionData.projectPath) === path.normalize(ctx.directory)) {
-              const deltaCost = tokenData.cost - (oldTokenData?.cost ?? 0);
-              const deltaInput = tokenData.tokens.input - (oldTokenData?.tokens.input ?? 0);
-              const deltaOutput = tokenData.tokens.output - (oldTokenData?.tokens.output ?? 0);
-              const deltaReasoning = tokenData.tokens.reasoning - (oldTokenData?.tokens.reasoning ?? 0);
-              const deltaCacheRead = tokenData.tokens.cacheRead - (oldTokenData?.tokens.cacheRead ?? 0);
-              const deltaCacheWrite = tokenData.tokens.cacheWrite - (oldTokenData?.tokens.cacheWrite ?? 0);
-              const deltaTotal = deltaInput + deltaOutput + deltaCacheRead + deltaCacheWrite;
-              projectAgg.cost += deltaCost;
-              projectAgg.input += deltaInput;
-              projectAgg.output += deltaOutput;
-              projectAgg.reasoning += deltaReasoning;
-              projectAgg.cacheRead += deltaCacheRead;
-              projectAgg.cacheWrite += deltaCacheWrite;
-              projectAgg.total += deltaTotal;
-              // New message (not overwrite) -> increment request count
-              if (!oldTokenData) {
-                projectAgg.requestCount += 1;
-              }
-            }
-            sessionData.messages.set(messageId, tokenData);
-            sessionData.lastModelID = tokenData.modelID;
-            sessionData.lastProviderID = tokenData.providerID;
-            sessionData.lastMode = tokenData.mode;
-            if (!sessionData.projectPath) {
-              sessionData.projectPath = sessionMap.get(sessionId)?.directory ?? ctx.directory;
-              // Retroactively add all messages to projectAgg (handles preloaded sessions without directory)
-              if (sessionData.projectPath && path.normalize(sessionData.projectPath) === path.normalize(ctx.directory)) {
-                const allTokens = sumAllCompletedTokens(sessionData);
-                const allCost = [...sessionData.messages.values()].reduce((sum, td) => sum + td.cost, 0);
-                projectAgg.input += allTokens.input;
-                projectAgg.output += allTokens.output;
-                projectAgg.reasoning += allTokens.reasoning;
-                projectAgg.cacheRead += allTokens.cacheRead;
-                projectAgg.cacheWrite += allTokens.cacheWrite;
-                projectAgg.total += allTokens.total;
-                projectAgg.cost += allCost;
-                projectAgg.requestCount += sessionData.messages.size;
-              }
-            }
-          }
-        }
-        // message.updated does not produce a notification
-        return;
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        logger.error(`Event subscription failed: ${err}`);
       }
+    }
+  })();
 
-      let sessionInfo: Session | undefined;
-      const props = event.properties as Record<string, unknown>;
-      if (typeof props.sessionID === 'string') {
-        sessionInfo = sessionMap.get(props.sessionID);
-      } else if (event.type === 'session.created') {
-        sessionInfo = (event.properties as { info: Session }).info;
-      }
+  // ------------------------------------------------------------------
+  // Auto update check (once per process)
+  // ------------------------------------------------------------------
 
-      const resolvedTimezone = config.timezone ?? getDefaultTimezone(config.language);
-      if (DEBUG_ENABLED && sessionInfo) {
-        logger.debug(`[RESOLVED] sessionInfo.id=${sessionInfo.id} title="${sessionInfo.title}" parentID=${sessionInfo.parentID ?? '(none)'}`);
-      }
-      if (DEBUG_ENABLED && !sessionInfo && typeof (event.properties as Record<string, unknown>).sessionID === 'string') {
-        logger.debug(`[RESOLVED] MISS sessionID=${(event.properties as Record<string, unknown>).sessionID} - sessionMap has no entry`);
-      }
-      const resolvedProjectName = config.projectName || path.basename(ctx.directory) || 'unknown-project';
-      const payload = eventToPayload(event, resolvedProjectName, sessionInfo, resolvedTimezone, ctx.directory, tokenDataMap, config.language, config.cost, resolveCostConfig, formatCost);
-      
-      if (!payload) {
-        return;
-      }
+  if (config.auto_update !== false) {
+    setTimeout(() => {
+      runAutoUpdate(ctx, true).catch((err: unknown) => {
+        logger.error(`Auto-update check failed: ${err}`);
+      });
+    }, 0);
+  }
 
-      // Aggregate sub-session token data into total fields
-      aggregateSubSessions(payload, tokenDataMap, sessionMap, config.language, config.cost, resolveCostConfig, formatCost);
+  // ------------------------------------------------------------------
+  // Cleanup
+  // ------------------------------------------------------------------
 
-      // Aggregate project-level token data
-      fillProjectData(payload, tokenDataMap, ctx.directory, config.language, config.cost, resolveCostConfig, formatCost, sessionCache);
-
-      // Filter by session type whitelist (default: only 'main' sessions)
-      const allowedTypes = config.includeSessionTypes ?? DEFAULT_SESSION_TYPES;
-      if (!allowedTypes.includes(payload.sessionType)) {
-        if (DEBUG_ENABLED) {
-          logger.debug(`Skipping ${payload.sessionType} event ${payload.eventType} for session ${payload.sessionId}`);
-        }
-        return;
-      }
-
-      // Debug: warn when sessionMap miss produces 'unknown' (possible race condition)
-      if (DEBUG_ENABLED && payload.sessionType === 'unknown' && typeof (event.properties as Record<string, unknown>).sessionID === 'string') {
-        logger.warn(`sessionMap miss for sessionID=${(event.properties as Record<string, unknown>).sessionID}, treating as 'unknown'. Race condition?`);
-      }
-
-      if (DEBUG_ENABLED) {
-        logger.debug(`Handling event ${payload.eventType} for session ${payload.sessionId}`);
-      }
-
-      // Test-only: capture payload for verification
-      __test_payloads.push(payload);
-
-      try {
-        await eventHandler.handle(payload.eventType, payload);
-      } catch (error) {
-        logger.error(`Failed to handle event ${payload.eventType}: ${error}`);
-      }
-
-      // Cache write: persist session token data for project-level aggregation
-      // Skip during tests to prevent cross-test filesystem pollution
-      if (!isTestEnvironment) {
-        try {
-          const shouldWrite =
-            payload.eventType === 'idle' ||
-            payload.eventType === 'error' ||
-            (payload.eventType === 'status' && Date.now() - lastCacheWriteTime >= 60000);
-
-          if (shouldWrite) {
-            const sessionId = payload.sessionId;
-            const sessionData = tokenDataMap.get(sessionId);
-            if (sessionData) {
-              const entry = buildCacheEntry(sessionId, sessionData);
-              if (entry) {
-                writeCacheEntry(baseDir, entry);
-                if (payload.eventType === 'status') {
-                  lastCacheWriteTime = Date.now();
-                }
-              }
-            }
-          }
-        } catch (cacheErr) {
-          logger.error(`Cache write failed: ${cacheErr}`);
-        }
-      }
-
-
-    },
-    tool: {
-      'ul-token-rebuild': tool({
-        description: '从 OpenCode 数据库重建会话 token 缓存。扫描所有历史会话，将缺失的会话聚合数据写入缓存文件。用于首次安装、缓存丢失后恢复、或定期刷新项目级 token 聚合准确度。',
-        args: {},
-        execute: async (_args, _toolCtx) => {
-          try {
-            const { syncFromDB } = await import('./session-cache.js');
-            const result = await syncFromDB(baseDir, _toolCtx.directory, sessionCache);
-            // Refresh in-memory cache after successful sync
-            sessionCache = loadSessionCache(baseDir);
-            return `Token cache rebuild complete.\n- New sessions synced: ${result.newSessions}\n- Total cached sessions: ${result.totalSessions}\n- Total tokens: input=${result.totalTokens.input}, output=${result.totalTokens.output}, cacheRead=${result.totalTokens.cacheRead}, cacheWrite=${result.totalTokens.cacheWrite}`;
-          } catch (err) {
-            return `Token cache rebuild failed: ${err}`;
-          }
-        },
-      }),
-    },
+  return () => {
+    controller.abort();
+    eventHandler.close().catch((err: unknown) => {
+      logger.error(`Failed to close channels: ${err}`);
+    });
   };
-};
+}
 
 /**
- * PluginModule format for OpenCode 1.14+ compatibility.
- * The new plugin loader expects { id, server } object, not a bare function.
+ * V2 plugin definition - the default export consumed by OpenCode.
  */
-export default {
-  id: "@ulthon/ul-opencode-event",
-  server: NotificationPlugin,
-};
+export default Plugin.define({
+  id: PLUGIN_ID,
+  setup: setupPlugin,
+});

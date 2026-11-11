@@ -3,21 +3,22 @@ import type { SessionTokenData } from '../src/types';
 
 // ---------------------------------------------------------------------------
 // Cache real fs/os/path BEFORE any mock.module('fs', ...) from other test
-// files can poison the module registry.  Using require() at the top-level of
-// an ESM file works in Bun and captures the native module directly.
+// files can poison the module registry.
 // ---------------------------------------------------------------------------
 
 const fs = require('node:fs') as typeof import('node:fs');
 const os = require('node:os') as typeof import('node:os');
-const path = require('node:path') as typeof import('node:path');
+const path = require('node:path');
 
 // ---------------------------------------------------------------------------
 // Mock state (reset before each test)
 // ---------------------------------------------------------------------------
 
-let mockRows: Array<{ id: string; session_id: string; data: string }> = [];
+let mockRows: Array<Record<string, unknown>> = [];
+let mockTables: string[] = ['session_v2', 'session_message'];
 let dbConstructed = false;
 let dbClosed = false;
+let lastSql = '';
 
 // ---------------------------------------------------------------------------
 // Real temp directory with empty opencode.db (so existsSync returns true)
@@ -32,7 +33,7 @@ afterAll(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Mock bun:sqlite
+// Mock bun:sqlite (OpenCode v2 schema)
 // ---------------------------------------------------------------------------
 
 mock.module('bun:sqlite', () => {
@@ -45,9 +46,16 @@ mock.module('bun:sqlite', () => {
         }
         dbConstructed = true;
       }
-      prepare(_sql: string) {
+      prepare(sql: string) {
+        lastSql = sql;
         return {
           all: () => mockRows,
+          get: (name?: string) => {
+            if (sql.includes('sqlite_master')) {
+              return mockTables.includes(String(name)) ? { name } : undefined;
+            }
+            return undefined;
+          },
         };
       }
       close() {
@@ -57,48 +65,122 @@ mock.module('bun:sqlite', () => {
   };
 });
 
-// NOTE: Do NOT mock '../src/logger' — Bun mock.module is process-wide and
-// would replace logger.error() with a no-op for ALL test files, breaking
-// dingtalk.test.ts and email.test.ts error-logging assertions.
-// The real logger works fine — db-preload only calls logger.debug() which
-// is gated by DEBUG_ENABLED (false by default in test env).
+// NOTE: Do NOT mock '../src/logger' - Bun mock.module is process-wide.
 
-// Dynamic import - evaluated AFTER mocks are registered.
-const { preloadTokenData } = await import('../src/db-preload');
+const { preloadTokenData, readSessionsFromDb } = await import('../src/db-preload');
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
+describe('readSessionsFromDb (OpenCode v2 schema)', () => {
+  beforeEach(() => {
+    mockRows = [];
+    mockTables = ['session_v2', 'session_message'];
+    dbConstructed = false;
+    dbClosed = false;
+    lastSql = '';
+  });
+
+  test('reads per-session aggregates from session_v2', async () => {
+    mockRows = [
+      {
+        id: 'ses_1',
+        directory: '/proj',
+        parent_id: null,
+        time_created: 1700000000000,
+        cost: 0.25,
+        tokens_input: 100,
+        tokens_output: 50,
+        tokens_reasoning: 10,
+        tokens_cache_read: 5,
+        tokens_cache_write: 3,
+        request_count: 4,
+      },
+    ];
+
+    const rows = await readSessionsFromDb(tempDir, { projectPath: '/proj' });
+
+    expect(rows.length).toBe(1);
+    expect(rows[0].sessionId).toBe('ses_1');
+    expect(rows[0].cost).toBe(0.25);
+    expect(rows[0].tokens.input).toBe(100);
+    expect(rows[0].tokens.output).toBe(50);
+    expect(rows[0].tokens.cacheRead).toBe(5);
+    expect(rows[0].tokens.cacheWrite).toBe(3);
+    expect(rows[0].tokens.total).toBe(100 + 50 + 5 + 3);
+    expect(rows[0].requestCount).toBe(4);
+    expect(lastSql).toContain('session_v2');
+    expect(dbClosed).toBe(true);
+  });
+
+  test('falls back to the legacy schema when session_v2 is missing', async () => {
+    mockTables = ['session', 'message'];
+    mockRows = [
+      {
+        id: 'ses_legacy',
+        directory: '/proj',
+        parent_id: null,
+        time_created: 1700000000000,
+        cost: 1,
+        tokens_input: 10,
+        tokens_output: 5,
+        tokens_reasoning: 0,
+        tokens_cache_read: 0,
+        tokens_cache_write: 0,
+        request_count: 2,
+      },
+    ];
+
+    const rows = await readSessionsFromDb(tempDir, { projectPath: '/proj' });
+
+    expect(rows.length).toBe(1);
+    expect(lastSql).toContain('FROM session s');
+  });
+
+  test('returns an empty list when the database file does not exist', async () => {
+    const rows = await readSessionsFromDb(nonexistentDir, { projectPath: '/proj' });
+
+    expect(rows.length).toBe(0);
+    expect(dbConstructed).toBe(false);
+  });
+});
+
 describe('preloadTokenData', () => {
   beforeEach(() => {
     mockRows = [];
+    mockTables = ['session_v2', 'session_message'];
     dbConstructed = false;
     dbClosed = false;
   });
 
-  test('normal preload populates tokenDataMap from DB rows', async () => {
+  test('stores one aggregate entry per session', async () => {
     const tokenDataMap = new Map<string, SessionTokenData>();
     mockRows = [
       {
-        id: 'msg-1',
-        session_id: 'sess-abc',
-        data: JSON.stringify({
-          role: 'assistant',
-          tokens: { input: 100, output: 50, reasoning: 10, cache: { read: 5, write: 3 } },
-          cost: 0.0123,
-          modelID: 'gpt-4',
-          providerID: 'openai',
-          mode: 'code',
-        }),
+        id: 'ses_abc',
+        directory: '/proj',
+        parent_id: null,
+        time_created: 1700000000000,
+        cost: 0.0123,
+        tokens_input: 100,
+        tokens_output: 50,
+        tokens_reasoning: 10,
+        tokens_cache_read: 5,
+        tokens_cache_write: 3,
+        request_count: 7,
       },
     ];
+
     await preloadTokenData(tokenDataMap, tempDir);
+
     expect(tokenDataMap.size).toBe(1);
-    const session = tokenDataMap.get('sess-abc')!;
+    const session = tokenDataMap.get('ses_abc')!;
     expect(session.messages.size).toBe(1);
-    expect(session.lastModelID).toBe('gpt-4');
-    const td = session.messages.get('msg-1')!;
+    expect(session.requestCount).toBe(7);
+    expect(session.projectPath).toBe(path.normalize('/proj'));
+
+    const td = [...session.messages.values()][0];
     expect(td.tokens.input).toBe(100);
     expect(td.tokens.output).toBe(50);
     expect(td.tokens.cacheRead).toBe(5);
@@ -108,77 +190,34 @@ describe('preloadTokenData', () => {
     expect(dbClosed).toBe(true);
   });
 
-  test('skips when DB file does not exist', async () => {
+  test('skips when the DB file does not exist', async () => {
     const tokenDataMap = new Map<string, SessionTokenData>();
     await preloadTokenData(tokenDataMap, nonexistentDir);
     expect(tokenDataMap.size).toBe(0);
     expect(dbConstructed).toBe(false);
   });
 
-  test('skips rows with invalid JSON without crashing', async () => {
+  test('coerces null token values to 0', async () => {
     const tokenDataMap = new Map<string, SessionTokenData>();
     mockRows = [
-      { id: 'msg-bad', session_id: 'sess-x', data: 'not-valid-json' },
       {
-        id: 'msg-good',
-        session_id: 'sess-x',
-        data: JSON.stringify({
-          role: 'assistant',
-          tokens: { input: 10, output: 5 },
-          cost: 0,
-          modelID: 'm',
-          providerID: 'p',
-          mode: 'default',
-        }),
+        id: 'ses_safe',
+        directory: '/proj',
+        parent_id: null,
+        time_created: 1700000000000,
+        cost: null,
+        tokens_input: null,
+        tokens_output: undefined,
+        tokens_reasoning: NaN,
+        tokens_cache_read: '',
+        tokens_cache_write: null,
+        request_count: 0,
       },
     ];
-    await preloadTokenData(tokenDataMap, tempDir);
-    expect(tokenDataMap.size).toBe(1);
-    expect(tokenDataMap.get('sess-x')!.messages.has('msg-bad')).toBe(false);
-    expect(tokenDataMap.get('sess-x')!.messages.has('msg-good')).toBe(true);
-  });
 
-  test('converts nested cache.read to flat cacheRead', async () => {
-    const tokenDataMap = new Map<string, SessionTokenData>();
-    mockRows = [
-      {
-        id: 'msg-cache',
-        session_id: 'sess-cache',
-        data: JSON.stringify({
-          role: 'assistant',
-          tokens: { input: 200, output: 100, cache: { read: 42, write: 7 } },
-          cost: 1.5,
-          modelID: 'claude',
-          providerID: 'anthropic',
-          mode: 'ask',
-        }),
-      },
-    ];
     await preloadTokenData(tokenDataMap, tempDir);
-    const td = tokenDataMap.get('sess-cache')!.messages.get('msg-cache')!;
-    expect(td.tokens.cacheRead).toBe(42);
-    expect(td.tokens.cacheWrite).toBe(7);
-    expect(td.tokens.total).toBe(200 + 100 + 42 + 7);
-  });
 
-  test('coerces null, undefined, NaN and empty-string token values to 0', async () => {
-    const tokenDataMap = new Map<string, SessionTokenData>();
-    mockRows = [
-      {
-        id: 'msg-safe',
-        session_id: 'sess-safe',
-        data: JSON.stringify({
-          role: 'assistant',
-          tokens: { input: null, output: undefined, reasoning: NaN, cache: { read: '', write: null } },
-          cost: undefined,
-          modelID: 'model-x',
-          providerID: 'prov-y',
-          mode: 'mode-z',
-        }),
-      },
-    ];
-    await preloadTokenData(tokenDataMap, tempDir);
-    const td = tokenDataMap.get('sess-safe')!.messages.get('msg-safe')!;
+    const td = [...tokenDataMap.get('ses_safe')!.messages.values()][0];
     expect(td.tokens.input).toBe(0);
     expect(td.tokens.output).toBe(0);
     expect(td.tokens.reasoning).toBe(0);
@@ -186,40 +225,5 @@ describe('preloadTokenData', () => {
     expect(td.tokens.cacheWrite).toBe(0);
     expect(td.tokens.total).toBe(0);
     expect(td.cost).toBe(0);
-  });
-
-  test('tracks lastModelID/lastProviderID/lastMode from the last row', async () => {
-    const tokenDataMap = new Map<string, SessionTokenData>();
-    mockRows = [
-      {
-        id: 'msg-a',
-        session_id: 'sess-multi',
-        data: JSON.stringify({ role: 'assistant', tokens: { input: 10 }, cost: 0, modelID: 'model-a', providerID: 'prov-a', mode: 'mode-a' }),
-      },
-      {
-        id: 'msg-b',
-        session_id: 'sess-multi',
-        data: JSON.stringify({ role: 'assistant', tokens: { input: 20 }, cost: 0.5, modelID: 'model-b', providerID: 'prov-b', mode: 'mode-b' }),
-      },
-    ];
-    await preloadTokenData(tokenDataMap, tempDir);
-    const session = tokenDataMap.get('sess-multi')!;
-    expect(session.messages.size).toBe(2);
-    expect(session.lastModelID).toBe('model-b');
-    expect(session.lastProviderID).toBe('prov-b');
-    expect(session.lastMode).toBe('mode-b');
-  });
-
-  test('skips rows where role is not assistant', async () => {
-    const tokenDataMap = new Map<string, SessionTokenData>();
-    mockRows = [
-      {
-        id: 'msg-user',
-        session_id: 'sess-filter',
-        data: JSON.stringify({ role: 'user', tokens: { input: 99, output: 99 }, cost: 99, modelID: 'm', providerID: 'p', mode: 'x' }),
-      },
-    ];
-    await preloadTokenData(tokenDataMap, tempDir);
-    expect(tokenDataMap.size).toBe(0);
   });
 });

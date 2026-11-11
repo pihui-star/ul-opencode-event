@@ -3,6 +3,7 @@ dist/
 coverage/
 .sisyphus/evidence/
 *.log
+out_tmp/
 
 .env
 .env.*

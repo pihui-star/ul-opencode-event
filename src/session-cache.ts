@@ -11,7 +11,7 @@
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { logger } from './logger.js';
-import type { TokenBreakdown, SessionTokenData, SessionCacheEntry } from './types.js';
+import type { TokenBreakdown, SessionCacheEntry } from './types.js';
 
 // Re-export for consumer convenience
 export type { SessionCacheEntry } from './types.js';
@@ -181,59 +181,68 @@ export function aggregateProjectFromCache(
 }
 
 /**
- * Build a cache entry from session token data.
- * Uses the same aggregation logic as sumAllCompletedTokens() from index.ts:
- * - Only accumulates messages where input + output + cacheRead + cacheWrite > 0
- * - total = input + output + cacheRead + cacheWrite (excludes reasoning)
- * Returns null if all token fields are zero.
+ * Build a cache entry from a session usage snapshot.
+ * Returns null when the session has no usage at all (nothing worth caching).
  */
 export function buildCacheEntry(
   sessionId: string,
-  sessionData: SessionTokenData,
+  data: {
+    cost: number;
+    tokens: TokenBreakdown;
+    requestCount: number;
+    projectPath?: string;
+    modelID?: string;
+    providerID?: string;
+    mode?: string;
+  },
 ): SessionCacheEntry | null {
-  let input = 0;
-  let output = 0;
-  let reasoning = 0;
-  let cacheRead = 0;
-  let cacheWrite = 0;
-  let cost = 0;
-
-  for (const td of sessionData.messages.values()) {
-    const t = td.tokens;
-    // Only accumulate messages with non-zero usage (skip streaming intermediates)
-    if (t.input + t.output + t.cacheRead + t.cacheWrite > 0) {
-      input += t.input;
-      output += t.output;
-      reasoning += t.reasoning;
-      cacheRead += t.cacheRead;
-      cacheWrite += t.cacheWrite;
-      cost += td.cost;
-    }
-  }
+  const tokens = data.tokens;
 
   // If all token fields are zero, return null
-  if (input === 0 && output === 0 && cacheRead === 0 && cacheWrite === 0) {
+  if (tokens.total === 0 && data.cost === 0) {
     return null;
   }
 
   return {
     sessionId,
-    projectPath: sessionData.projectPath ?? '',
+    projectPath: data.projectPath ?? '',
     tokens: {
-      input,
-      output,
-      reasoning,
-      cacheRead,
-      cacheWrite,
-      total: input + output + cacheRead + cacheWrite,
+      input: tokens.input,
+      output: tokens.output,
+      reasoning: tokens.reasoning,
+      cacheRead: tokens.cacheRead,
+      cacheWrite: tokens.cacheWrite,
+      total: tokens.total,
     },
-    cost,
-    modelID: sessionData.lastModelID,
-    providerID: sessionData.lastProviderID,
-    mode: sessionData.lastMode,
-    requestCount: sessionData.messages.size,
+    cost: data.cost,
+    modelID: data.modelID ?? '',
+    providerID: data.providerID ?? '',
+    mode: data.mode ?? '',
+    requestCount: data.requestCount,
     updatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Convert cached entries of a project back into usage rows.
+ * Used as a fallback source when the OpenCode database is unavailable.
+ */
+export function cacheToUsageRows(
+  cache: Map<string, SessionCacheEntry>,
+  projectPath: string,
+): Map<string, import('./usage.js').UsageRow> {
+  const normalized = path.normalize(projectPath);
+  const rows = new Map<string, import('./usage.js').UsageRow>();
+  for (const entry of cache.values()) {
+    if (!entry.projectPath || path.normalize(entry.projectPath) !== normalized) continue;
+    rows.set(entry.sessionId, {
+      sessionId: entry.sessionId,
+      cost: entry.cost,
+      tokens: { ...entry.tokens },
+      requestCount: entry.requestCount ?? 0,
+    });
+  }
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,133 +280,44 @@ export async function syncFromDB(
 
   try {
     // Lazy import to avoid loading bun:sqlite at plugin startup
-    const { Database } = await import('bun:sqlite');
+    const { readSessionsFromDb } = await import('./db-preload.js');
 
-    const dbPath = path.join(dataDir, 'opencode.db');
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const normalizedProjectPath = path.normalize(projectPath);
-
-      // Build exclusion clause for sessions already in cache
-      const existingIds = [...existingCache.keys()];
-      let rows: Array<Record<string, unknown>>;
-
-      if (existingIds.length === 0) {
-        // No existing cache entries - query all sessions for this project
-        const sql =
-          `SELECT m.id, m.session_id, m.data, s.directory ` +
-          `FROM message m ` +
-          `JOIN session s ON m.session_id = s.id ` +
-          `WHERE json_extract(m.data, '$.role') = 'assistant' ` +
-          `AND s.directory = ? ` +
-          `ORDER BY m.session_id, m.time_created ASC`;
-
-        rows = db.prepare(sql).all(normalizedProjectPath) as Array<Record<string, unknown>>;
-      } else {
-        // Exclude sessions already in cache - use parameterized approach
-        // bun:sqlite supports numbered params, build dynamic placeholders
-        const placeholders = existingIds.map((_, i) => `?${i + 2}`).join(', ');
-        const sql =
-          `SELECT m.id, m.session_id, m.data, s.directory ` +
-          `FROM message m ` +
-          `JOIN session s ON m.session_id = s.id ` +
-          `WHERE json_extract(m.data, '$.role') = 'assistant' ` +
-          `AND s.directory = ?1 ` +
-          `AND m.session_id NOT IN (${placeholders}) ` +
-          `ORDER BY m.session_id, m.time_created ASC`;
-
-        const stmt = db.prepare(sql);
-        rows = stmt.all(normalizedProjectPath, ...existingIds) as Array<Record<string, unknown>>;
-      }
-
-      // Group messages by session and compute aggregates
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sessionGroups = new Map<string, {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        messages: Array<{ id: string; data: any }>;
-        directory: string;
-      }>();
-
-      for (const row of rows) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const data = JSON.parse(row.data as string) as any;
-          if (data.role !== 'assistant') continue;
-
-          const sessionId = row.session_id as string;
-          const messageId = row.id as string;
-          const directory = (row.directory as string) ?? '';
-
-          let group = sessionGroups.get(sessionId);
-          if (!group) {
-            group = { messages: [], directory };
-            sessionGroups.set(sessionId, group);
-          }
-          group.messages.push({ id: messageId, data });
-        } catch {
-          // Skip rows with invalid JSON
-        }
-      }
-
-      // Build cache entries for each new session and write them
-      let newSessions = 0;
-      for (const [sessionId, group] of sessionGroups) {
-        const sessionData: SessionTokenData = {
-          messages: new Map(),
-          lastModelID: '',
-          lastProviderID: '',
-          lastMode: '',
-          projectPath: path.normalize(group.directory),
-        };
-
-        for (const msg of group.messages) {
-          const data = msg.data;
-          const tkInput = Number(data.tokens?.input) || 0;
-          const tkOutput = Number(data.tokens?.output) || 0;
-          const tkReasoning = Number(data.tokens?.reasoning) || 0;
-          const tkCacheRead = Number(data.tokens?.cache?.read) || 0;
-          const tkCacheWrite = Number(data.tokens?.cache?.write) || 0;
-
-          const tokenData = {
-            cost: Number(data.cost) || 0,
-            tokens: {
-              input: tkInput,
-              output: tkOutput,
-              reasoning: tkReasoning,
-              cacheRead: tkCacheRead,
-              cacheWrite: tkCacheWrite,
-              total: tkInput + tkOutput + tkCacheRead + tkCacheWrite,
-            },
-            modelID: (data.modelID as string) ?? '',
-            providerID: (data.providerID as string) ?? '',
-            mode: (data.mode as string) ?? '',
-          };
-
-          sessionData.messages.set(msg.id, tokenData);
-          sessionData.lastModelID = tokenData.modelID;
-          sessionData.lastProviderID = tokenData.providerID;
-          sessionData.lastMode = tokenData.mode;
-        }
-
-        const entry = buildCacheEntry(sessionId, sessionData);
-        if (entry) {
-          writeCacheEntry(dataDir, entry);
-          newSessions++;
-        }
-      }
-
-      // Reload cache to get accurate totals
-      const updatedCache = loadSessionCache(dataDir);
-      const agg = aggregateProjectFromCache(updatedCache, projectPath);
-
-      return {
-        newSessions,
-        totalSessions: updatedCache.size,
-        totalTokens: agg.tokens,
-      };
-    } finally {
-      db.close();
+    // OpenCode v2 keeps per-session aggregates in `session_v2`;
+    // readSessionsFromDb falls back to the legacy schema when needed.
+    const sessions = await readSessionsFromDb(dataDir, { projectPath, limit: 1000 });
+    if (sessions.length === 0) {
+      return ZERO_RESULT;
     }
+
+    let newSessions = 0;
+    for (const usage of sessions) {
+      if (existingCache.has(usage.sessionId)) continue;
+      if (usage.tokens.total === 0 && usage.cost === 0) continue;
+
+      const entry: SessionCacheEntry = {
+        sessionId: usage.sessionId,
+        projectPath: usage.projectPath ? path.normalize(usage.projectPath) : path.normalize(projectPath),
+        tokens: { ...usage.tokens },
+        cost: usage.cost,
+        modelID: '',
+        providerID: '',
+        mode: '',
+        requestCount: usage.requestCount,
+        updatedAt: new Date().toISOString(),
+      };
+      writeCacheEntry(dataDir, entry);
+      newSessions++;
+    }
+
+    // Reload cache to get accurate totals
+    const updatedCache = loadSessionCache(dataDir);
+    const agg = aggregateProjectFromCache(updatedCache, projectPath);
+
+    return {
+      newSessions,
+      totalSessions: updatedCache.size,
+      totalTokens: agg.tokens,
+    };
   } catch (err) {
     logger.error(`syncFromDB failed: ${err}`);
     return ZERO_RESULT;

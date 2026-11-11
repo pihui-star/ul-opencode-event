@@ -973,17 +973,20 @@ A: 会。`recorder.ts` 会记录所有模板变量（包括自定义变量和内
 
 插件由 OpenCode 自动管理安装和更新，无需手动 `npm install`。
 
+> **环境要求**：OpenCode 2.x（v2 插件 API）。v2 不再运行 v1 插件实现，OpenCode 1.x 无法使用本插件。
+
 ### 安装方式
 
 在 `~/.config/opencode/opencode.json` 中添加：
 
 ```json
 {
-  "plugin": ["@ulthon/ul-opencode-event"]
+  "plugins": ["@ulthon/ul-opencode-event"]
 }
 ```
 
-OpenCode 启动时自动从 npm 拉取插件并安装到 OpenCode 的包缓存目录中，后续也由自动更新机制维护版本。
+OpenCode 启动时自动从 npm 拉取插件并安装到 OpenCode 的包缓存目录中，后续也由自动更新机制维护版本
+（`opencode plugin update`）。
 
 > **不要全局安装**（`npm install -g`）。全局安装的副本不会被 OpenCode 加载，也不会被自动更新。
 

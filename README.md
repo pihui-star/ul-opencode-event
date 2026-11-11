@@ -40,16 +40,21 @@ Every notification includes detailed usage data — no extra setup required.
 | Model name | Per message | `{{modelName}}` |
 | Cost estimate | Per session | `{{sessionCost}}`, `{{totalCost}}` |
 
-Data persists across plugin restarts via JSONL session cache and automatic DB preload from `opencode.db`.
+Data persists across plugin restarts: usage is read from the OpenCode database (`opencode.db`) and mirrored into a JSONL session cache.
 
 > Full variable list (74+ variables): see [Template Variables](docs/configuration.md#8-模板变量)
+
+## Requirements
+
+- **OpenCode 2.x** (v2 plugin API — `@opencode/plugin`, `Plugin.define`).
+  OpenCode 1.x is *not* supported: v1 plugin implementations do not run in v2.
 
 ## Quick Start
 
 Add to `~/.config/opencode/opencode.json`:
 
 ```json
-{ "plugin": ["@ulthon/ul-opencode-event"] }
+{ "plugins": ["@ulthon/ul-opencode-event"] }
 ```
 
 OpenCode automatically installs the plugin from npm on startup. Then create a config file and test:

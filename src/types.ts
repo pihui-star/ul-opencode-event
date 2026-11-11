@@ -298,6 +298,42 @@ export interface SessionTokenData {
   lastMode: string;
   /** 项目路径（用于按项目聚合 token 数据） */
   projectPath?: string;
+  /**
+   * 请求次数（API 调用数）。
+   * v2 中由 `session.step.ended` 事件计数；从数据库预载时由 assistant 消息数得出。
+   * 未设置时回退为 messages.size。
+   */
+  requestCount?: number;
+  /**
+   * 会话级累计用量（来自 v2 `session.usage.updated` 事件）。
+   * 当没有逐条 step 数据时作为会话级 token 的回退来源。
+   */
+  cumulative?: { cost: number; tokens: TokenBreakdown };
+}
+
+/**
+ * 会话元信息（v2 Session.Info 的精简子集）。
+ * 用于会话类型判定、标题展示、父子会话聚合与项目聚合。
+ */
+export interface SessionMeta {
+  /** 会话 ID */
+  id: string;
+  /** 会话标题 */
+  title?: string;
+  /** 父会话 ID（子代理会话） */
+  parentID?: string;
+  /** 会话所在目录（v2: info.location.directory） */
+  directory?: string;
+  /** 创建时间戳（毫秒） */
+  createdAt?: number;
+  /** OpenCode 版本 */
+  version?: string;
+  /** 最后使用的模型 ID */
+  modelID?: string;
+  /** 最后使用的提供商 ID */
+  providerID?: string;
+  /** 最后使用的模式（v2 中为 agent 名称） */
+  mode?: string;
 }
 
 /**

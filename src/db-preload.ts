@@ -1,127 +1,209 @@
 /**
- * SQLite preloader - restores token data from OpenCode database on plugin restart.
- * Reads recent assistant messages from opencode.db to repopulate tokenDataMap.
+ * SQLite preloader - restores session usage data from the OpenCode database.
+ *
+ * OpenCode v2 stores per-session aggregates in the `session_v2` table:
+ *   cost, tokens_input/output/reasoning, tokens_cache_read/write
+ * and assistant request counts in the `session_message` table.
+ *
+ * Older OpenCode versions are supported as a fallback (`session` + `message`).
  */
 import * as path from 'node:path';
 import { logger, DEBUG_ENABLED } from './logger.js';
-import type { SessionTokenData, TokenData } from './types.js';
+import type { SessionTokenData, TokenBreakdown } from './types.js';
 
-export async function preloadTokenData(
-  tokenDataMap: Map<string, SessionTokenData>,
+/** Session usage snapshot read from the database. */
+export interface DbSessionUsage {
+  sessionId: string;
+  projectPath?: string;
+  title?: string;
+  parentID?: string;
+  createdAt?: number;
+  cost: number;
+  tokens: TokenBreakdown;
+  requestCount: number;
+}
+
+const ZERO_TOKENS: TokenBreakdown = { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+
+interface DbRow {
+  id: string;
+  directory?: string | null;
+  title?: string | null;
+  parent_id?: string | null;
+  time_created?: number | null;
+  cost?: number | null;
+  tokens_input?: number | null;
+  tokens_output?: number | null;
+  tokens_reasoning?: number | null;
+  tokens_cache_read?: number | null;
+  tokens_cache_write?: number | null;
+  request_count?: number | null;
+}
+
+function toUsage(row: DbRow): DbSessionUsage {
+  const input = Number(row.tokens_input) || 0;
+  const output = Number(row.tokens_output) || 0;
+  const reasoning = Number(row.tokens_reasoning) || 0;
+  const cacheRead = Number(row.tokens_cache_read) || 0;
+  const cacheWrite = Number(row.tokens_cache_write) || 0;
+  return {
+    sessionId: row.id,
+    projectPath: row.directory ?? undefined,
+    title: row.title ?? undefined,
+    parentID: row.parent_id ?? undefined,
+    createdAt: row.time_created ?? undefined,
+    cost: Number(row.cost) || 0,
+    tokens: {
+      input,
+      output,
+      reasoning,
+      cacheRead,
+      cacheWrite,
+      total: input + output + cacheRead + cacheWrite,
+    },
+    requestCount: Number(row.request_count) || 0,
+  };
+}
+
+/**
+ * Read session usage snapshots from the OpenCode SQLite database.
+ * Uses the v2 `session_v2` table when available, otherwise falls back to the
+ * legacy `session` + `message` tables.
+ *
+ * Never throws - returns an empty array on any error.
+ */
+export async function readSessionsFromDb(
   dataDir: string,
-  limit = 10,
-  projectPath?: string,
-): Promise<void> {
+  options: { projectPath?: string; limit?: number } = {},
+): Promise<DbSessionUsage[]> {
   try {
     const { Database } = await import('bun:sqlite');
     const dbPath = path.join(dataDir, 'opencode.db');
     const db = new Database(dbPath, { readonly: true });
     try {
-      // Original SQL (fallback for when project-filtered query fails)
-      const originalSQL =
-        `SELECT m.id, m.session_id, m.data ` +
-        `FROM message m ` +
-        `WHERE json_extract(m.data, '$.role') = 'assistant' ` +
-        `AND m.session_id IN (` +
-        `SELECT id FROM session ORDER BY time_updated DESC LIMIT ${limit}` +
-        `) ` +
-        `ORDER BY m.session_id, m.time_created ASC`;
+      const limit = options.limit ?? 200;
+      const normalizedProjectPath = options.projectPath ? path.normalize(options.projectPath) : undefined;
 
-      // Project-filtered SQL: filters sessions by directory and returns directory column
-      const projectSQL =
-        `SELECT m.id, m.session_id, m.data, s.directory ` +
-        `FROM message m ` +
-        `JOIN session s ON m.session_id = s.id ` +
-        `WHERE json_extract(m.data, '$.role') = 'assistant' ` +
-        `AND m.session_id IN (` +
-        `SELECT id FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT ${limit}` +
-        `) ` +
-        `ORDER BY m.session_id, m.time_created ASC`;
-
-      const normalizedProjectPath = projectPath ? path.normalize(projectPath) : undefined;
-
-      let rows: Array<Record<string, unknown>>;
-
-      if (normalizedProjectPath) {
-        // Try project-filtered query first; fall back to original on schema mismatch
-        try {
-          const stmt = db.prepare(projectSQL);
-          rows = stmt.all(normalizedProjectPath) as Array<Record<string, unknown>>;
-        } catch {
-          if (DEBUG_ENABLED) {
-            logger.debug(`[db-preload] Project-filtered query failed, falling back to original SQL`);
-          }
-          rows = db.prepare(originalSQL).all() as Array<Record<string, unknown>>;
-        }
-      } else {
-        rows = db.prepare(originalSQL).all() as Array<Record<string, unknown>>;
-      }
-
-      for (const row of rows) {
-        try {
-          const data = JSON.parse(row.data as string);
-          if (data.role !== 'assistant') continue;
-
-          const sessionId = row.session_id as string;
-          const messageId = row.id as string;
-
-          const tkInput = Number(data.tokens?.input) || 0;
-          const tkOutput = Number(data.tokens?.output) || 0;
-          const tkReasoning = Number(data.tokens?.reasoning) || 0;
-          const tkCacheRead = Number(data.tokens?.cache?.read) || 0;
-          const tkCacheWrite = Number(data.tokens?.cache?.write) || 0;
-
-          const tokenData: TokenData = {
-            cost: Number(data.cost) || 0,
-            tokens: {
-              input: tkInput,
-              output: tkOutput,
-              reasoning: tkReasoning,
-              cacheRead: tkCacheRead,
-              cacheWrite: tkCacheWrite,
-              total: tkInput + tkOutput + tkCacheRead + tkCacheWrite,
-            },
-            modelID: data.modelID ?? '',
-            providerID: data.providerID ?? '',
-            mode: data.mode ?? '',
-          };
-
-          let sessionData = tokenDataMap.get(sessionId);
-          if (!sessionData) {
-            sessionData = {
-              messages: new Map(),
-              lastModelID: '',
-              lastProviderID: '',
-              lastMode: '',
-            };
-            tokenDataMap.set(sessionId, sessionData);
-          }
-          sessionData.messages.set(messageId, tokenData);
-          sessionData.lastModelID = tokenData.modelID;
-          sessionData.lastProviderID = tokenData.providerID;
-          sessionData.lastMode = tokenData.mode;
-
-          // Set projectPath from directory column (available with project-filtered SQL)
-          const directory = row.directory as string | undefined;
-          if (directory) {
-            sessionData.projectPath = path.normalize(directory);
-          }
-        } catch {
-          // Skip rows with invalid JSON
-        }
-      }
-
-      if (DEBUG_ENABLED) {
-        logger.debug(
-          `[db-preload] Preloaded ${tokenDataMap.size} sessions from ${dbPath}`,
-        );
-      }
+      const rows = querySessions(db, normalizedProjectPath, limit);
+      return rows.map(toUsage);
     } finally {
       db.close();
     }
   } catch (e) {
     if (DEBUG_ENABLED) {
-      logger.debug(`[db-preload] Failed to preload token data: ${e}`);
+      logger.debug(`[db-preload] Failed to read session usage: ${e}`);
     }
+    return [];
   }
 }
+
+/**
+ * Run the appropriate SELECT for the detected schema.
+ */
+function querySessions(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  normalizedProjectPath: string | undefined,
+  limit: number,
+): DbRow[] {
+  const hasV2 = tableExists(db, 'session_v2');
+
+  if (hasV2) {
+    // v2: session aggregates + assistant message count
+    const sql =
+      `SELECT s.id AS id, s.directory AS directory, s.title AS title, s.parent_id AS parent_id, ` +
+      `s.time_created AS time_created, s.cost AS cost, ` +
+      `s.tokens_input AS tokens_input, s.tokens_output AS tokens_output, ` +
+      `s.tokens_reasoning AS tokens_reasoning, s.tokens_cache_read AS tokens_cache_read, ` +
+      `s.tokens_cache_write AS tokens_cache_write, ` +
+      `(SELECT COUNT(*) FROM session_message m WHERE m.session_id = s.id AND m.type = 'assistant') AS request_count ` +
+      `FROM session_v2 s ` +
+      (normalizedProjectPath ? `WHERE s.directory = ?1 ` : ``) +
+      `ORDER BY s.time_created DESC LIMIT ${Math.max(1, Math.floor(limit))}`;
+
+    const stmt = db.prepare(sql);
+    return normalizedProjectPath
+      ? (stmt.all(normalizedProjectPath) as DbRow[])
+      : (stmt.all() as DbRow[]);
+  }
+
+  // Legacy (OpenCode 1.x): derive totals from assistant messages
+  const sql =
+    `SELECT s.id AS id, s.directory AS directory, s.title AS title, s.parent_id AS parent_id, ` +
+    `s.time_created AS time_created, ` +
+    `COALESCE(SUM(json_extract(m.data, '$.cost')), 0) AS cost, ` +
+    `COALESCE(SUM(json_extract(m.data, '$.tokens.input')), 0) AS tokens_input, ` +
+    `COALESCE(SUM(json_extract(m.data, '$.tokens.output')), 0) AS tokens_output, ` +
+    `COALESCE(SUM(json_extract(m.data, '$.tokens.reasoning')), 0) AS tokens_reasoning, ` +
+    `COALESCE(SUM(json_extract(m.data, '$.tokens.cache.read')), 0) AS tokens_cache_read, ` +
+    `COALESCE(SUM(json_extract(m.data, '$.tokens.cache.write')), 0) AS tokens_cache_write, ` +
+    `COUNT(m.id) AS request_count ` +
+    `FROM session s LEFT JOIN message m ON m.session_id = s.id ` +
+    `AND json_extract(m.data, '$.role') = 'assistant' ` +
+    (normalizedProjectPath ? `WHERE s.directory = ?1 ` : ``) +
+    `GROUP BY s.id ` +
+    `ORDER BY s.time_created DESC LIMIT ${Math.max(1, Math.floor(limit))}`;
+
+  const stmt = db.prepare(sql);
+  return normalizedProjectPath
+    ? (stmt.all(normalizedProjectPath) as DbRow[])
+    : (stmt.all() as DbRow[]);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function tableExists(db: any, name: string): boolean {
+  try {
+    const row = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`)
+      .get(name);
+    return !!row;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Preload session usage data into tokenDataMap.
+ * Each session is stored as a single synthetic message holding the cumulative
+ * totals, so the existing aggregation logic keeps working unchanged.
+ */
+export async function preloadTokenData(
+  tokenDataMap: Map<string, SessionTokenData>,
+  dataDir: string,
+  limit = 50,
+  projectPath?: string,
+): Promise<void> {
+  const sessions = await readSessionsFromDb(dataDir, { projectPath, limit });
+  if (sessions.length === 0) return;
+
+  for (const usage of sessions) {
+    const total = usage.tokens.total;
+    const messageId = `${usage.sessionId}:aggregate`;
+    tokenDataMap.set(usage.sessionId, {
+      messages: new Map([
+        [
+          messageId,
+          {
+            cost: usage.cost,
+            tokens: { ...usage.tokens },
+            modelID: '',
+            providerID: '',
+            mode: '',
+          },
+        ],
+      ]),
+      lastModelID: '',
+      lastProviderID: '',
+      lastMode: '',
+      projectPath: usage.projectPath ? path.normalize(usage.projectPath) : undefined,
+      requestCount: usage.requestCount,
+      cumulative: total > 0 || usage.cost > 0 ? { cost: usage.cost, tokens: { ...usage.tokens } } : undefined,
+    });
+  }
+
+  if (DEBUG_ENABLED) {
+    logger.debug(`[db-preload] Preloaded ${sessions.length} sessions from ${dataDir}`);
+  }
+}
+
+export { ZERO_TOKENS };

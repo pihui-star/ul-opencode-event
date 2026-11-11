@@ -1,199 +1,209 @@
 /**
- * Event Mapper Module
- * Converts SDK events to internal EventPayload format.
- * Handles all event type mapping and payload construction.
+ * Event Mapper Module (OpenCode v2)
+ * Converts v2 server events to internal EventPayload format.
  *
- * Dependencies: token-aggregator (for fillTokenData)
- * No dependency on plugin-core or cost.js.
+ * v2 event envelope: `{ type: string, data: {...} }` (v1 used `properties`).
+ *
+ * Token/cost data is NOT filled here - it is injected by the plugin core
+ * from the usage snapshot (database + live events).
  */
-import type { Event, Session } from '@opencode-ai/sdk';
-import type { EventPayload, EventType, SessionType, SessionTokenData } from './types.js';
-import { fillTokenData } from './token-aggregator.js';
+import type { EventPayload, EventType, SessionType, SessionMeta } from './types.js';
 
 /**
- * Resolve session type from SDK Session info.
- * - undefined/missing sessionInfo -> 'unknown' (race condition or file.edited)
+ * OpenCode v2 server event (subset we care about).
+ * The full union lives in @opencode/client; we only need type + data.
+ */
+export interface V2Event {
+  type: string;
+  data: Record<string, unknown>;
+}
+
+/**
+ * Resolve session type from session metadata.
+ * - undefined/missing -> 'unknown' (race condition or filesystem event)
  * - has parentID -> 'subagent' (child of main session)
  * - no parentID -> 'main' (primary user session)
  */
-export function resolveSessionType(sessionInfo?: Session): SessionType {
+export function resolveSessionType(sessionInfo?: SessionMeta): SessionType {
   if (!sessionInfo) return 'unknown';
   if (sessionInfo.parentID !== undefined && sessionInfo.parentID !== '') return 'subagent';
   return 'main';
 }
 
 /**
- * Convert SDK Event to internal EventPayload
+ * Convert an OpenCode v2 event to the internal EventPayload.
+ * Returns null when the event type is not mapped to a notification.
  */
 export function eventToPayload(
-  event: Event,
+  event: V2Event,
   projectName: string,
-  sessionInfo: Session | undefined,
+  sessionInfo: SessionMeta | undefined,
   timezone: string | undefined,
   projectPath: string | undefined,
-  tokenDataMap: Map<string, SessionTokenData> | undefined,
-  configLanguage: string | undefined,
-  configCost: import('./types.js').CostConfig | undefined,
-  resolveCostConfigFn: typeof import('./cost.js').resolveCostConfig,
-  formatCostFn: typeof import('./cost.js').formatCost,
 ): EventPayload | null {
+  const data = (event.data ?? {}) as Record<string, unknown>;
+  const sessionID = typeof data.sessionID === 'string' ? data.sessionID : '';
+
   const basePayload = {
     timestamp: formatTimestamp(new Date().toISOString(), timezone),
     projectName,
     projectPath,
-    sessionId: '',
+    sessionId: sessionID,
     sessionTitle: undefined,
   };
 
+  const sessionCommon = {
+    sessionTitle: sessionInfo?.title,
+    sessionType: resolveSessionType(sessionInfo),
+    parentSessionId: sessionInfo?.parentID ?? undefined,
+  };
+
   switch (event.type) {
-    case 'session.created':
+    case 'session.created': {
+      const created = data as {
+        sessionID?: string;
+        title?: string;
+        parentID?: string;
+      };
+      const parentID = created.parentID ?? sessionInfo?.parentID;
       return {
         ...basePayload,
-        eventType: 'created' as EventType,
-        sessionId: event.properties.info.id,
-        sessionTitle: event.properties.info.title,
-        sessionType: resolveSessionType(event.properties.info),
-        parentSessionId: event.properties.info.parentID ?? undefined,
+        eventType: 'created',
+        sessionId: created.sessionID ?? sessionID,
+        sessionTitle: created.title ?? sessionInfo?.title,
+        sessionType: resolveSessionType(sessionInfo ?? (parentID ? { id: created.sessionID ?? '', parentID } : undefined)),
+        parentSessionId: parentID,
       };
+    }
+
     case 'session.idle': {
-      const idlePayload: EventPayload = {
+      return {
         ...basePayload,
-        eventType: 'idle' as EventType,
-        sessionId: event.properties.sessionID,
+        eventType: 'idle',
         message: 'Task completed successfully',
-        duration: sessionInfo ? formatDuration(Date.now() - sessionInfo.time.created) : undefined,
-        sessionTitle: sessionInfo?.title,
-        sessionType: resolveSessionType(sessionInfo),
-        parentSessionId: sessionInfo?.parentID ?? undefined,
+        duration: sessionInfo?.createdAt ? formatDuration(Date.now() - sessionInfo.createdAt) : undefined,
+        ...sessionCommon,
       };
-      fillTokenData(idlePayload, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
-      return idlePayload;
     }
-    case 'session.error': {
-      const errorObj = event.properties.error;
-      const sessionId = event.properties.sessionID;
-      const errorPayload: EventPayload = {
+
+    case 'session.execution.failed': {
+      const failed = data as { error?: unknown };
+      return {
         ...basePayload,
-        eventType: 'error' as EventType,
-        sessionId: sessionId ?? '',
-        error: errorObj ? formatError(errorObj) : 'Unknown error',
-        sessionTitle: sessionInfo?.title,
-        sessionType: resolveSessionType(sessionInfo),
-        parentSessionId: sessionInfo?.parentID ?? undefined,
+        eventType: 'error',
+        error: failed.error ? formatError(failed.error) : 'Unknown error',
+        ...sessionCommon,
       };
-      fillTokenData(errorPayload, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
-      return errorPayload;
     }
 
-    default: {
-      // 处理 SDK Event 联合类型中未声明、但运行时可能收到的事件
-      const rawType = event.type as string;
-      const rawProps = event.properties as Record<string, unknown>;
+    case 'session.status': {
+      const statusEvent = data as { status?: { type?: string } };
+      const statusType = statusEvent.status?.type;
+      // status(idle) 等价于任务完成（session.idle），让 idle 通道能接住该信号
+      const effectiveEventType: EventType = statusType === 'idle' ? 'idle' : 'status';
+      return {
+        ...basePayload,
+        eventType: effectiveEventType,
+        statusType,
+        message: effectiveEventType === 'idle' ? 'Task completed successfully' : undefined,
+        duration:
+          effectiveEventType === 'idle' && sessionInfo?.createdAt
+            ? formatDuration(Date.now() - sessionInfo.createdAt)
+            : undefined,
+        ...sessionCommon,
+      };
+    }
 
-      // question.asked -- AI 向用户提问（主要目标，默认开启）
-      if (rawType === 'question.asked') {
-        const questions = rawProps.questions as Array<Record<string, unknown>> | undefined;
-        const firstQ = questions?.[0];
-        const p: EventPayload = {
-          ...basePayload,
-          eventType: 'question' as EventType,
-          sessionId: (rawProps.sessionID as string) || '',
-          title: firstQ?.header ? String(firstQ.header) : undefined,
-          questionText: firstQ?.question ? String(firstQ.question) : undefined,
-          options: firstQ?.options ? JSON.stringify(firstQ.options) : undefined,
-          sessionTitle: sessionInfo?.title,
-          sessionType: resolveSessionType(sessionInfo),
-          parentSessionId: sessionInfo?.parentID ?? undefined,
-        };
-        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
-        return p;
-      }
+    case 'permission.asked': {
+      const perm = data as { action?: string; resources?: string[]; message?: string };
+      const resource = perm.resources?.[0];
+      const title = perm.message ?? (resource ? `${perm.action ?? 'permission'}: ${resource}` : perm.action);
+      return {
+        ...basePayload,
+        eventType: 'permission',
+        title,
+        permissionType: perm.action,
+        ...sessionCommon,
+      };
+    }
 
-      // permission.updated -- 权限确认请求（默认开启）
-      if (rawType === 'permission.updated') {
-        const perm = rawProps as { sessionID?: string; title?: string; type?: string };
-        const p: EventPayload = {
-          ...basePayload,
-          eventType: 'permission' as EventType,
-          sessionId: perm.sessionID || '',
-          title: perm.title,
-          permissionType: perm.type,
-          sessionTitle: sessionInfo?.title,
-          sessionType: resolveSessionType(sessionInfo),
-          parentSessionId: sessionInfo?.parentID ?? undefined,
-        };
-        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
-        return p;
-      }
+    case 'form.created': {
+      // v2 中 AI 提问以表单(form)形式出现
+      const form = (data.form ?? {}) as Record<string, unknown>;
+      const question = extractFormQuestion(form);
+      return {
+        ...basePayload,
+        eventType: 'question',
+        sessionId: typeof form.sessionID === 'string' ? form.sessionID : sessionID,
+        title: question.title,
+        questionText: question.questionText,
+        options: question.options,
+        ...sessionCommon,
+      };
+    }
 
-      // session.status -- 会话状态变化（默认关闭）
-      if (rawType === 'session.status') {
-        const statusEvent = rawProps as { sessionID?: string; status?: { type?: string } };
-        const p: EventPayload = {
-          ...basePayload,
-          eventType: 'status' as EventType,
-          sessionId: statusEvent.sessionID || '',
-          statusType: statusEvent.status?.type,
-          sessionTitle: sessionInfo?.title,
-          sessionType: resolveSessionType(sessionInfo),
-          parentSessionId: sessionInfo?.parentID ?? undefined,
-        };
-        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
-        return p;
-      }
+    case 'session.shell.ended': {
+      const shell = (data.shell ?? {}) as { command?: string; status?: string; exit?: number };
+      return {
+        ...basePayload,
+        eventType: 'command',
+        commandName: shell.command,
+        arguments: shell.status ?? (shell.exit !== undefined ? `exit=${shell.exit}` : undefined),
+        ...sessionCommon,
+      };
+    }
 
-      // command.executed -- shell 命令执行完毕（默认关闭）
-      if (rawType === 'command.executed') {
-        const cmd = rawProps as { name?: string; arguments?: string; sessionID?: string };
-        const p: EventPayload = {
-          ...basePayload,
-          eventType: 'command' as EventType,
-          sessionId: cmd.sessionID || '',
-          commandName: cmd.name,
-          arguments: cmd.arguments,
-          sessionTitle: sessionInfo?.title,
-          sessionType: resolveSessionType(sessionInfo),
-          parentSessionId: sessionInfo?.parentID ?? undefined,
-        };
-        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
-        return p;
-      }
+    case 'filesystem.changed': {
+      const fsEvent = data as { file?: string };
+      return {
+        ...basePayload,
+        eventType: 'fileEdited',
+        filePath: fsEvent.file,
+        ...sessionCommon,
+      };
+    }
 
-      // file.edited -- 文件被编辑（默认关闭）
-      if (rawType === 'file.edited') {
-        const fileEvt = rawProps as { file?: string };
-        const p: EventPayload = {
-          ...basePayload,
-          eventType: 'fileEdited' as EventType,
-          filePath: fileEvt.file,
-          sessionType: resolveSessionType(sessionInfo),
-          parentSessionId: sessionInfo?.parentID ?? undefined,
-        };
-        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
-        return p;
-      }
-
-      // todo.updated -- Todo 列表更新（默认关闭）
-      if (rawType === 'todo.updated') {
-        const todoEvt = rawProps as { todos?: Array<{ content: string; status: string }> | undefined; sessionID?: string };
-        const summary = todoEvt.todos
-          ?.map(t => `[${t.status}] ${t.content}`).join('\n');
-        const p: EventPayload = {
-          ...basePayload,
-          eventType: 'todo' as EventType,
-          sessionId: todoEvt.sessionID || '',
-          todoSummary: summary,
-          sessionTitle: sessionInfo?.title,
-          sessionType: resolveSessionType(sessionInfo),
-          parentSessionId: sessionInfo?.parentID ?? undefined,
-        };
-        fillTokenData(p, tokenDataMap, configLanguage, configCost, resolveCostConfigFn, formatCostFn);
-        return p;
-      }
-
+    default:
       return null;
-    }
   }
+}
+
+/**
+ * Extract the first question of a v2 form payload.
+ * v2 form fields shape varies by field type; handled defensively.
+ */
+function extractFormQuestion(form: Record<string, unknown>): {
+  title?: string;
+  questionText?: string;
+  options?: string;
+} {
+  const rawFields = form.fields;
+  const first = Array.isArray(rawFields)
+    ? rawFields[0]
+    : rawFields && typeof rawFields === 'object'
+      ? Object.values(rawFields as Record<string, unknown>)[0]
+      : undefined;
+  const field = (first ?? {}) as Record<string, unknown>;
+
+  const title = pickString(form, ['title']) ?? pickString(field, ['label', 'name', 'title']);
+  const questionText =
+    pickString(field, ['description', 'instructions', 'prompt', 'question']) ?? pickString(form, ['description']);
+
+  const rawOptions = field.options ?? field.choices ?? field.values;
+  let options: string | undefined;
+  if (Array.isArray(rawOptions) && rawOptions.length > 0) {
+    options = JSON.stringify(rawOptions);
+  }
+
+  return { title, questionText, options };
+}
+
+function pickString(source: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return undefined;
 }
 
 /**
