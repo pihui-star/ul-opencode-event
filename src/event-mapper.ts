@@ -163,6 +163,20 @@ export function eventToPayload(
       };
     }
 
+    // Only emitted by OpenCode v1 (v2 has no todo events) - kept for v1 parity.
+    case 'todo.updated': {
+      const todoEvent = data as { todos?: Array<{ content?: string; status?: string }> };
+      const summary = todoEvent.todos
+        ?.map((t) => `[${t.status}] ${t.content}`)
+        .join('\n');
+      return {
+        ...basePayload,
+        eventType: 'todo',
+        todoSummary: summary,
+        ...sessionCommon,
+      };
+    }
+
     default:
       return null;
   }

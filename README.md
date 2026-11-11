@@ -46,18 +46,65 @@ Data persists across plugin restarts: usage is read from the OpenCode database (
 
 ## Requirements
 
-- **OpenCode 2.x** (v2 plugin API — `@opencode/plugin`, `Plugin.define`).
-  OpenCode 1.x is *not* supported: v1 plugin implementations do not run in v2.
+Works with **OpenCode 1.x (>= 1.18.29) and 2.x** from a single package:
+
+| OpenCode | Entry point used | Config key |
+|----------|------------------|------------|
+| 2.x | `Plugin.define({ id, setup })` | `plugins` |
+| 1.x | `{ id, server }` | `plugin` |
+
+## Installation
+
+### npm (recommended)
+
+```bash
+opencode plugin add @ulthon/ul-opencode-event
+```
+
+OpenCode installs and updates the plugin itself. Then configure it:
+
+```json
+// OpenCode 2.x
+{ "plugins": ["@ulthon/ul-opencode-event"] }
+// OpenCode 1.x
+{ "plugin": ["@ulthon/ul-opencode-event"] }
+```
+
+### GitHub
+
+```bash
+opencode plugin add github:ulthon/ul-opencode-event
+```
+
+The plugin is cloned and built automatically (`prepare` script), then referenced by the
+same config keys as above:
+
+```json
+// OpenCode 2.x
+{ "plugins": ["github:ulthon/ul-opencode-event"] }
+```
+
+### From a local checkout
+
+```bash
+git clone https://github.com/ulthon/ul-opencode-event
+cd ul-opencode-event && npm install && npm run build
+```
+
+```json
+// OpenCode 2.x
+{ "plugins": ["file:///absolute/path/to/ul-opencode-event"] }
+```
+
+### Release tarball (offline / air-gapped)
+
+```bash
+npm install -g https://github.com/ulthon/ul-opencode-event/releases/download/v0.3.0/ulthon-ul-opencode-event-0.3.0.tgz
+```
 
 ## Quick Start
 
-Add to `~/.config/opencode/opencode.json`:
-
-```json
-{ "plugins": ["@ulthon/ul-opencode-event"] }
-```
-
-OpenCode automatically installs the plugin from npm on startup. Then create a config file and test:
+Create a config file and test the channels:
 
 ```bash
 # Create config: ~/.config/opencode/ul-opencode-event.json

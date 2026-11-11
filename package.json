@@ -1,6 +1,6 @@
 {
   "name": "@ulthon/ul-opencode-event",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "OpenCode notification plugin - sends notifications via email, DingTalk, or Feishu when session events occur",
   "author": "augushong",
   "license": "MIT",
@@ -48,6 +48,7 @@
     "test": "bun test",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -55,6 +56,7 @@
     "nodemailer": "^6.9.0"
   },
   "devDependencies": {
+    "@opencode-ai/plugin": "^1.18.31",
     "@types/node": "^22.15.24",
     "@types/nodemailer": "^6.4.0",
     "@typescript-eslint/parser": "^8.0.0",

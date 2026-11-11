@@ -46,15 +46,17 @@ OpenCode 多通道通知与用量分析插件。通过邮件、钉钉、飞书�
 
 ## 环境要求
 
-- **OpenCode 2.x**（v2 插件 API —— `@opencode/plugin` + `Plugin.define`）。
-  不支持 OpenCode 1.x：v2 不再运行 v1 插件实现。
+同一份插件同时支持 **OpenCode 1.x（>= 1.18.29）与 2.x**：
+
+| OpenCode | 使用的入口 | 配置键 |
+|----------|------------|--------|
+| 2.x | `Plugin.define({ id, setup })` | `plugins` |
+| 1.x | `{ id, server }` | `plugin` |
 
 ## 快速开始
 
 ```bash
-# 1. 启用插件 -- 在 ~/.config/opencode/opencode.json 中添加:
-# { "plugins": ["@ulthon/ul-opencode-event"] }
-# OpenCode 启动时会自动从 npm 安装插件
+# 1. 启用插件（见下方安装方式）
 
 # 2. 创建配置文件
 # Windows: %USERPROFILE%\.config\opencode\ul-opencode-event.json
@@ -70,16 +72,61 @@ npx @ulthon/ul-opencode-event test
 
 ### 通过 OpenCode 插件配置安装（推荐）
 
-插件由 OpenCode 自动管理安装和更新，无需手动安装。在 `~/.config/opencode/opencode.json` 中添加：
+插件由 OpenCode 自动管理安装和更新，无需手动安装：
+
+```bash
+opencode plugin add @ulthon/ul-opencode-event
+```
+
+然后在 `~/.config/opencode/opencode.json` 中添加（**注意两代 OpenCode 的配置键不同**）：
 
 ```json
+// OpenCode 2.x
 {
   "plugins": ["@ulthon/ul-opencode-event"]
 }
+// OpenCode 1.x
+{
+  "plugin": ["@ulthon/ul-opencode-event"]
+}
 ```
 
-OpenCode 启动时自动从 npm 拉取插件，后续也由 OpenCode 的自动更新机制维护版本
-（`opencode plugin update`）。
+后续版本由 OpenCode 的自动更新机制维护（`opencode plugin update`）。
+
+### 从 GitHub 安装
+
+```bash
+opencode plugin add github:ulthon/ul-opencode-event
+```
+
+安装时会自动 clone 并执行 `prepare` 脚本完成构建，配置写法同上：
+
+```json
+// OpenCode 2.x
+{
+  "plugins": ["github:ulthon/ul-opencode-event"]
+}
+```
+
+### 从本地源码安装
+
+```bash
+git clone https://github.com/ulthon/ul-opencode-event
+cd ul-opencode-event && npm install && npm run build
+```
+
+```json
+// OpenCode 2.x
+{
+  "plugins": ["file:///absolute/path/to/ul-opencode-event"]
+}
+```
+
+### 使用发布包（离线 / 内网）
+
+```bash
+npm install -g https://github.com/ulthon/ul-opencode-event/releases/download/v0.3.0/ulthon-ul-opencode-event-0.3.0.tgz
+```
 
 > **不要全局安装**（`npm install -g`）。全局安装的副本不会被 OpenCode 加载，也不会被自动更新，纯属浪费。
 

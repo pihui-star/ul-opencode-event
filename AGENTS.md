@@ -4,8 +4,9 @@
 
 OpenCode 多通道通知插件 (`@ulthon/ul-opencode-event`)。监听 OpenCode 会话事件，通过 SMTP 邮件、钉钉机器人、飞书机器人发送通知。作为 npm 包发布，附带 CLI 测试工具。
 
-**目标运行时：OpenCode 2.x**（v2 插件 API：`@opencode/plugin` + `Plugin.define`）。
-v1 插件实现不会在 v2 中运行，因此不兼容 OpenCode 1.x。
+**目标运行时：OpenCode 1.x（>= 1.18.29）与 2.x 双兼容**。
+同一个包通过两种入口适配：v2 用 `Plugin.define({ id, setup })`，v1 用 `{ id, server }`。
+（v2 不再运行 v1 插件实现，但官方迁移指南支持在同一默认导出上同时提供两个入口。）
 
 ## 命令
 
@@ -22,11 +23,16 @@ npm run typecheck  # tsc --noEmit
 
 ```
 src/
-  index.ts      # 插件入口 - re-export plugin-core（默认导出为 v2 Plugin 定义）
+  index.ts      # 插件入口 - 默认导出同时提供 v2 setup() 与 v1 server() 两个入口
   plugin-core.ts # v2 插件核心：Plugin.define + setup(ctx)，事件订阅/分发、位置过滤、跨进程去重、工具注册
   usage.ts      # 用量读取与聚合：opencode.db(session_v2) 为主，实时事件叠加，产出 会话/总计/项目 三级用量
   event-mapper.ts # v2 事件(event.data) -> 内部 EventPayload
   token-aggregator.ts # 用量快照 -> EventPayload 字段 + 费用格式化
+  v1/           # OpenCode 1.x 兼容层
+    plugin-v1.ts       # v1 插件工厂（返回 { event } hooks）
+    v1-event-adapter.ts# v1 事件(properties) -> v2 事件封装，供 event-mapper 复用
+    token-aggregator-v1.ts # v1 按消息累积的 Token 聚合
+    db-preload-v1.ts   # v1 数据库预载（message 表）
   types.ts      # 所有类型定义（NotificationConfig、Channel、EventPayload、SessionMeta 等）
   config.ts     # 从 JSON 文件加载配置，全局+项目配置合并与校验
   handler.ts    # 多通道事件分发器（延迟创建 sender），使用 formatter 格式化消息

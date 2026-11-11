@@ -65,7 +65,8 @@ mock.module('../src/usage', () => ({
   readProjectUsage: async () => new Map(usageRows),
 }));
 
-import { setupPlugin, PLUGIN_ID } from '../src/index';
+import { setupPlugin, PLUGIN_ID } from '../src/plugin-core';
+import plugin from '../src/index';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -216,6 +217,12 @@ describe('v2 plugin', () => {
 
   test('exports a v2 plugin definition with a stable id', () => {
     expect(PLUGIN_ID).toBe('ul-opencode-event');
+  });
+
+  test('default export carries both the v2 and the v1 entry points', () => {
+    expect(plugin.id).toBe('ul-opencode-event');
+    expect(typeof plugin.setup).toBe('function');
+    expect(typeof plugin.server).toBe('function');
   });
 
   test('setup registers the ul-token-rebuild tool', async () => {
