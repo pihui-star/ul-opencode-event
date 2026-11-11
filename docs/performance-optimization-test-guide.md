@@ -1,5 +1,10 @@
 # 性能优化改动影响分析与测试指南
 
+> ⚠️ **历史文档（OpenCode 1.x 插件 API，基于 v0.1.55）**
+> 插件已迁移到 OpenCode v2 插件 API：增量计数器 `projectAgg` 已被
+> `usage.ts` 的三级聚合（数据库 + 实时事件）取代。
+> 本文仅供理解历史设计，当前实现见 [opencode-v2-migration.md](opencode-v2-migration.md)。
+
 > 本文档基于 v0.1.55 性能优化改动的全面分析，用于指导版本更新后的验证测试。
 
 ---

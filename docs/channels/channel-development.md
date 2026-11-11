@@ -1,5 +1,10 @@
 # 通知渠道开发指南
 
+> ⚠️ **部分过时**：`plugin-core.ts` 已改为 OpenCode v2 插件契约
+> （`Plugin.define` + `ctx.event.subscribe()`），不再有 `NotificationPlugin` 生命周期与
+> `message.updated` token 累积；渠道本身（`formatters.ts` / `ChannelSender`）的设计未变。
+> v2 迁移说明见 [../opencode-v2-migration.md](../opencode-v2-migration.md)。
+
 本文档面向需要在 `@ulthon/ul-opencode-event` 中添加新通知渠道的开发者。以钉钉（DingTalk）实现为参考案例，说明多通道架构的完整设计。
 
 > 本文档是**开发者参考**，不是用户配置指南。用户配置请参阅 README。

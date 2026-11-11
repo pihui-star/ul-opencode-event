@@ -259,6 +259,8 @@ export interface SyncResult {
   totalSessions: number;
   /** Total token breakdown across all cached sessions (matching projectPath) */
   totalTokens: TokenBreakdown;
+  /** False when the database could not be read (no SQLite support / missing file) */
+  databaseAvailable: boolean;
 }
 
 /**
@@ -276,18 +278,20 @@ export async function syncFromDB(
     newSessions: 0,
     totalSessions: existingCache.size,
     totalTokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    databaseAvailable: false,
   };
 
   try {
-    // Lazy import to avoid loading bun:sqlite at plugin startup
-    const { readSessionsFromDb } = await import('./db-preload.js');
+    // Lazy import to avoid loading the SQLite binding at plugin startup
+    const { readSessionsFromDb, databaseAvailable } = await import('./db-preload.js');
+
+    const dbAvailable = await databaseAvailable(dataDir);
 
     // OpenCode v2 keeps per-session aggregates in `session_v2`;
     // readSessionsFromDb falls back to the legacy schema when needed.
-    const sessions = await readSessionsFromDb(dataDir, { projectPath, limit: 1000 });
-    if (sessions.length === 0) {
-      return ZERO_RESULT;
-    }
+    const sessions = dbAvailable
+      ? await readSessionsFromDb(dataDir, { projectPath, limit: 1000 })
+      : [];
 
     let newSessions = 0;
     for (const usage of sessions) {
@@ -309,14 +313,17 @@ export async function syncFromDB(
       newSessions++;
     }
 
-    // Reload cache to get accurate totals
-    const updatedCache = loadSessionCache(dataDir);
-    const agg = aggregateProjectFromCache(updatedCache, projectPath);
+    // Reload cache to get accurate totals (keep entries that are only in memory)
+    const reloaded = loadSessionCache(dataDir);
+    const merged = new Map(existingCache);
+    for (const [id, entry] of reloaded) merged.set(id, entry);
+    const agg = aggregateProjectFromCache(merged, projectPath);
 
     return {
       newSessions,
-      totalSessions: updatedCache.size,
+      totalSessions: merged.size,
       totalTokens: agg.tokens,
+      databaseAvailable: dbAvailable,
     };
   } catch (err) {
     logger.error(`syncFromDB failed: ${err}`);

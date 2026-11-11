@@ -1,5 +1,10 @@
 # 事件数据流架构
 
+> ⚠️ **历史文档（OpenCode 1.x 插件 API）**
+> 插件已迁移到 OpenCode v2 插件 API：事件订阅改为 `ctx.event.subscribe()`，
+> 用量来源改为 `opencode.db` + 实时事件（不再是 `message.updated` 累积）。
+> 本文描述的旧机制仅供理解历史设计，当前实现见 [../opencode-v2-migration.md](../opencode-v2-migration.md)。
+
 本文档描述插件从 OpenCode SDK 接收事件到发送通知的完整数据流。
 
 ---

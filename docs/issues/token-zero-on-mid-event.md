@@ -1,5 +1,10 @@
 # 已修复：中间事件 Token 显示为 0
 
+> ⚠️ **历史文档（OpenCode 1.x 插件 API）**
+> 插件已迁移到 OpenCode v2 插件 API，用量来源改为 `opencode.db`（`session_v2`）+ 实时事件，
+> 「中间事件 token 为 0」这一 v1 特有的问题不再存在。
+> 当前实现见 [../opencode-v2-migration.md](../opencode-v2-migration.md)。
+
 > 状态：已修复（totalTokens 部分，v0.1.45）
 > 发现日期：2026-04-18
 > 修复日期：2026-04-18

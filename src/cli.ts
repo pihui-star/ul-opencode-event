@@ -896,6 +896,13 @@ async function runRebuild(): Promise<void> {
   console.log(`Project: ${projectPath}`);
   console.log(`New sessions synced: ${result.newSessions}`);
   console.log(`Total cached sessions: ${result.totalSessions}`);
+  if (!result.databaseAvailable) {
+    console.log();
+    console.log(
+      `${CLI_PREFIX} 数据库不可用：当前运行时没有 SQLite 支持（Node 需要 >= 22.5，或使用 Bun）。`,
+    );
+    console.log(`${CLI_PREFIX} 以下数据来自本地缓存文件；在 OpenCode 内调用 ul-token-rebuild 工具可读取数据库。`);
+  }
   console.log();
   console.log('Token breakdown:');
 

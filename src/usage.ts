@@ -14,6 +14,7 @@
  */
 import * as path from 'node:path';
 import { logger, DEBUG_ENABLED } from './logger.js';
+import { openReadonlyDatabase, type SqlDatabase } from './sqlite.js';
 import type { TokenBreakdown } from './types.js';
 
 /** Aggregated usage for a set of sessions. */
@@ -71,23 +72,25 @@ export function addTotals(a: UsageTotals, b: UsageTotals): UsageTotals {
  */
 export async function readProjectUsage(dataDir: string, directory: string): Promise<Map<string, UsageRow>> {
   const rows = new Map<string, UsageRow>();
+  const db = await openReadonlyDatabase(path.join(dataDir, 'opencode.db'));
+  if (!db) {
+    if (DEBUG_ENABLED) {
+      logger.debug('[usage] No SQLite implementation available - skipping database usage');
+    }
+    return rows;
+  }
   try {
-    const { Database } = await import('bun:sqlite');
-    const dbPath = path.join(dataDir, 'opencode.db');
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const normalized = path.normalize(directory);
-      for (const row of querySessionUsage(db, normalized)) {
-        const usage = toUsageRow(row);
-        rows.set(usage.sessionId, usage);
-      }
-    } finally {
-      db.close();
+    const normalized = path.normalize(directory);
+    for (const row of querySessionUsage(db, normalized)) {
+      const usage = toUsageRow(row);
+      rows.set(usage.sessionId, usage);
     }
   } catch (err) {
     if (DEBUG_ENABLED) {
       logger.debug(`[usage] Failed to read usage from database: ${err}`);
     }
+  } finally {
+    db.close();
   }
   return rows;
 }
@@ -120,8 +123,7 @@ function directoryVariants(directory: string): string[] {
   return [...variants];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function querySessionUsage(db: any, normalizedDirectory: string): DbRow[] {
+function querySessionUsage(db: SqlDatabase, normalizedDirectory: string): DbRow[] {
   const hasV2 = tableExists(db, 'session_v2');
   const variants = directoryVariants(normalizedDirectory);
   const placeholders = variants.map((_, i) => `?${i + 1}`).join(', ');
@@ -135,7 +137,7 @@ function querySessionUsage(db: any, normalizedDirectory: string): DbRow[] {
       `s.tokens_cache_write AS tokens_cache_write, ` +
       `(SELECT COUNT(*) FROM session_message m WHERE m.session_id = s.id AND m.type = 'assistant') AS request_count ` +
       `FROM session_v2 s WHERE s.directory IN (${placeholders})`;
-    return db.prepare(sql).all(...variants) as DbRow[];
+    return db.prepare(sql).all(...variants) as unknown as DbRow[];
   }
 
   // Legacy OpenCode 1.x schema
@@ -151,11 +153,10 @@ function querySessionUsage(db: any, normalizedDirectory: string): DbRow[] {
     `FROM session s LEFT JOIN message m ON m.session_id = s.id ` +
     `AND json_extract(m.data, '$.role') = 'assistant' ` +
     `WHERE s.directory IN (${placeholders}) GROUP BY s.id`;
-  return db.prepare(sql).all(...variants) as DbRow[];
+  return db.prepare(sql).all(...variants) as unknown as DbRow[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function tableExists(db: any, name: string): boolean {
+function tableExists(db: SqlDatabase, name: string): boolean {
   try {
     return !!db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`).get(name);
   } catch {
@@ -195,24 +196,19 @@ function toUsageRow(row: DbRow): UsageRow {
  */
 export async function readSessionDirectory(dataDir: string, sessionID: string): Promise<string | undefined> {
   if (!sessionID) return undefined;
+  const db = await openReadonlyDatabase(path.join(dataDir, 'opencode.db'));
+  if (!db) return undefined;
   try {
-    const { Database } = await import('bun:sqlite');
-    const dbPath = path.join(dataDir, 'opencode.db');
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const table = tableExists(db, 'session_v2') ? 'session_v2' : 'session';
-      const row = db.prepare(`SELECT directory FROM ${table} WHERE id = ?`).get(sessionID) as
-        | { directory?: string | null }
-        | undefined;
-      return row?.directory ?? undefined;
-    } finally {
-      db.close();
-    }
+    const table = tableExists(db, 'session_v2') ? 'session_v2' : 'session';
+    const row = db.prepare(`SELECT directory FROM ${table} WHERE id = ?`).get(sessionID);
+    return (row?.directory as string | undefined) ?? undefined;
   } catch (err) {
     if (DEBUG_ENABLED) {
       logger.debug(`[usage] Failed to read session directory: ${err}`);
     }
     return undefined;
+  } finally {
+    db.close();
   }
 }
 

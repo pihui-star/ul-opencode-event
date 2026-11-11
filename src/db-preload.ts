@@ -9,6 +9,7 @@
  */
 import * as path from 'node:path';
 import { logger, DEBUG_ENABLED } from './logger.js';
+import { openReadonlyDatabase, type SqlDatabase } from './sqlite.js';
 import type { SessionTokenData, TokenBreakdown } from './types.js';
 
 /** Session usage snapshot read from the database. */
@@ -76,24 +77,25 @@ export async function readSessionsFromDb(
   dataDir: string,
   options: { projectPath?: string; limit?: number } = {},
 ): Promise<DbSessionUsage[]> {
-  try {
-    const { Database } = await import('bun:sqlite');
-    const dbPath = path.join(dataDir, 'opencode.db');
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const limit = options.limit ?? 200;
-      const normalizedProjectPath = options.projectPath ? path.normalize(options.projectPath) : undefined;
-
-      const rows = querySessions(db, normalizedProjectPath, limit);
-      return rows.map(toUsage);
-    } finally {
-      db.close();
+  const db = await openReadonlyDatabase(path.join(dataDir, 'opencode.db'));
+  if (!db) {
+    if (DEBUG_ENABLED) {
+      logger.debug('[db-preload] No SQLite implementation available - skipping database read');
     }
+    return [];
+  }
+  try {
+    const limit = options.limit ?? 200;
+    const normalizedProjectPath = options.projectPath ? path.normalize(options.projectPath) : undefined;
+    const rows = querySessions(db, normalizedProjectPath, limit);
+    return rows.map(toUsage);
   } catch (e) {
     if (DEBUG_ENABLED) {
       logger.debug(`[db-preload] Failed to read session usage: ${e}`);
     }
     return [];
+  } finally {
+    db.close();
   }
 }
 
@@ -114,8 +116,7 @@ function directoryVariants(directory: string): string[] {
  * Run the appropriate SELECT for the detected schema.
  */
 function querySessions(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  db: any,
+  db: SqlDatabase,
   normalizedProjectPath: string | undefined,
   limit: number,
 ): DbRow[] {
@@ -140,7 +141,7 @@ function querySessions(
       `ORDER BY s.time_created DESC LIMIT ${Math.max(1, Math.floor(limit))}`;
 
     const stmt = db.prepare(sql);
-    return (variants.length > 0 ? stmt.all(...variants) : stmt.all()) as DbRow[];
+    return (variants.length > 0 ? stmt.all(...variants) : stmt.all()) as unknown as DbRow[];
   }
 
   // Legacy (OpenCode 1.x): derive totals from assistant messages
@@ -166,16 +167,31 @@ function querySessions(
     `ORDER BY s.time_created DESC LIMIT ${Math.max(1, Math.floor(limit))}`;
 
   const stmt = db.prepare(sql);
-  return (variants.length > 0 ? stmt.all(...variants) : stmt.all()) as DbRow[];
+  return (variants.length > 0 ? stmt.all(...variants) : stmt.all()) as unknown as DbRow[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function tableExists(db: any, name: string): boolean {
+function tableExists(db: SqlDatabase, name: string): boolean {
   try {
     const row = db
       .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`)
       .get(name);
     return !!row;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check whether the OpenCode database can be read in this runtime.
+ * The plugin runs under Bun, the CLI may run under Node without SQLite support.
+ */
+export async function databaseAvailable(dataDir: string): Promise<boolean> {
+  const db = await openReadonlyDatabase(path.join(dataDir, 'opencode.db'));
+  if (!db) return false;
+  try {
+    db.close();
+    return true;
   } catch {
     return false;
   }
