@@ -4,12 +4,67 @@
 
 OpenCode 多通道通知与用量分析插件。通过邮件、钉钉、飞书接收任务完成或错误提醒 -- 每条通知自带多层级 Token 消耗和 API 请求统计数据。
 
+> [!IMPORTANT]
+> **维护声明**
+>
+> 原作者（[@ulthon](https://github.com/ulthon)）**已不再维护本项目**。
+> 本仓库由 [@pihuiarch](https://github.com/pihuiarch) 维护，是版本发布、问题反馈与缺陷修复的**唯一来源**。
+>
+> - 版本发布与 issue → [github.com/pihuiarch/ul-opencode-event](https://github.com/pihuiarch/ul-opencode-event)
+> - 原仓库（只读存档）→ [gitee.com/ulthon/ul-opencode-event](https://gitee.com/ulthon/ul-opencode-event)
+>
+> 请从本仓库安装 —— npm 上的 `@ulthon/ul-opencode-event` 仍由原作者发布，**不包含**下文所述的 OpenCode 2.x 适配。
+
+## 为什么它是日常工作的一部分
+
+一次 AI 编程任务往往不是十几秒能完成的：跨 20 个文件的重构、跑不通的 CI、几百个生成文件的批量迁移 —— 你把任务交给它，切到别的窗口，十分钟后再回来，才知道它**是完成了、失败了，还是正等着你回答**。而终端里只剩一条长输出流的最后一行，Token 计数要么根本不显示，要么淹没在 TUI 界面里。
+
+这个插件消除的就是这份日常摩擦：
+
+- **你离开终端，终端也会告诉你。** 任务完成、任务失败、AI 反问、等待确认权限 —— 每一件事都直接发到飞书 / 钉钉 / 邮件，而不是留在一个你已经关掉的窗口里。
+- **不用再猜这次任务花了多少钱。** 每条通知都带上本次会话的 Token、缓存命中率、请求次数和费用估算，且区分会话 / 总计 / 项目三个层级。
+- **留下可追溯的记录。** 通知内容同步落成本地 JSONL 文件，一天的工作可以用 `jq` 直接检索，而不是只存在于终端回滚里。
+
+它不是演示性质的玩具通道，而是让「长时间运行、无人值守」的 OpenCode 在正常工作流里真正可用的那一块拼图。
+
+## 为什么必须做 OpenCode 的适配改造
+
+OpenCode 2 重写了插件 API：1.x 的插件契约不再被运行，而且失败方式是**静默**的 —— 加载器直接丢弃插件，控制台不给有效提示，结果就是通知从此消失：
+
+```
+failed to load plugin target=@ulthon/ul-opencode-event
+  cause="Cannot find package '@opencode-ai/plugin' ..."
+```
+
+| OpenCode 2 的变化 | 对 1.x 插件的影响 |
+|---|---|
+| 插件入口 | `export default function` → `Plugin.define({ id, setup })` |
+| SDK 包 | `@opencode-ai/plugin` → `@opencode/plugin`，且必须是**运行时依赖**，否则安装后的副本解析不到它 |
+| 事件订阅 | `event` hook → `ctx.event.subscribe()` |
+| 任务完成 | `session.idle` 事件 → `ctx.session.hook('experimental.idle')`（v2 不再发布 idle 事件） |
+| 事件数据 | `event.properties` → `event.data` |
+| 自定义工具 | `tool()` + zod → `ctx.tool.transform()` + JSON Schema |
+| 会话错误 | `session.error` → `session.execution.failed` |
+| 配置键 | `plugin` → `plugins` |
+
+本插件已完成 v2 适配；又因为只支持 v2 就等于放弃全部 1.x 用户，所以**在同一套代码之上又补了一层 v1 兼容**。一个包，两个入口：
+
+```ts
+export default {
+  ...Plugin.define({ id: PLUGIN_ID, setup: setupPlugin }),  // OpenCode 2.x
+  server: createV1Plugin,                                  // OpenCode 1.x
+}
+```
+
+两条路径共用同一套通道实现、模板、格式化器与事件映射，因此在任何版本上收到的通知内容与行为完全一致。详见 [OpenCode 1.x / 2.x 双版本兼容](docs/opencode-v1-v2-compat.md) · [v2 迁移记录](docs/opencode-v2-migration.md)
+
 ## 为什么选择 ul-opencode-event？
 
 - **多通道通知** -- 支持 SMTP 邮件、钉钉机器人、飞书机器人，后续将支持 Webhook、Telegram、Slack 等更多渠道。
 - **Token 用量统计** -- 在消息 / 会话 / 总计 / 项目四个层级追踪 Token 消耗和 API 请求次数，随时掌握用量。
 - **远程开发友好** -- 桌面通知在你离开时就失效了。本插件通过邮件、钉钉、飞书等渠道发送通知，让你随时掌握 AI 编程助手的任务进度。
 - **实时提醒** -- 会话完成（`idle`）、出错（`error`）、AI 提问（`question`）、权限确认（`permission`）等关键事件即时通知。
+- **一个包兼容两个 OpenCode 大版本** -- 采用 v2 插件 API 并内置 v1 回退，不会在版本升级后突然失效。
 - **丰富模板变量** -- 74+ 个变量，涵盖 Token 统计、缓存命中率、系统信息等，支持中英文双语模板。
 - **配置简单** -- JSON 配置文件，支持全局和项目级配置，按通道名称自动合并。
 
@@ -26,7 +81,7 @@ OpenCode 多通道通知与用量分析插件。通过邮件、钉钉、飞书�
 | Slack | 计划中 | Slack incoming webhooks |
 | 企业微信 | 计划中 | 企业微信机器人 |
 
-**想要其他渠道？** 在 [Gitee 仓库](https://gitee.com/ulthon/ul-opencode-event) 提 issue 告诉我们！
+**想要其他渠道？** 在 [GitHub 仓库](https://github.com/pihuiarch/ul-opencode-event)（或 [Gitee 镜像](https://gitee.com/ulthon/ul-opencode-event)）提 issue 告诉我们！
 
 ## Token 用量统计
 
@@ -96,7 +151,7 @@ opencode plugin add @ulthon/ul-opencode-event
 ### 从 GitHub 安装
 
 ```bash
-opencode plugin add github:ulthon/ul-opencode-event
+opencode plugin add github:pihuiarch/ul-opencode-event
 ```
 
 安装时会自动 clone 并执行 `prepare` 脚本完成构建，配置写法同上：
@@ -104,14 +159,14 @@ opencode plugin add github:ulthon/ul-opencode-event
 ```json
 // OpenCode 2.x
 {
-  "plugins": ["github:ulthon/ul-opencode-event"]
+  "plugins": ["github:pihuiarch/ul-opencode-event"]
 }
 ```
 
 ### 从本地源码安装
 
 ```bash
-git clone https://github.com/ulthon/ul-opencode-event
+git clone https://github.com/pihuiarch/ul-opencode-event
 cd ul-opencode-event && npm install && npm run build
 ```
 
@@ -125,7 +180,7 @@ cd ul-opencode-event && npm install && npm run build
 ### 使用发布包（离线 / 内网）
 
 ```bash
-npm install -g https://github.com/ulthon/ul-opencode-event/releases/download/v0.3.0/ulthon-ul-opencode-event-0.3.0.tgz
+npm install -g https://github.com/pihuiarch/ul-opencode-event/releases/download/v0.3.0/ulthon-ul-opencode-event-0.3.0.tgz
 ```
 
 > **不要全局安装**（`npm install -g`）。全局安装的副本不会被 OpenCode 加载，也不会被自动更新，纯属浪费。

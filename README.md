@@ -4,12 +4,69 @@
 
 OpenCode multi-channel notification and usage analytics plugin. Get notified when tasks complete or errors occur via email, DingTalk, or Feishu — with multi-level token and request tracking built into every alert.
 
+> [!IMPORTANT]
+> **Maintenance notice**
+>
+> The original author ([@ulthon](https://github.com/ulthon)) **no longer maintains this project**.
+> This repository is maintained by [@pihuiarch](https://github.com/pihuiarch) and is the single
+> source of truth for releases, issue tracking and fixes.
+>
+> - Releases & issues → [github.com/pihuiarch/ul-opencode-event](https://github.com/pihuiarch/ul-opencode-event)
+> - Original repository (read-only, archived) → [gitee.com/ulthon/ul-opencode-event](https://gitee.com/ulthon/ul-opencode-event)
+>
+> Install from this repository — the npm package `@ulthon/ul-opencode-event` is still published by
+> the original author and does **not** contain the OpenCode 2.x support described below.
+
+## Why this plugin is part of the daily workflow
+
+An AI coding session is not a 10-second action. A refactor across 20 files, a flaky CI run, a migration with hundreds of generated edits — you kick the task off, switch to another window, and come back minutes later to find out whether it **finished, failed, or is still waiting for your answer**. Meanwhile the terminal only shows the last line of a long stream, and the token counter is either hidden or buried in the TUI.
+
+That is the daily friction this plugin removes:
+
+- **You leave the terminal, the terminal tells you.** Task finished, task failed, the agent is asking a question, a permission prompt is waiting — each one arrives in Feishu / DingTalk / email, not in a window you already closed.
+- **You stop guessing what a task cost.** Every alert carries the session's tokens, cache hit rate, request count and estimated cost, at session / total / project level.
+- **You keep a record.** Notifications are mirrored into a local JSONL file, so the day's activity is greppable with `jq` instead of living only in scrollback.
+
+It is not a demo or a toy channel: it is the piece that makes unattended / long-running OpenCode work usable on a normal workday.
+
+## Why the OpenCode v1 → v2 adaptation was needed
+
+OpenCode 2 rewrote the plugin API. The 1.x plugin contract no longer runs, and the failure mode is **silent** — the loader drops the plugin, the console prints nothing useful, and you simply stop receiving notifications:
+
+```
+failed to load plugin target=@ulthon/ul-opencode-event
+  cause="Cannot find package '@opencode-ai/plugin' ..."
+```
+
+| What changed in OpenCode 2 | Impact on a 1.x plugin |
+|---|---|
+| Plugin entry point | `export default function` → `Plugin.define({ id, setup })` |
+| SDK package | `@opencode-ai/plugin` → `@opencode/plugin` (and it must be a **runtime** dependency, or the installed copy cannot resolve it) |
+| Event stream | `event` hook → `ctx.event.subscribe()` |
+| Task finished | `session.idle` event → `ctx.session.hook('experimental.idle')` (v2 publishes no idle event) |
+| Event payload | `event.properties` → `event.data` |
+| Custom tools | `tool()` + zod → `ctx.tool.transform()` with JSON Schema |
+| Session errors | `session.error` → `session.execution.failed` |
+| Config key | `plugin` → `plugins` |
+
+This plugin was ported to the v2 API — and, because a v2-only package would drop every 1.x user, a **v1 compatibility layer was added on top of the same codebase**. One package, two entry points:
+
+```ts
+export default {
+  ...Plugin.define({ id: PLUGIN_ID, setup: setupPlugin }),  // OpenCode 2.x
+  server: createV1Plugin,                                  // OpenCode 1.x
+}
+```
+
+Both paths share the same channel stack, templates, formatters and event mapping, so a notification looks and behaves identically on either version. Details: [OpenCode 1.x / 2.x compatibility](docs/opencode-v1-v2-compat.md) · [v2 migration notes](docs/opencode-v2-migration.md)
+
 ## Why ul-opencode-event?
 
 - **Multi-Channel Notifications** - SMTP email, DingTalk robot, Feishu robot, with more planned
 - **Token Usage Analytics** - Tracks token consumption and API requests at message / session / total / project levels
 - **Remote Development Friendly** - Get notified when your AI coding agent finishes a task or hits an error
 - **Real-time Alerts** - Immediate notifications on session `idle`, `error`, `question`, `permission`, and more
+- **One Package, Both OpenCode Versions** - v2 plugin API with a v1 fallback, no version-locked installs
 - **Rich Template Variables** - 74+ variables including token stats, cache hit rates, and system info, with i18n (zh/en)
 - **Easy Configuration** - Simple JSON config with global + project-level merge
 
@@ -26,7 +83,7 @@ OpenCode multi-channel notification and usage analytics plugin. Get notified whe
 | Slack | Planned | Slack incoming webhooks |
 | WeChat Work | Planned | Enterprise WeChat |
 
-**Have a channel request?** Open an issue on our [Gitee repo](https://gitee.com/ulthon/ul-opencode-event)!
+**Have a channel request?** Open an issue on the [GitHub repo](https://github.com/pihuiarch/ul-opencode-event) (or the [Gitee mirror](https://gitee.com/ulthon/ul-opencode-event))!
 
 ## Token Usage Analytics
 
@@ -73,7 +130,7 @@ OpenCode installs and updates the plugin itself. Then configure it:
 ### GitHub
 
 ```bash
-opencode plugin add github:ulthon/ul-opencode-event
+opencode plugin add github:pihuiarch/ul-opencode-event
 ```
 
 The plugin is cloned and built automatically (`prepare` script), then referenced by the
@@ -81,13 +138,13 @@ same config keys as above:
 
 ```json
 // OpenCode 2.x
-{ "plugins": ["github:ulthon/ul-opencode-event"] }
+{ "plugins": ["github:pihuiarch/ul-opencode-event"] }
 ```
 
 ### From a local checkout
 
 ```bash
-git clone https://github.com/ulthon/ul-opencode-event
+git clone https://github.com/pihuiarch/ul-opencode-event
 cd ul-opencode-event && npm install && npm run build
 ```
 
@@ -99,7 +156,7 @@ cd ul-opencode-event && npm install && npm run build
 ### Release tarball (offline / air-gapped)
 
 ```bash
-npm install -g https://github.com/ulthon/ul-opencode-event/releases/download/v0.3.0/ulthon-ul-opencode-event-0.3.0.tgz
+npm install -g https://github.com/pihuiarch/ul-opencode-event/releases/download/v0.3.0/ulthon-ul-opencode-event-0.3.0.tgz
 ```
 
 ## Quick Start
