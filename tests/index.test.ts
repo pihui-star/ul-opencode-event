@@ -13,6 +13,13 @@ interface SentMessage {
 
 const sentMessages: SentMessage[] = [];
 
+// Keep the tests away from the real data directory (~/.local/share/opencode):
+// the plugin writes the session cache and the event claim markers there.
+const testDataDir = require('node:fs').mkdtempSync(
+  require('node:path').join(require('node:os').tmpdir(), 'ul-opencode-event-test-data-'),
+);
+process.env.OPENCODE_DATA_DIR = testDataDir;
+
 mock.module('../src/email', () => ({
   createEmailSender: async (channel: Channel) => {
     if (channel.enabled === false) return null;

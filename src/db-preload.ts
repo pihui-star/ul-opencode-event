@@ -98,6 +98,19 @@ export async function readSessionsFromDb(
 }
 
 /**
+ * Directory variants used for database lookups.
+ * OpenCode stores directories with forward slashes while the plugin receives
+ * native paths, so every spelling has to be matched.
+ */
+function directoryVariants(directory: string): string[] {
+  const normalized = path.normalize(directory);
+  const variants = new Set<string>([directory, normalized]);
+  variants.add(normalized.replace(/\\/g, '/'));
+  variants.add(normalized.replace(/\//g, '\\'));
+  return [...variants];
+}
+
+/**
  * Run the appropriate SELECT for the detected schema.
  */
 function querySessions(
@@ -110,6 +123,11 @@ function querySessions(
 
   if (hasV2) {
     // v2: session aggregates + assistant message count
+    const variants = normalizedProjectPath ? directoryVariants(normalizedProjectPath) : [];
+    const where = variants.length > 0
+      ? `WHERE s.directory IN (${variants.map((_, i) => `?${i + 1}`).join(', ')}) `
+      : '';
+
     const sql =
       `SELECT s.id AS id, s.directory AS directory, s.title AS title, s.parent_id AS parent_id, ` +
       `s.time_created AS time_created, s.cost AS cost, ` +
@@ -118,16 +136,19 @@ function querySessions(
       `s.tokens_cache_write AS tokens_cache_write, ` +
       `(SELECT COUNT(*) FROM session_message m WHERE m.session_id = s.id AND m.type = 'assistant') AS request_count ` +
       `FROM session_v2 s ` +
-      (normalizedProjectPath ? `WHERE s.directory = ?1 ` : ``) +
+      where +
       `ORDER BY s.time_created DESC LIMIT ${Math.max(1, Math.floor(limit))}`;
 
     const stmt = db.prepare(sql);
-    return normalizedProjectPath
-      ? (stmt.all(normalizedProjectPath) as DbRow[])
-      : (stmt.all() as DbRow[]);
+    return (variants.length > 0 ? stmt.all(...variants) : stmt.all()) as DbRow[];
   }
 
   // Legacy (OpenCode 1.x): derive totals from assistant messages
+  const variants = normalizedProjectPath ? directoryVariants(normalizedProjectPath) : [];
+  const where = variants.length > 0
+    ? `WHERE s.directory IN (${variants.map((_, i) => `?${i + 1}`).join(', ')}) `
+    : '';
+
   const sql =
     `SELECT s.id AS id, s.directory AS directory, s.title AS title, s.parent_id AS parent_id, ` +
     `s.time_created AS time_created, ` +
@@ -140,14 +161,12 @@ function querySessions(
     `COUNT(m.id) AS request_count ` +
     `FROM session s LEFT JOIN message m ON m.session_id = s.id ` +
     `AND json_extract(m.data, '$.role') = 'assistant' ` +
-    (normalizedProjectPath ? `WHERE s.directory = ?1 ` : ``) +
+    where +
     `GROUP BY s.id ` +
     `ORDER BY s.time_created DESC LIMIT ${Math.max(1, Math.floor(limit))}`;
 
   const stmt = db.prepare(sql);
-  return normalizedProjectPath
-    ? (stmt.all(normalizedProjectPath) as DbRow[])
-    : (stmt.all() as DbRow[]);
+  return (variants.length > 0 ? stmt.all(...variants) : stmt.all()) as DbRow[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

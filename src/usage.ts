@@ -105,9 +105,26 @@ interface DbRow {
   request_count?: number | null;
 }
 
+/**
+ * Directory variants used for database lookups.
+ *
+ * OpenCode stores session directories with forward slashes
+ * (`D:/workspace/project`) while the plugin receives native paths
+ * (`D:\workspace\project`), so every spelling has to be matched.
+ */
+function directoryVariants(directory: string): string[] {
+  const normalized = path.normalize(directory);
+  const variants = new Set<string>([directory, normalized]);
+  variants.add(normalized.replace(/\\/g, '/'));
+  variants.add(normalized.replace(/\//g, '\\'));
+  return [...variants];
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function querySessionUsage(db: any, normalizedDirectory: string): DbRow[] {
   const hasV2 = tableExists(db, 'session_v2');
+  const variants = directoryVariants(normalizedDirectory);
+  const placeholders = variants.map((_, i) => `?${i + 1}`).join(', ');
 
   if (hasV2) {
     const sql =
@@ -117,8 +134,8 @@ function querySessionUsage(db: any, normalizedDirectory: string): DbRow[] {
       `s.tokens_reasoning AS tokens_reasoning, s.tokens_cache_read AS tokens_cache_read, ` +
       `s.tokens_cache_write AS tokens_cache_write, ` +
       `(SELECT COUNT(*) FROM session_message m WHERE m.session_id = s.id AND m.type = 'assistant') AS request_count ` +
-      `FROM session_v2 s WHERE s.directory = ?1`;
-    return db.prepare(sql).all(normalizedDirectory) as DbRow[];
+      `FROM session_v2 s WHERE s.directory IN (${placeholders})`;
+    return db.prepare(sql).all(...variants) as DbRow[];
   }
 
   // Legacy OpenCode 1.x schema
@@ -133,8 +150,8 @@ function querySessionUsage(db: any, normalizedDirectory: string): DbRow[] {
     `COUNT(m.id) AS request_count ` +
     `FROM session s LEFT JOIN message m ON m.session_id = s.id ` +
     `AND json_extract(m.data, '$.role') = 'assistant' ` +
-    `WHERE s.directory = ?1 GROUP BY s.id`;
-  return db.prepare(sql).all(normalizedDirectory) as DbRow[];
+    `WHERE s.directory IN (${placeholders}) GROUP BY s.id`;
+  return db.prepare(sql).all(...variants) as DbRow[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
