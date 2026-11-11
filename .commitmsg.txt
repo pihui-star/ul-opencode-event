@@ -1,6 +1,0 @@
-feat: 数据库访问兼容 Node 运行时，CLI 可正常读取用量
-
-- 新增 src/sqlite.ts：bun:sqlite 优先、node:sqlite 回退（Node >= 22.5），均以只读方式打开
-- syncFromDB 不再因数据库不可用而提前返回，改为始终基于缓存汇总用量，并回传 databaseAvailable
-- CLI rebuild 在数据库不可用时给出明确提示，并展示缓存中的用量
-- 历史文档（事件数据流 / 性能优化 / token 为 0 / 渠道开发）标注适用范围
