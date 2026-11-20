@@ -8,10 +8,10 @@ OpenCode multi-channel notification and usage analytics plugin. Get notified whe
 > **Maintenance notice**
 >
 > The original author ([@ulthon](https://github.com/ulthon)) **no longer maintains this project**.
-> This repository is maintained by [@pihuiarch](https://github.com/pihuiarch) and is the single
-> source of truth for releases, issue tracking and fixes.
+> This repository is maintained by [@pihuiarch](https://github.com/pihuiarch) and hosted under the
+> `pihui-star` organisation. It is the single source of truth for releases, issue tracking and fixes.
 >
-> - Releases & issues → [github.com/pihuiarch/ul-opencode-event](https://github.com/pihuiarch/ul-opencode-event)
+> - Releases & issues → [github.com/pihui-star/ul-opencode-event](https://github.com/pihui-star/ul-opencode-event)
 > - Original repository (read-only, archived) → [gitee.com/ulthon/ul-opencode-event](https://gitee.com/ulthon/ul-opencode-event)
 >
 > Install from this repository — the npm package `@ulthon/ul-opencode-event` is still published by
@@ -83,7 +83,7 @@ Both paths share the same channel stack, templates, formatters and event mapping
 | Slack | Planned | Slack incoming webhooks |
 | WeChat Work | Planned | Enterprise WeChat |
 
-**Have a channel request?** Open an issue on the [GitHub repo](https://github.com/pihuiarch/ul-opencode-event) (or the [Gitee mirror](https://gitee.com/ulthon/ul-opencode-event))!
+**Have a channel request?** Open an issue on the [GitHub repo](https://github.com/pihui-star/ul-opencode-event) (or the [Gitee mirror](https://gitee.com/ulthon/ul-opencode-event))!
 
 ## Token Usage Analytics
 
@@ -130,7 +130,7 @@ OpenCode installs and updates the plugin itself. Then configure it:
 ### GitHub
 
 ```bash
-opencode plugin add github:pihuiarch/ul-opencode-event
+opencode plugin add github:pihui-star/ul-opencode-event
 ```
 
 The plugin is cloned and built automatically (`prepare` script), then referenced by the
@@ -138,13 +138,13 @@ same config keys as above:
 
 ```json
 // OpenCode 2.x
-{ "plugins": ["github:pihuiarch/ul-opencode-event"] }
+{ "plugins": ["github:pihui-star/ul-opencode-event"] }
 ```
 
 ### From a local checkout
 
 ```bash
-git clone https://github.com/pihuiarch/ul-opencode-event
+git clone https://github.com/pihui-star/ul-opencode-event
 cd ul-opencode-event && npm install && npm run build
 ```
 
@@ -156,7 +156,7 @@ cd ul-opencode-event && npm install && npm run build
 ### Release tarball (offline / air-gapped)
 
 ```bash
-npm install -g https://github.com/pihuiarch/ul-opencode-event/releases/download/v0.3.0/ulthon-ul-opencode-event-0.3.0.tgz
+npm install -g https://github.com/pihui-star/ul-opencode-event/releases/download/v0.3.0/ulthon-ul-opencode-event-0.3.0.tgz
 ```
 
 ## Quick Start

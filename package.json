@@ -9,7 +9,7 @@
     },
     {
       "name": "pihuiarch",
-      "url": "https://github.com/pihuiarch/ul-opencode-event"
+      "url": "https://github.com/pihui-star/ul-opencode-event"
     }
   ],
   "license": "MIT",
@@ -31,12 +31,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pihuiarch/ul-opencode-event.git"
+    "url": "git+https://github.com/pihui-star/ul-opencode-event.git"
   },
   "bugs": {
-    "url": "https://github.com/pihuiarch/ul-opencode-event/issues"
+    "url": "https://github.com/pihui-star/ul-opencode-event/issues"
   },
-  "homepage": "https://github.com/pihuiarch/ul-opencode-event#readme",
+  "homepage": "https://github.com/pihui-star/ul-opencode-event#readme",
   "keywords": [
     "opencode",
     "plugin",

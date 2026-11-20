@@ -8,9 +8,10 @@ OpenCode 多通道通知与用量分析插件。通过邮件、钉钉、飞书�
 > **维护声明**
 >
 > 原作者（[@ulthon](https://github.com/ulthon)）**已不再维护本项目**。
-> 本仓库由 [@pihuiarch](https://github.com/pihuiarch) 维护，是版本发布、问题反馈与缺陷修复的**唯一来源**。
+> 本仓库由 [@pihuiarch](https://github.com/pihuiarch) 维护，托管在 `pihui-star` 组织下，
+> 是版本发布、问题反馈与缺陷修复的**唯一来源**。
 >
-> - 版本发布与 issue → [github.com/pihuiarch/ul-opencode-event](https://github.com/pihuiarch/ul-opencode-event)
+> - 版本发布与 issue → [github.com/pihui-star/ul-opencode-event](https://github.com/pihui-star/ul-opencode-event)
 > - 原仓库（只读存档）→ [gitee.com/ulthon/ul-opencode-event](https://gitee.com/ulthon/ul-opencode-event)
 >
 > 请从本仓库安装 —— npm 上的 `@ulthon/ul-opencode-event` 仍由原作者发布，**不包含**下文所述的 OpenCode 2.x 适配。
@@ -81,7 +82,7 @@ export default {
 | Slack | 计划中 | Slack incoming webhooks |
 | 企业微信 | 计划中 | 企业微信机器人 |
 
-**想要其他渠道？** 在 [GitHub 仓库](https://github.com/pihuiarch/ul-opencode-event)（或 [Gitee 镜像](https://gitee.com/ulthon/ul-opencode-event)）提 issue 告诉我们！
+**想要其他渠道？** 在 [GitHub 仓库](https://github.com/pihui-star/ul-opencode-event)（或 [Gitee 镜像](https://gitee.com/ulthon/ul-opencode-event)）提 issue 告诉我们！
 
 ## Token 用量统计
 
@@ -151,7 +152,7 @@ opencode plugin add @ulthon/ul-opencode-event
 ### 从 GitHub 安装
 
 ```bash
-opencode plugin add github:pihuiarch/ul-opencode-event
+opencode plugin add github:pihui-star/ul-opencode-event
 ```
 
 安装时会自动 clone 并执行 `prepare` 脚本完成构建，配置写法同上：
@@ -159,14 +160,14 @@ opencode plugin add github:pihuiarch/ul-opencode-event
 ```json
 // OpenCode 2.x
 {
-  "plugins": ["github:pihuiarch/ul-opencode-event"]
+  "plugins": ["github:pihui-star/ul-opencode-event"]
 }
 ```
 
 ### 从本地源码安装
 
 ```bash
-git clone https://github.com/pihuiarch/ul-opencode-event
+git clone https://github.com/pihui-star/ul-opencode-event
 cd ul-opencode-event && npm install && npm run build
 ```
 
@@ -180,7 +181,7 @@ cd ul-opencode-event && npm install && npm run build
 ### 使用发布包（离线 / 内网）
 
 ```bash
-npm install -g https://github.com/pihuiarch/ul-opencode-event/releases/download/v0.3.0/ulthon-ul-opencode-event-0.3.0.tgz
+npm install -g https://github.com/pihui-star/ul-opencode-event/releases/download/v0.3.0/ulthon-ul-opencode-event-0.3.0.tgz
 ```
 
 > **不要全局安装**（`npm install -g`）。全局安装的副本不会被 OpenCode 加载，也不会被自动更新，纯属浪费。
