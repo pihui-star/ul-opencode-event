@@ -1,3 +1,0 @@
-# Auto-Update Issues
-
-(pending)

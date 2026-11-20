@@ -1,7 +1,6 @@
 node_modules/
 dist/
 coverage/
-.sisyphus/evidence/
 *.log
 out_tmp/
 
@@ -10,3 +9,4 @@ out_tmp/
 nul
 token-usage-output.txt
 /.omo
+.sisyphus/
